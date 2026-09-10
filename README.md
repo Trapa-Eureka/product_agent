@@ -84,6 +84,8 @@ Verify result + audit
 
 The stack intentionally exercises technologies relevant to the target engineering role. Local development must not require live AWS credentials.
 
+**Free-first defaults.** This is a self-funded solo project, so paid services are never required to run it. MongoDB, Bedrock, and SQS are implemented as adapters for the portfolio, but the runtime defaults are a JSON file store, a rule-based interpreter (Ollama if installed), and an in-process queue. The whole product ships as one public npm package runnable with `npx`. See `ARCHITECTURE.md` §2 "Free-first constraint".
+
 ## Engineering principles
 
 - Human decides consequential changes.
@@ -94,6 +96,28 @@ The stack intentionally exercises technologies relevant to the target engineerin
 - Every mutation is auditable.
 - Tests and local mocks are created early.
 - Agent context is explicit and pruned when stale.
+
+## Local development
+
+Requires Node.js 22 or newer and pnpm. Nothing else: no AWS account, no MongoDB server, no API key.
+
+```bash
+pnpm install
+pnpm run verify
+```
+
+| Command | Purpose |
+|---|---|
+| `pnpm run typecheck` | TypeScript strict mode across the workspace |
+| `pnpm run lint` | ESLint, including the framework-independence boundary rule |
+| `pnpm run format` / `format:check` | Prettier for code (markdown is excluded) |
+| `pnpm run test` | Unit suite |
+| `pnpm run test:integration` | Integration suite (`*.integration.test.ts`) |
+| `pnpm run test:contract` | MCP contract suite (`*.contract.test.ts`) |
+| `pnpm run test:e2e` | Playwright suite; reports `E2E_NOT_CONFIGURED` until TASK-604 |
+| `pnpm run verify` | Local completion gate: runs the whole pipeline in order |
+
+`verify` prints a per-step pass/fail summary and stops at the first failure with the command to re-run.
 
 ## Documentation
 

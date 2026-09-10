@@ -1,0 +1,13 @@
+{
+  "name": "@pca/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Schema-validated contracts shared across every boundary (TASK-002)",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {}
+}
