@@ -149,12 +149,15 @@ TASK-003, TASK-004.
 **Why a file store**  
 See `ARCHITECTURE.md` §2 "Free-first constraint". The published package must run on a clean machine with `npx` alone.
 
-## TASK-102 MongoDB adapters
+## TASK-102 MongoDB adapters — DONE
 
 Implement MongoDB repositories and indexes.
 
 **Acceptance**
 Adapters satisfy repository contracts and production isolation.
+
+**Status**  
+Complete. `@pca/mongo-store` implements every port with the documented collections and indexes; `commit` is a multi-document transaction guarded by a version-filtered update, and a standalone server is refused at connect time. The repository contract suite and the golden scenario suite both pass against it via `mongodb-memory-server` in replica-set mode, with no server installed. `PCA_MONGO_URI` selects the server; wiring into `PCA_STORAGE` lands in TASK-110.
 
 ## TASK-103 Change intake use case — DONE
 

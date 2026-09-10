@@ -362,7 +362,7 @@ implement them:
 |---|---|---|
 | JSON file | `@pca/file-store` | Runtime default. No server, no native module, no account. |
 | In-memory | `@pca/memory-store` | Unit tests and throwaway demo runs. |
-| MongoDB | `@pca/mongo-store` | The portfolio target (TASK-102). |
+| MongoDB | `@pca/mongo-store` | The portfolio target. Requires a replica set so commits are transactional; refuses a standalone server. |
 
 One contract test suite in `@pca/test-support` runs unchanged against each of
 them. An adapter that merely compiles against the ports has proved nothing;
@@ -373,6 +373,12 @@ The file store is single-process: writes are serialised in-process, and two
 processes writing the same file can still lose an update. Multi-writer
 deployments select MongoDB. It reads through to the file on every call rather
 than caching, so a second instance sees the first one's writes.
+
+Entity rows in Mongo use a composite `_id` of `productionId::id`, so an entity
+ID that repeats across productions is two rows rather than a collision, and
+every read still filters by `productionId`. Audit rows keep Mongo's own
+ObjectId, which increases with insertion order, so "newest first" stays correct
+when two events share a timestamp.
 
 Which adapter runs is decided in the composition root from `PCA_STORAGE`
 (`file`, `memory`, or `mongo`), wired in TASK-110. No package below the

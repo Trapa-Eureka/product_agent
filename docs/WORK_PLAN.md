@@ -53,7 +53,7 @@ for free. Only P7 infrastructure and live Bedrock/SQS connections are deferred.
 11. TASK-108 Apply approved proposal — **done**. Same `applyOperations` as simulation with real IDs; fixed check order; only changed records committed.
 12. TASK-109 Post-write verification — **done**. Named checks per operation plus availability, invariants, and bookkeeping; outcome audited.
 13. TASK-601 Golden scenario tests — **done**. One suite, every TESTING.md §4 bullet by name, on both adapters. Regression baseline for every later step.
-14. TASK-102 Mongo adapters via `mongodb-memory-server`. Run the same repository contract tests against in-memory and Mongo.
+14. TASK-102 Mongo adapters — **done**. Transactional commit on a replica set; contract and golden suites pass on memory, file, and Mongo alike.
 
 ### Stage 3 — MCP (P2)
 
