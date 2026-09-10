@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 import { typedChangeSchema } from "./change";
+import { proposalExplanationSchema } from "./explanation";
+import { rejectedScheduleDaySchema } from "./mcp";
 import { interpretationOptionSchema } from "./model";
 import {
   correlationIdSchema,
@@ -8,6 +10,7 @@ import {
   explanationSchema,
   idempotencyKeySchema,
   isoDateTimeSchema,
+  localDateSchema,
   productionVersionSchema,
 } from "./primitives";
 
@@ -46,6 +49,23 @@ export const agentJobEventSchema = z.strictObject({
 
 export const jobTypeSchema = z.enum(["ANALYZE_CHANGE", "APPLY_PROPOSAL", "VERIFY_PROPOSAL"]);
 
+/** A candidate shoot day, ranked, for the DESIGN.md §2 "Proposed Plan" comparison (TASK-504). */
+export const rankedScheduleCandidateSchema = z.strictObject({
+  shootDayId: entityIdSchema,
+  date: localDateSchema,
+  sceneIds: z.array(entityIdSchema).min(1),
+  /** Things worth knowing that do not invalidate the day, e.g. a cast member already booked. */
+  warnings: z.array(explanationSchema),
+  rank: z.int().positive(),
+  reason: explanationSchema,
+});
+
+/** Every day the candidate generator considered for a scheduling change, ranked and rejected. */
+export const candidateComparisonSchema = z.strictObject({
+  ranked: z.array(rankedScheduleCandidateSchema).min(1),
+  rejected: z.array(rejectedScheduleDaySchema),
+});
+
 /**
  * Queue message envelope. The same shape crosses the in-process queue and any
  * future SQS adapter, so retry and idempotency behaviour is testable without a
@@ -75,6 +95,13 @@ export const jobEnvelopeSchema = z.strictObject({
  * choice and resume the same job with the one the user picks. Like
  * `message`, it is not cleared on the next transition; a client reads it
  * only when `stage === "resolving"`.
+ *
+ * `explanation` and `candidateComparison` are set once a proposal exists
+ * (TASK-504): the DESIGN.md §4 proposal card `runChangeAgent` already built
+ * (headline, `+`/`!` effects, operations), and, for a scheduling change, the
+ * ranked and rejected shoot days the candidate generator considered. Like
+ * `options`, they reach a client only through this record — the agent
+ * computed them once, synchronously, and nothing recomputes them later.
  */
 export const jobRunSchema = z.strictObject({
   id: entityIdSchema,
@@ -87,6 +114,8 @@ export const jobRunSchema = z.strictObject({
   changeRequestId: entityIdSchema.optional(),
   proposalId: entityIdSchema.optional(),
   options: z.array(interpretationOptionSchema).optional(),
+  explanation: proposalExplanationSchema.optional(),
+  candidateComparison: candidateComparisonSchema.optional(),
   history: z.array(agentJobEventSchema),
   createdAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,
@@ -120,6 +149,8 @@ export type JobStatus = z.infer<typeof jobStatusSchema>;
 export type AgentJobEvent = z.infer<typeof agentJobEventSchema>;
 export type JobType = z.infer<typeof jobTypeSchema>;
 export type JobEnvelope = z.infer<typeof jobEnvelopeSchema>;
+export type RankedScheduleCandidate = z.infer<typeof rankedScheduleCandidateSchema>;
+export type CandidateComparison = z.infer<typeof candidateComparisonSchema>;
 export type JobRun = z.infer<typeof jobRunSchema>;
 export type AnalyzeChangeJobPayload = z.infer<typeof analyzeChangeJobPayloadSchema>;
 export type ApplyProposalJobPayload = z.infer<typeof applyProposalJobPayloadSchema>;

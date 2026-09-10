@@ -1,6 +1,13 @@
 import { z } from "zod";
 
-import type { EntityId, JobEnvelope, ToolError } from "@pca/contracts";
+import type {
+  CandidateComparison,
+  EntityId,
+  JobEnvelope,
+  RankedCandidate,
+  ScheduleCandidate,
+  ToolError,
+} from "@pca/contracts";
 import {
   analyzeChangeJobPayloadSchema,
   applyProposalJobPayloadSchema,
@@ -40,6 +47,31 @@ const malformed = (envelope: JobEnvelope, issue: string): JobHandlerOutcome => (
 const describeIssue = (error: z.ZodError): string => {
   const issue = error.issues[0];
   return `${issue?.path.join(".") ?? "<root>"} ${issue?.message ?? "is invalid"}`;
+};
+
+/**
+ * DESIGN.md §2 "Proposed Plan" candidate comparison (TASK-504): the ranked
+ * and rejected shoot days `runChangeAgent` already computed, merged by
+ * shoot day and sorted by rank. `undefined` for a change that never
+ * generated candidates (not a scheduling move).
+ */
+const buildCandidateComparison = (
+  candidates: readonly ScheduleCandidate[],
+  ranked: readonly RankedCandidate[],
+  rejected: CandidateComparison["rejected"],
+): CandidateComparison | undefined => {
+  if (ranked.length === 0) return undefined;
+  const byShootDayId = new Map(candidates.map((candidate) => [candidate.shootDayId, candidate]));
+  const merged = ranked
+    .map((entry) => {
+      const candidate = byShootDayId.get(entry.shootDayId);
+      return candidate === undefined
+        ? null
+        : { ...candidate, rank: entry.rank, reason: entry.reason };
+    })
+    .filter((entry) => entry !== null)
+    .sort((left, right) => left.rank - right.rank);
+  return merged.length === 0 ? undefined : { ranked: merged, rejected: [...rejected] };
 };
 
 /** ANALYZE_CHANGE: received → resolving → analyzing → simulating → validating → awaiting_approval. */
@@ -97,10 +129,17 @@ export const createAnalyzeChangeJobHandler = (dependencies: {
           );
           return { kind: "FAILED", reason: `Proposal ${proposal.id} is invalid.` };
         }
+        const candidateComparison = buildCandidateComparison(
+          outcome.candidates,
+          outcome.ranked,
+          outcome.rejected,
+        );
         await tracker.advance(jobId, "awaiting_approval", {
           message: outcome.explanation.headline,
           changeRequestId: outcome.changeRequest.id,
           proposalId: proposal.id,
+          explanation: outcome.explanation,
+          ...(candidateComparison === undefined ? {} : { candidateComparison }),
         });
         return { kind: "COMPLETED" };
       }

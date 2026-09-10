@@ -455,7 +455,10 @@ Complete. `analyzeChangeImpact` now computes the DESIGN.md §3 impact panel alon
 
 Grouped impacts with deterministic `why`.
 
-## TASK-504 Proposal view
+## TASK-504 Proposal view — DONE
+
+**Status**  
+Complete. `runChangeAgent` already built the DESIGN.md §4 structured proposal card at proposal-creation time; rather than recomputing it against production state that may have moved on, the ANALYZE_CHANGE job handler carries it — and, for a scheduling change, the ranked/rejected shoot days the candidate generator considered — onto the tracked `JobRun` (`explanation: ProposalExplanation`, `candidateComparison: CandidateComparison`), the same mechanism `options` already uses for ambiguity (TASK-502/403). No new REST route: both arrive with the job `ChangeSubmissionService` already reads. `apps/web/src/app/workspace/`: `ProposalCard` (headline, `+`/`!` effects, operations, optional narrative) and `CandidateComparisonPanel` (ranked list with the top rank marked chosen, warnings, rejected days with reasons) — both pure presentational components, wired into the "What do you recommend?" panel. 9 new tests (2 application, 1 contract, 6 Angular); `pnpm verify` passes.
 
 Operations, warnings, candidate comparison.
 

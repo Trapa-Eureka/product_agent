@@ -1,10 +1,12 @@
 import type {
   AgentJobEvent,
+  CandidateComparison,
   InterpretationOption,
   IsoDateTime,
   JobRun,
   JobStage,
   JobType,
+  ProposalExplanation,
 } from "@pca/contracts";
 
 /**
@@ -121,6 +123,10 @@ export type AdvanceOptions = {
   readonly message?: string;
   readonly changeRequestId?: string;
   readonly proposalId?: string;
+  /** The DESIGN.md §4 proposal card (TASK-504), set on the move into `awaiting_approval`. */
+  readonly explanation?: ProposalExplanation;
+  /** The ranked/rejected shoot days behind a scheduling proposal (TASK-504). */
+  readonly candidateComparison?: CandidateComparison;
 };
 
 /**
@@ -150,6 +156,10 @@ export const advanceJobRun = (
         ? {}
         : { changeRequestId: options.changeRequestId }),
       ...(options.proposalId === undefined ? {} : { proposalId: options.proposalId }),
+      ...(options.explanation === undefined ? {} : { explanation: options.explanation }),
+      ...(options.candidateComparison === undefined
+        ? {}
+        : { candidateComparison: options.candidateComparison }),
       history: [...run.history, ...events],
       updatedAt: now,
     },

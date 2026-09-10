@@ -336,6 +336,17 @@ has no room for it, `ChangeSubmissionService` fetches it once the tracked
 job's change request is known, and `ImpactPanel` renders it with no logic of
 its own — every line of text is the server's.
 
+The proposal card and candidate comparison (TASK-504) take a third path:
+`runChangeAgent` already builds `describeProposal`'s structured card, and
+already ranks/rejects shoot days for a scheduling change, once, synchronously,
+at proposal-creation time. Recomputing either later would mean re-simulating
+against whatever the production has become since, which is not the world the
+approved proposal describes. So the ANALYZE_CHANGE job handler carries both
+onto the tracked `JobRun` the same way `options` carries ambiguity (TASK-502,
+TASK-403): no REST route, no `ChangeSubmissionService` fetch — they arrive
+with the job the service already reads. `ProposalCard` and
+`CandidateComparisonPanel` render them, again with no logic of their own.
+
 ## 7. AI architecture
 
 Use a provider interface:
