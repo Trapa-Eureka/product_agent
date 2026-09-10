@@ -71,10 +71,12 @@ Write tools additionally require:
   `PCA_ALLOWED_PRODUCTIONS`). A call naming any other production is
   `TOOL_UNAUTHORIZED` before the handler runs. Handlers receive the identity
   and a per-call correlation ID; they never see the transport.
-- **Failures are structured.** A use-case failure is returned as its
-  `ToolError` with `isError` set. A handler that throws becomes
-  `INTERNAL_ERROR` carrying the correlation ID, with the cause logged and not
-  echoed to the client.
+- **Failures are structured, in text.** A use-case failure is returned as its
+  `ToolError`, JSON-encoded in the text content with `isError` set, and with no
+  `structuredContent`: clients validate `structuredContent` against the tool's
+  advertised output schema, and an error is not an output. A handler that
+  throws becomes `INTERNAL_ERROR` carrying the correlation ID, with the cause
+  logged and not echoed to the client.
 - **Logging goes to stderr** as JSON lines, because stdout is the stdio
   transport. Each call logs tool, correlation ID, duration, and outcome or
   error code, and nothing else: no prompt text, no entity payloads.
@@ -161,6 +163,12 @@ Input:
   relatedEntityId?: string;
 }
 ```
+
+Read tools answer from the production snapshot in canonical order and never
+audit. `find_cast` and `find_location` match a case-insensitive fragment of the
+name (or a cast member's role) and return every match, sorted; an empty list is
+an answer, not an error. `get_tasks` takes `relatedEntityType` and
+`relatedEntityId` together or not at all.
 
 ## 5. Analysis tools
 

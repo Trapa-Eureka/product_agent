@@ -3,6 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { createRepositoriesFromEnv } from "@pca/bootstrap";
 
 import { contextFromEnv } from "./context";
+import { createReadToolHandlers } from "./handlers";
 import { stderrJsonLogger } from "./logging";
 import { createProductionChangeServer } from "./server";
 
@@ -18,10 +19,9 @@ const main = async (): Promise<void> => {
   const { repositories, selection, close } = await createRepositoriesFromEnv(process.env);
   const context = contextFromEnv(process.env);
 
-  // Tool handlers are wired here as they land (TASK-202 onwards).
-  void repositories;
+  // Tool handlers are wired here as they land (analysis, proposal, write, verify follow).
   const { server, registeredTools } = createProductionChangeServer({
-    handlers: {},
+    handlers: { ...createReadToolHandlers({ repositories }) },
     context,
     logger,
   });

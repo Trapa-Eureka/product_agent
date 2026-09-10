@@ -11,3 +11,4 @@ export * from "./logging";
 export * from "./descriptions";
 export * from "./tool-result";
 export * from "./server";
+export * from "./handlers";
