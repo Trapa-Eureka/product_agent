@@ -1,4 +1,4 @@
-import type { RepositorySet } from "@pca/application";
+import type { Logger, RepositorySet } from "@pca/application";
 import {
   createAnalyzeChangeImpact,
   createGenerateScheduleCandidates,
@@ -22,9 +22,14 @@ import type { ToolHandlers } from "../server";
  */
 export const createAnalysisToolHandlers = (dependencies: {
   readonly repositories: RepositorySet;
+  /** Logs a `dependency_analysis` line per `analyze_change_impact` call (TASK-804). */
+  readonly logger?: Logger;
 }): ToolHandlers => {
-  const { repositories } = dependencies;
-  const analyze = createAnalyzeChangeImpact({ repositories });
+  const { repositories, logger } = dependencies;
+  const analyze = createAnalyzeChangeImpact({
+    repositories,
+    ...(logger === undefined ? {} : { logger }),
+  });
   const generate = createGenerateScheduleCandidates({ repositories });
   const simulate = createSimulateProposal({ repositories });
   const validate = createValidateProposal({ repositories });

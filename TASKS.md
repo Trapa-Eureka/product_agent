@@ -581,9 +581,12 @@ Create original diagram from `ARCHITECTURE.md`.
 
 2–4 minute demo based on `DESIGN.md`.
 
-## TASK-804 Performance instrumentation
+## TASK-804 Performance instrumentation — DONE
 
 Add correlation IDs/timings for model, MCP, DB, and analysis.
+
+**Status**  
+Complete. Correlation IDs for HTTP/agent job/queue message/MCP call were already contract-enforced and threaded end to end before this task; a proposal and an approval deliberately carry none of their own, tracing back to their originating request through `changeRequestId`/`AuditEvent.correlationId` instead (ARCHITECTURE.md §16 now explains why a redundant field would not add anything), and an MCP call stays server-generated only (accepting a caller-supplied ID from a model is a trust boundary this product does not cross). The real gap — and this task's actual scope — was latency: HTTP and MCP tool call `durationMs` already existed; model calls, database operations, and dependency analysis had neither timing nor a logger to write it to. `Logger`/`LogFields` (`packages/application/src/ports/logging.ts`) is a new shared port, promoted out of `apps/api` and `apps/mcp-server`'s two previously-duplicated logger types (both now alias it). `guardPort`/`guardRepositories` log a `db_call` line per repository call across every adapter for free (they already wrap every method); `guardModelPort` logs `model_call`; `analyzeChangeImpact` logs `dependency_analysis` with the correlation ID it already has. Every real entry point (`apps/api/src/main.ts`, `apps/mcp-server/src/main.ts`, `apps/api/e2e/server.ts`) now passes its logger through, verified for real by grepping a live E2E run's output for all three new event types. One thing this surfaced: `apps/api/src/main.ts` already guarded its model twice (bootstrap, then again inside `createRunChangeAgent`); logging both would have doubled every line, so `main.ts` logs only at the layer actually used, leaving the pre-existing double-guard itself untouched. 16 new tests (13 application unit, 2 bootstrap unit, 1 MCP contract); `pnpm verify` passes.
 
 ## TASK-805 README finalization
 

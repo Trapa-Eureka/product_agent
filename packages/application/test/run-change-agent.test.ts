@@ -11,7 +11,22 @@ import {
   withLocationUnavailable,
 } from "@pca/test-support";
 
+import type { LogFields, LogLevel } from "../src";
 import { createRunChangeAgent, toProposalSummary, type RunChangeAgent } from "../src";
+
+/** Collects log lines instead of printing them, so a test can assert on shape. */
+const recordingLogger = (): {
+  readonly lines: { level: LogLevel; event: string; fields: LogFields }[];
+  log: (level: LogLevel, event: string, fields?: LogFields) => void;
+} => {
+  const lines: { level: LogLevel; event: string; fields: LogFields }[] = [];
+  return {
+    lines,
+    log: (level, event, fields = {}) => {
+      lines.push({ level, event, fields });
+    },
+  };
+};
 
 const DEMO = DEMO_MOVIE_IDS.production;
 const { cast, callSheets, locations, scenes, shootDays } = DEMO_MOVIE_IDS;
@@ -267,5 +282,37 @@ describe("runChangeAgent", () => {
     expect(result.value.explanation.narrative).toBeUndefined();
     expect(result.value.explanation.operations).toHaveLength(7);
     expect(result.value.proposal.summary).toMatch(/^Move Scene 07 and Scene 12 from Fri Sep 18/);
+  });
+});
+
+describe("runChangeAgent timing (TASK-804)", () => {
+  it("logs model_call and dependency_analysis lines through the fused loop", async () => {
+    const logger = recordingLogger();
+    const store = createMemoryStore({ now: () => NOW });
+    await store.productions.save(createDemoMovie());
+    const run = createRunChangeAgent({
+      repositories: store,
+      model: createRuleModelAdapter(),
+      clock: fixedClock(NOW),
+      ids: sequentialIds(),
+      modelTimeoutMs: 200,
+      logger,
+    });
+
+    const result = await run({
+      productionId: DEMO,
+      text: "Sarah cannot shoot Friday.",
+      requestedBy: "coordinator@example.test",
+      correlationId: "corr-1",
+    });
+    expect(result.ok).toBe(true);
+
+    const events = logger.lines.map((line) => line.event);
+    expect(events).toContain("model_call");
+    expect(events).toContain("dependency_analysis");
+    expect(logger.lines.filter((line) => line.event === "model_call")).not.toHaveLength(0);
+    for (const line of logger.lines) {
+      expect(typeof line.fields["durationMs"]).toBe("number");
+    }
   });
 });

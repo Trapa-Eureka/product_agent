@@ -1,9 +1,8 @@
-/** Structured JSON lines on stderr, the same shape the MCP server uses. */
-export type ApiLogFields = Readonly<Record<string, string | number | boolean | null | undefined>>;
+import type { Logger, LogFields } from "@pca/application";
 
-export interface ApiLogger {
-  log(level: "info" | "warn" | "error", event: string, fields?: ApiLogFields): void;
-}
+/** Structured JSON lines on stderr, the same shared port `@pca/application` and the MCP server use (TASK-804). */
+export type ApiLogger = Logger;
+export type ApiLogFields = LogFields;
 
 export const stderrApiLogger = (now: () => string = () => new Date().toISOString()): ApiLogger => ({
   log: (level, event, fields = {}) => {

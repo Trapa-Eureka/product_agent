@@ -1,6 +1,8 @@
 import type {
   JobRunRepository,
+  Logger,
   ModelPort,
+  PortGuardOptions,
   QueuePolicy,
   QueuePort,
   RepositorySet,
@@ -77,20 +79,24 @@ const repositorySetOf = (store: RepositorySet): RepositorySet => ({
   idempotency: store.idempotency,
 });
 
-export const createRepositories = async (selection: StorageSelection): Promise<Repositories> => {
+export const createRepositories = async (
+  selection: StorageSelection,
+  options: PortGuardOptions = {},
+): Promise<Repositories> => {
   switch (selection.kind) {
     case "file":
       return {
         repositories: guardRepositories(
           "file",
           repositorySetOf(createFileStore({ filePath: selection.filePath })),
+          options,
         ),
         selection,
         close: () => Promise.resolve(),
       };
     case "memory":
       return {
-        repositories: guardRepositories("memory", repositorySetOf(createMemoryStore())),
+        repositories: guardRepositories("memory", repositorySetOf(createMemoryStore()), options),
         selection,
         close: () => Promise.resolve(),
       };
@@ -100,7 +106,7 @@ export const createRepositories = async (selection: StorageSelection): Promise<R
         ...(selection.databaseName === undefined ? {} : { databaseName: selection.databaseName }),
       });
       return {
-        repositories: guardRepositories("mongo", repositorySetOf(store)),
+        repositories: guardRepositories("mongo", repositorySetOf(store), options),
         selection,
         close: () => store.close(),
       };
@@ -108,8 +114,11 @@ export const createRepositories = async (selection: StorageSelection): Promise<R
   }
 };
 
-export const createRepositoriesFromEnv = (env: Environment = process.env): Promise<Repositories> =>
-  createRepositories(selectStorage(env));
+/** `options.logger` (TASK-804) logs one `db_call` line per repository call, across every adapter. */
+export const createRepositoriesFromEnv = (
+  env: Environment = process.env,
+  options: PortGuardOptions = {},
+): Promise<Repositories> => createRepositories(selectStorage(env), options);
 
 export type ResetDemoMovieResult = {
   readonly filePath: string;
@@ -160,11 +169,14 @@ export const selectModel = (env: Environment): ModelKind => {
   return raw as ModelKind;
 };
 
+export type ModelOptions = {
+  readonly timeoutMs?: number;
+  /** Logs one `model_call` line per call (TASK-804): operation, durationMs, outcome. */
+  readonly logger?: Logger;
+};
+
 /** Every model is handed out behind the guard; no caller can reach an unguarded provider. */
-export const createModel = (
-  kind: ModelKind,
-  options: { readonly timeoutMs?: number } = {},
-): ModelPort => {
+export const createModel = (kind: ModelKind, options: ModelOptions = {}): ModelPort => {
   switch (kind) {
     case "rules":
       return guardModelPort(createRuleModelAdapter(), options);
@@ -177,8 +189,10 @@ export const createModel = (
   }
 };
 
-export const createModelFromEnv = (env: Environment = process.env): ModelPort =>
-  createModel(selectModel(env));
+export const createModelFromEnv = (
+  env: Environment = process.env,
+  options: ModelOptions = {},
+): ModelPort => createModel(selectModel(env), options);
 
 export type QueueKind = "memory" | "sqs";
 

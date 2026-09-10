@@ -3,7 +3,22 @@ import { describe, expect, it } from "vitest";
 import type { InterpretChangeInput, RankCandidatesInput } from "@pca/contracts";
 import { DEMO_MOVIE_DATES, DEMO_MOVIE_IDS } from "@pca/fixtures";
 
+import type { LogFields, LogLevel } from "../src";
 import { ModelError, guardModelPort, type ModelPort } from "../src";
+
+/** Collects log lines instead of printing them, so a test can assert on shape. */
+const recordingLogger = (): {
+  readonly lines: { level: LogLevel; event: string; fields: LogFields }[];
+  log: (level: LogLevel, event: string, fields?: LogFields) => void;
+} => {
+  const lines: { level: LogLevel; event: string; fields: LogFields }[] = [];
+  return {
+    lines,
+    log: (level, event, fields = {}) => {
+      lines.push({ level, event, fields });
+    },
+  };
+};
 
 /**
  * The guard is the whole safety story for the model layer: whatever provider
@@ -273,5 +288,55 @@ describe("guardModelPort: provider faults", () => {
     expect(
       (await guardModelPort(quick, { timeoutMs: 500 }).interpretChange(interpretInput)).kind,
     ).toBe("RESOLVED");
+  });
+});
+
+describe("guardModelPort: timing (TASK-804)", () => {
+  it("logs one model_call line per successful call, with a numeric duration", async () => {
+    const logger = recordingLogger();
+    const port = guardModelPort(
+      stub({ interpret: { kind: "RESOLVED", change: sarahOnFriday, confidence: 0.9 } }),
+      { logger },
+    );
+
+    await port.interpretChange(interpretInput);
+
+    expect(logger.lines).toHaveLength(1);
+    expect(logger.lines[0]).toMatchObject({ level: "info", event: "model_call" });
+    expect(logger.lines[0]?.fields["operation"]).toBe("interpretChange");
+    expect(logger.lines[0]?.fields["outcome"]).toBe("ok");
+    expect(typeof logger.lines[0]?.fields["durationMs"]).toBe("number");
+  });
+
+  it("logs outcome: error for a provider fault, and still throws", async () => {
+    const logger = recordingLogger();
+    const port = guardModelPort(stub({ throws: new Error("429 rate limited") }), { logger });
+
+    await expect(port.interpretChange(interpretInput)).rejects.toThrow(ModelError);
+
+    expect(logger.lines).toHaveLength(1);
+    expect(logger.lines[0]?.fields["operation"]).toBe("interpretChange");
+    expect(logger.lines[0]?.fields["outcome"]).toBe("error");
+  });
+
+  it("logs outcome: error for a timeout", async () => {
+    const logger = recordingLogger();
+    const slow = stub({
+      interpret: { kind: "RESOLVED", change: sarahOnFriday, confidence: 0.9 },
+      delayMs: 50,
+    });
+
+    await expect(
+      guardModelPort(slow, { timeoutMs: 5, logger }).interpretChange(interpretInput),
+    ).rejects.toThrow(ModelError);
+
+    expect(logger.lines[0]?.fields["outcome"]).toBe("error");
+  });
+
+  it("stays silent without a logger, the default every test above already relies on", async () => {
+    const port = guardModelPort(
+      stub({ interpret: { kind: "RESOLVED", change: sarahOnFriday, confidence: 0.9 } }),
+    );
+    expect((await port.interpretChange(interpretInput)).kind).toBe("RESOLVED");
   });
 });

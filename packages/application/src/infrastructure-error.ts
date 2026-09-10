@@ -1,3 +1,5 @@
+import type { Logger } from "./ports/logging";
+
 /**
  * Infrastructure failures, named (TASK-602, TESTING.md §8).
  *
@@ -8,6 +10,11 @@
  * port is wrapped by `guardPort`, which turns a thrown error into an
  * `InfrastructureError` that names the boundary (`mongo.productions.commit`)
  * and keeps the cause. The reporting point adds the correlation ID it knows.
+ *
+ * `guardPort` also logs one `db_call` line per call (TASK-804, ARCHITECTURE.md
+ * §16): the boundary, `durationMs`, and whether it succeeded — with an
+ * optional `Logger`, since most callers (every unit/integration test) do
+ * not want one.
  */
 
 export class InfrastructureError extends Error {
@@ -51,12 +58,23 @@ export const describeFailure = (error: unknown, correlationId?: string): string 
 
 type AnyPort = object;
 
+export type PortGuardOptions = {
+  /** Logs one `db_call` line per method call: boundary, durationMs, outcome. */
+  readonly logger?: Logger;
+};
+
 /**
  * Wraps every method of a port so a thrown error, sync or async, becomes an
  * `InfrastructureError` naming `<boundary>.<method>`. Values are returned
  * untouched; expected failures a port returns as values are not errors.
+ * With a logger, also times every call, success or failure alike.
  */
-export const guardPort = <Port extends AnyPort>(boundary: string, port: Port): Port => {
+export const guardPort = <Port extends AnyPort>(
+  boundary: string,
+  port: Port,
+  options: PortGuardOptions = {},
+): Port => {
+  const { logger } = options;
   const guarded: Record<string, unknown> = {};
   for (const key of Object.keys(port) as (keyof Port & string)[]) {
     const member = port[key];
@@ -65,18 +83,36 @@ export const guardPort = <Port extends AnyPort>(boundary: string, port: Port): P
       continue;
     }
     const method = member as (...args: unknown[]) => unknown;
+    const operation = `${boundary}.${key}`;
     guarded[key] = (...args: unknown[]): unknown => {
+      const startedAt = Date.now();
+      const record = (callOutcome: "ok" | "error"): void => {
+        logger?.log("info", "db_call", {
+          boundary: operation,
+          outcome: callOutcome,
+          durationMs: Date.now() - startedAt,
+        });
+      };
       let outcome: unknown;
       try {
         outcome = method.apply(port, args);
       } catch (error) {
-        throw wrap(`${boundary}.${key}`, error);
+        record("error");
+        throw wrap(operation, error);
       }
       if (outcome instanceof Promise) {
-        return outcome.catch((error: unknown) => {
-          throw wrap(`${boundary}.${key}`, error);
-        });
+        return outcome.then(
+          (value: unknown) => {
+            record("ok");
+            return value;
+          },
+          (error: unknown) => {
+            record("error");
+            throw wrap(operation, error);
+          },
+        );
       }
+      record("ok");
       return outcome;
     };
   }
@@ -87,12 +123,16 @@ const wrap = (boundary: string, error: unknown): InfrastructureError =>
   error instanceof InfrastructureError ? error : new InfrastructureError(boundary, error);
 
 /** Every repository in the set, guarded under `<adapter>.<repository>.<method>`. */
-export const guardRepositories = <Set extends object>(adapter: string, repositories: Set): Set => {
+export const guardRepositories = <Set extends object>(
+  adapter: string,
+  repositories: Set,
+  options: PortGuardOptions = {},
+): Set => {
   const guarded: Record<string, unknown> = {};
   for (const [name, repository] of Object.entries(repositories)) {
     guarded[name] =
       typeof repository === "object" && repository !== null
-        ? guardPort(`${adapter}.${name}`, repository as AnyPort)
+        ? guardPort(`${adapter}.${name}`, repository as AnyPort, options)
         : repository;
   }
   return guarded as Set;

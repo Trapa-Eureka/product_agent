@@ -10,7 +10,7 @@ import { typedChangeSchema } from "@pca/contracts";
 import { analyzeImpact, indexProduction } from "@pca/domain";
 
 import { describeImpact } from "../explanation";
-import type { RepositorySet } from "../ports";
+import type { Logger, RepositorySet } from "../ports";
 import { firstMissingReference } from "../references";
 import type { UseCaseResult } from "../result";
 import { fail, succeed } from "../result";
@@ -52,8 +52,10 @@ export type AnalyzeChangeImpact = (
 
 export const createAnalyzeChangeImpact = (dependencies: {
   readonly repositories: RepositorySet;
+  /** Logs one `dependency_analysis` line per call (TASK-804, ARCHITECTURE.md §16). */
+  readonly logger?: Logger;
 }): AnalyzeChangeImpact => {
-  const { repositories } = dependencies;
+  const { repositories, logger } = dependencies;
 
   return async (input) => {
     const parsed = typedChangeSchema.safeParse(input.change);
@@ -93,12 +95,20 @@ export const createAnalyzeChangeImpact = (dependencies: {
       );
     }
 
+    const startedAt = Date.now();
     const analysis = analyzeImpact(index, parsed.data);
     const explanation = describeImpact({
       state,
       impacts: analysis.impacts,
       conflicts: analysis.conflicts,
       change: parsed.data,
+    });
+    logger?.log("info", "dependency_analysis", {
+      productionId: input.productionId,
+      ...(input.correlationId === undefined ? {} : { correlationId: input.correlationId }),
+      durationMs: Date.now() - startedAt,
+      impactCount: analysis.impacts.length,
+      conflictCount: analysis.conflicts.length,
     });
     return succeed({ productionVersion: state.production.version, ...analysis, explanation });
   };

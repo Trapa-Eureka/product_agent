@@ -14,7 +14,7 @@ import type {
 import type { ProductionIndex, ProductionState } from "@pca/domain";
 import { callSheetsFor, indexProduction, scheduledShootDay } from "@pca/domain";
 
-import type { Clock, IdFactory, ModelPort, RepositorySet } from "../ports";
+import type { Clock, IdFactory, Logger, ModelPort, RepositorySet } from "../ports";
 import { ModelError, guardModelPort } from "../ports";
 import { describeProposal, toProposalSummary } from "../explanation";
 import type { UseCaseResult } from "../result";
@@ -161,10 +161,16 @@ export const createRunChangeAgent = (dependencies: {
   readonly clock: Clock;
   readonly ids: IdFactory;
   readonly modelTimeoutMs?: number;
+  /** Logs `model_call` and `dependency_analysis` lines (TASK-804). */
+  readonly logger?: Logger;
 }): RunChangeAgent => {
-  const { repositories, clock, ids } = dependencies;
-  const guardOptions =
-    dependencies.modelTimeoutMs === undefined ? {} : { timeoutMs: dependencies.modelTimeoutMs };
+  const { repositories, clock, ids, logger } = dependencies;
+  const guardOptions = {
+    ...(dependencies.modelTimeoutMs === undefined
+      ? {}
+      : { timeoutMs: dependencies.modelTimeoutMs }),
+    ...(logger === undefined ? {} : { logger }),
+  };
   const model = guardModelPort(dependencies.model, guardOptions);
   const interpret = createInterpretChange({
     repositories,
@@ -173,7 +179,10 @@ export const createRunChangeAgent = (dependencies: {
     ...(guardOptions.timeoutMs === undefined ? {} : { modelTimeoutMs: guardOptions.timeoutMs }),
   });
   const submit = createSubmitChangeRequest({ repositories, clock, ids });
-  const analyze = createAnalyzeChangeImpact({ repositories });
+  const analyze = createAnalyzeChangeImpact({
+    repositories,
+    ...(logger === undefined ? {} : { logger }),
+  });
   const generate = createGenerateScheduleCandidates({ repositories });
   const simulate = createSimulateProposal({ repositories });
   const propose = createCreateProposal({ repositories, clock, ids });

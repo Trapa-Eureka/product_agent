@@ -26,6 +26,7 @@ import {
   createVerifyAppliedProposal,
   createVerifyProposalJobHandler,
   forwardJobEvents,
+  guardRepositories,
   randomIdFactory,
   systemClock,
   withProposalNotifications,
@@ -73,7 +74,11 @@ const main = async (): Promise<void> => {
   }
 
   const hub = createNotificationHub();
-  const repositories = withProposalNotifications(store, hub, clock);
+  const repositories = withProposalNotifications(
+    guardRepositories("memory", store, { logger }),
+    hub,
+    clock,
+  );
   const queue = createMemoryQueue({ clock, ids });
   const tracker = createJobTracker({ repository: createMemoryJobRunRepository(), clock, ids });
   forwardJobEvents(tracker, hub);
@@ -84,7 +89,7 @@ const main = async (): Promise<void> => {
     "ANALYZE_CHANGE",
     createAnalyzeChangeJobHandler({
       tracker,
-      runChangeAgent: createRunChangeAgent({ repositories, model, clock, ids }),
+      runChangeAgent: createRunChangeAgent({ repositories, model, clock, ids, logger }),
     }),
   );
   const apply = createApplyApprovedProposal({ repositories, clock, ids });

@@ -1,3 +1,5 @@
+import type { Logger, LogFields, LogLevel } from "@pca/application";
+
 /**
  * Structured logging for the MCP server (SPEC.md §8 Observability).
  *
@@ -5,15 +7,12 @@
  * and a stray log line there corrupts the protocol stream. Each tool call logs
  * its name, correlation ID, duration, and outcome or error code, and nothing
  * else. No prompt text, no chain-of-thought, no entity payloads.
+ *
+ * `Logger`/`LogFields`/`LogLevel` are the shared port `@pca/application`
+ * exports (TASK-804) — re-exported here under their original names so
+ * nothing importing from this module needs to change.
  */
-
-export type LogLevel = "info" | "warn" | "error";
-
-export type LogFields = Readonly<Record<string, string | number | boolean | null | undefined>>;
-
-export interface Logger {
-  log(level: LogLevel, event: string, fields?: LogFields): void;
-}
+export type { Logger, LogFields, LogLevel };
 
 export const stderrJsonLogger = (now: () => string = () => new Date().toISOString()): Logger => ({
   log: (level, event, fields = {}) => {

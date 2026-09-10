@@ -20,6 +20,25 @@ Fast tests for:
 - explanation cards (DESIGN.md §3 and §4), pinned exactly for the golden
   scenarios so a wording change is a deliberate act.
 
+Implementation (TASK-804, ARCHITECTURE.md §16): a `recordingLogger` (a plain
+object collecting `{level, event, fields}` lines instead of printing them,
+the same tiny shape repeated locally in each file rather than shared —
+there is nothing to share beyond three lines) tests every new timing seam:
+`infrastructure-error.test.ts` asserts `guardPort`/`guardRepositories` log a
+`db_call` line with a numeric `durationMs` on success and on a thrown
+failure alike, and stay silent without a logger; `model-port.test.ts` the
+same for `guardModelPort`'s `model_call` lines, including a timeout;
+`analyze-change-impact.test.ts` asserts `dependency_analysis` carries the
+correlation ID the call was given and does not fire when the change is
+refused before analysis runs; `run-change-agent.test.ts` asserts both kinds
+of line appear through the fused loop; `bootstrap.test.ts` asserts
+`createRepositories`/`createModel` thread a logger through to a real
+file/memory store and the rule model. One MCP contract test
+(`analysis-tools.contract.test.ts`) drives `analyze_change_impact` through a
+real client and checks `dependency_analysis` appears alongside the
+`tool_call` line every tool already produces (MCP.md §2) — two different
+events, not one overloaded with both meanings.
+
 Angular specs (`apps/web/src/**/*.spec.ts`) run through `ng test` (vitest 4,
 jsdom) as the verify step `test:web`, separate from the root vitest suites,
 which exclude them. They cover the shell's rendering, the REST client's
