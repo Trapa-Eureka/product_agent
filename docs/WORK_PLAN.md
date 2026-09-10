@@ -39,7 +39,7 @@ for free. Only P7 infrastructure and live Bedrock/SQS connections are deferred.
 
 1. TASK-001 Monorepo — **done**: pnpm workspaces, strict tsconfig, vitest, ESLint, root commands (`typecheck`, `lint`, `test`, `test:integration`, `test:contract`, `test:e2e`, `verify`) green with smoke tests.
 2. TASK-002 `packages/contracts` — **done**: zod schemas (ChangeRequest, Impact, Proposal, Approval, MCP I/O, JobEvent) with valid/invalid cases.
-3. TASK-003 `packages/domain`: entities and INV-1..INV-8. Enforce "no infrastructure imports" with a lint rule.
+3. TASK-003 `packages/domain` — **done**: entities and INV-1..INV-8. Enforce "no infrastructure imports" with a lint rule.
 4. TASK-004 Demo Movie fixtures: stable IDs, integrity test asserting `TESTING.md` §3 preconditions.
 
 ### Stage 2 — Application core (P1), golden scenarios in-memory first

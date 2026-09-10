@@ -248,6 +248,10 @@ A scene cannot be considered validly scheduled on a day when its required locati
 ### INV-3 Scene integrity
 A scheduled scene must reference valid production-owned cast/location/requirements.
 
+A scene may also appear on at most one shoot day. A scene scheduled twice is a
+scheduling corruption rather than a plan, so it is reported here with
+`SCENE_ALREADY_ON_SHOOT_DAY`.
+
 ### INV-4 Production isolation
 Entities from one production cannot be referenced by another production.
 
@@ -262,6 +266,12 @@ A successful consequential mutation increments the production version.
 
 ### INV-8 Idempotency
 Replaying the same operation/idempotency key must not create duplicate tasks or duplicate schedule changes.
+
+Two complementary checks enforce this. A key-based check classifies a repeated
+idempotency key as a first run, a replay of identical work, or a conflict with
+different work. A state-based check asks whether the world already matches what
+an operation would produce, which catches a repeat that arrives without the
+original key.
 
 ## 5. Change propagation
 
@@ -327,3 +337,23 @@ Call-sheet impact
 - presenting/ranking valid alternatives.
 
 If AI output conflicts with deterministic domain state, deterministic state wins.
+
+## 7. Invariant implementation
+
+`packages/domain` implements every invariant as a pure function over an
+immutable production snapshot.
+
+- INV-1 to INV-4 are state invariants. Each returns every violation it finds as
+  a `Conflict`, so a caller sees the full picture rather than the first problem
+  encountered.
+- INV-5 to INV-8 are guards on the approval and apply path. Each returns a
+  stable error code with expected and actual values and the next safe action,
+  because their audience is a caller deciding what to do next.
+
+Requirement identity is a domain rule, not a prompt: `Red Car`, `red  car`, and
+`red car` are the same requirement of the same type.
+
+The proposal digest covers the production, the change request, the base version,
+and the ordered operations. It deliberately excludes impacts, warnings, and
+prose, so re-wording an explanation does not invalidate a valid approval while
+changing a single operation does.
