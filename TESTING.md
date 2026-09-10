@@ -70,6 +70,39 @@ S22 — Apartment — John
 
 Choose exact fixture IDs and keep them stable.
 
+### Fixture IDs
+
+The IDs below are part of the test contract. Golden scenario tests, the seed
+command, the demo script, and screenshots all name them, so changing one is a
+breaking change. `packages/fixtures` publishes them as `DEMO_MOVIE_IDS` and the
+integrity test asserts the whole set.
+
+| Entity | ID |
+|---|---|
+| Production | `PROD-DEMO` |
+| Cast | `CAST-SARAH`, `CAST-JOHN`, `CAST-MIKE` |
+| Locations | `LOC-WAREHOUSE`, `LOC-CAFE`, `LOC-APARTMENT` |
+| Scenes | `S07`, `S12`, `S18`, `S22` |
+| Shoot days | `SD-2026-09-18`, `SD-2026-09-21`, `SD-2026-09-22` |
+| Call sheets | `CS-2026-09-18`, `CS-2026-09-21`, `CS-2026-09-22` |
+| Requirements | `REQ-001` crowbar on S07, `REQ-002` raincoat on S22 |
+| Tasks | `T-001` to `T-004` |
+
+Scheduling:
+
+```text
+Fri 2026-09-18  S07, S12   (Warehouse)
+Mon 2026-09-21  S22        (Apartment)
+Tue 2026-09-22  S18        (Cafe)
+```
+
+Every shoot day carries a published call sheet, so any scheduling change has a
+real call sheet to invalidate rather than a silent no-op.
+
+Two availability windows exist that no scenario touches: Mike is unavailable
+2026-09-25 to 2026-09-26, and the Apartment is unavailable on 2026-09-22. They
+keep the availability model exercised rather than uniformly empty.
+
 ### Required fixture conditions
 
 - S07 and S12 are scheduled Friday.
@@ -78,6 +111,15 @@ Choose exact fixture IDs and keep them stable.
 - Warehouse is initially available Friday.
 - S18 has no red-car requirement initially.
 - Friday has a call sheet linked to its shoot day.
+
+Each condition is asserted on its own in the fixture integrity test, so an edit
+that quietly breaks a golden scenario fails with the name of the condition it
+broke rather than deep inside a scenario test.
+
+The fixture is a factory, not a shared constant: every caller gets a fresh copy,
+so a test that mutates its production cannot corrupt the next one. It also
+starts out fully valid, because a fixture that begins broken makes every later
+failure ambiguous.
 
 ## 4. Golden scenario tests
 

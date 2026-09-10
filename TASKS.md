@@ -98,7 +98,10 @@ No infrastructure imports; invariants executable.
 **Tests**
 INV-1 through INV-8 where applicable.
 
-## TASK-004 Demo Movie fixtures
+## TASK-004 Demo Movie fixtures — DONE
+
+**Status**  
+Complete. `packages/fixtures` publishes `DEMO_MOVIE_IDS` and `createDemoMovie()`; `packages/test-support` gains scenario helpers for introducing a conflict. The integrity test asserts the ID set, schema validity, domain invariants, each TESTING.md §3 precondition separately, and that each golden scenario's conflict lands on exactly the expected scenes. IDs are documented in `TESTING.md` §3.
 
 **Goal**  
 Create deterministic fixture/builders.

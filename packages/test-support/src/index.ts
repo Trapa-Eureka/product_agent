@@ -1,7 +1,8 @@
 /**
- * Test doubles and builders.
+ * Test doubles, builders, and scenario helpers.
  *
- * In-memory repositories, the fake model adapter, and the fake queue arrive in
- * TASK-004, TASK-101, TASK-302, and TASK-401.
+ * Nothing here is shipped to users. In-memory repositories, the fake model
+ * adapter, and the fake queue join this package in TASK-101, TASK-302, and
+ * TASK-401.
  */
-export const PACKAGE_NAME = "@pca/test-support";
+export * from "./scenario";

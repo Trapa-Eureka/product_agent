@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { changeTypeSchema } from "@pca/contracts";
 import { nextProductionVersion } from "@pca/domain";
-import { PACKAGE_NAME as fixtures } from "@pca/fixtures";
-import { PACKAGE_NAME as testSupport } from "@pca/test-support";
+import { DEMO_MOVIE_IDS } from "@pca/fixtures";
+import { onDay } from "@pca/test-support";
 
 /**
  * Proves the toolchain actually resolves cross-package imports: pnpm workspace
@@ -19,7 +19,8 @@ describe("workspace wiring", () => {
     expect(nextProductionVersion(12)).toBe(13);
   });
 
-  it("resolves the packages still awaiting implementation", () => {
-    expect([fixtures, testSupport]).toEqual(["@pca/fixtures", "@pca/test-support"]);
+  it("resolves the fixtures and test-support packages", () => {
+    expect(DEMO_MOVIE_IDS.production).toBe("PROD-DEMO");
+    expect(onDay("2026-09-18")).toEqual({ start: "2026-09-18", end: "2026-09-18" });
   });
 });
