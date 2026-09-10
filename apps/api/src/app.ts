@@ -149,11 +149,12 @@ const issueMessage = (error: z.ZodError): { message: string; path: string } => {
 export const createApiApp = (dependencies: ApiDependencies): Express => {
   const { repositories, tracker, queue, clock, ids, context } = dependencies;
   const logger = dependencies.logger ?? silentApiLogger;
-  const handlers = dependencies.handlers ?? createAllToolHandlers({ repositories, clock, ids });
+  const handlers =
+    dependencies.handlers ?? createAllToolHandlers({ repositories, clock, ids, logger });
   const decide: DecideProposal = createDecideProposal({ repositories, clock, ids });
   const apply: ApplyApprovedProposal = createApplyApprovedProposal({ repositories, clock, ids });
   const submit = createSubmitChangeRequest({ repositories, clock, ids });
-  const analyzeImpact: AnalyzeChangeImpact = createAnalyzeChangeImpact({ repositories });
+  const analyzeImpact: AnalyzeChangeImpact = createAnalyzeChangeImpact({ repositories, logger });
   // The tracker is the job-run store the queries read; `save` never runs through this path.
   const jobRuns = {
     findById: (jobId: EntityId) => tracker.get(jobId),

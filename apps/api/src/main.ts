@@ -38,7 +38,13 @@ const main = async (): Promise<void> => {
   const logger = stderrApiLogger();
   const clock = systemClock;
   const ids = randomIdFactory;
-  const { repositories: stores, selection, close } = await createRepositoriesFromEnv(process.env);
+  const {
+    repositories: stores,
+    selection,
+    close,
+  } = await createRepositoriesFromEnv(process.env, {
+    logger,
+  });
   const hub = createNotificationHub();
   const repositories = withProposalNotifications(stores, hub, clock);
   const queueKind = selectQueue(process.env);
@@ -46,13 +52,17 @@ const main = async (): Promise<void> => {
   const tracker = createJobTracker({ repository: createJobRuns(queueKind), clock, ids });
   forwardJobEvents(tracker, hub);
   bindQueueToJobTracker(queue, tracker);
+  // No logger here: createRunChangeAgent re-guards this model with its own
+  // guardModelPort call (belt-and-suspenders safety on the one path that
+  // matters), and that is where the logger goes — passing it here too would
+  // double-log every model call.
   const model = createModelFromEnv(process.env);
 
   queue.register(
     "ANALYZE_CHANGE",
     createAnalyzeChangeJobHandler({
       tracker,
-      runChangeAgent: createRunChangeAgent({ repositories, model, clock, ids }),
+      runChangeAgent: createRunChangeAgent({ repositories, model, clock, ids, logger }),
     }),
   );
   const apply = createApplyApprovedProposal({ repositories, clock, ids });

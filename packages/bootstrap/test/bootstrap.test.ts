@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import type { LogFields, LogLevel } from "@pca/application";
 import { createDemoMovie } from "@pca/fixtures";
 
 import {
@@ -15,6 +16,20 @@ import {
   selectQueue,
   selectStorage,
 } from "../src";
+
+/** Collects log lines instead of printing them, so a test can assert on shape. */
+const recordingLogger = (): {
+  readonly lines: { level: LogLevel; event: string; fields: LogFields }[];
+  log: (level: LogLevel, event: string, fields?: LogFields) => void;
+} => {
+  const lines: { level: LogLevel; event: string; fields: LogFields }[] = [];
+  return {
+    lines,
+    log: (level, event, fields = {}) => {
+      lines.push({ level, event, fields });
+    },
+  };
+};
 
 describe("selectStorage", () => {
   it("defaults to the file store, the free zero-install path", () => {
@@ -56,6 +71,18 @@ describe("createRepositories", () => {
     expect((await repositories.productions.loadState("PROD-DEMO"))?.production.name).toBe(
       "Demo Movie",
     );
+    await close();
+  });
+
+  it("threads a logger through to every repository call (TASK-804)", async () => {
+    const logger = recordingLogger();
+    const { repositories, close } = await createRepositories({ kind: "memory" }, { logger });
+
+    await repositories.productions.loadState("PROD-DEMO");
+
+    expect(logger.lines).toHaveLength(1);
+    expect(logger.lines[0]).toMatchObject({ level: "info", event: "db_call" });
+    expect(logger.lines[0]?.fields["boundary"]).toBe("memory.productions.loadState");
     await close();
   });
 });
@@ -110,6 +137,27 @@ describe("model selection", () => {
     expect(() => selectModel({ PCA_MODEL: "gpt" })).toThrow(/rules, ollama, bedrock/u);
     expect(() => createModel("bedrock")).toThrow(/deferred/u);
     expect(() => createModel("ollama")).toThrow(/not wired yet/u);
+  });
+
+  it("threads a logger through to every model call (TASK-804)", async () => {
+    const logger = recordingLogger();
+    const model = createModel("rules", { logger });
+
+    await model.interpretChange({
+      productionId: "PROD-DEMO",
+      text: "Sarah cannot shoot Friday.",
+      context: {
+        castMembers: [{ id: "CAST-SARAH", name: "Sarah" }],
+        locations: [],
+        scenes: [],
+        shootDays: [],
+        today: "2026-09-10",
+      },
+    });
+
+    expect(logger.lines).toHaveLength(1);
+    expect(logger.lines[0]).toMatchObject({ level: "info", event: "model_call" });
+    expect(logger.lines[0]?.fields["operation"]).toBe("interpretChange");
   });
 });
 

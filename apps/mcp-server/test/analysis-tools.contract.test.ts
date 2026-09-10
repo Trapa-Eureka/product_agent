@@ -7,7 +7,12 @@ import { DEMO_MOVIE_DATES, DEMO_MOVIE_IDS, createDemoMovie } from "@pca/fixtures
 import { createMemoryStore, type MemoryStore } from "@pca/memory-store";
 import { fixedClock, onDay, sequentialIds } from "@pca/test-support";
 
-import { createAnalysisToolHandlers, createProductionChangeServer, readToolError } from "../src";
+import {
+  createAnalysisToolHandlers,
+  createProductionChangeServer,
+  memoryLogger,
+  readToolError,
+} from "../src";
 
 /**
  * Analysis tool contracts (MCP.md §5, §10) through a real MCP client. The
@@ -240,5 +245,35 @@ describe("validate_proposal", () => {
     expect(await errorCode("validate_proposal", { productionId: DEMO, proposalId: "P-404" })).toBe(
       "ENTITY_NOT_FOUND",
     );
+  });
+});
+
+describe("analyze_change_impact timing (TASK-804)", () => {
+  it("logs a dependency_analysis line, separate from the tool_call line every tool already logs", async () => {
+    const logger = memoryLogger();
+    const { server } = createProductionChangeServer({
+      handlers: createAnalysisToolHandlers({ repositories: store, logger }),
+      context: { actor: { type: "AGENT", id: "test-agent" }, allowedProductionIds: "*" },
+      ids: sequentialIds(),
+      logger,
+    });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    const timingClient = new Client({ name: "timing-client", version: "0.0.0" });
+    await timingClient.connect(clientTransport);
+
+    await timingClient.callTool({
+      name: "analyze_change_impact",
+      arguments: { productionId: DEMO, change: sarahOnFriday },
+    });
+
+    await timingClient.close();
+    await server.close();
+
+    const events = logger.lines.map((line) => line.event);
+    expect(events).toContain("dependency_analysis");
+    expect(events).toContain("tool_call");
+    const analysis = logger.lines.find((line) => line.event === "dependency_analysis");
+    expect(typeof analysis?.fields["durationMs"]).toBe("number");
   });
 });

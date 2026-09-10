@@ -5,7 +5,22 @@ import { impactExplanationSchema } from "@pca/contracts";
 import { DEMO_MOVIE_DATES, DEMO_MOVIE_IDS, createDemoMovie } from "@pca/fixtures";
 import { createMemoryStore, type MemoryStore } from "@pca/memory-store";
 
+import type { LogFields, LogLevel } from "../src";
 import { createAnalyzeChangeImpact, type AnalyzeChangeImpact } from "../src";
+
+/** Collects log lines instead of printing them, so a test can assert on shape. */
+const recordingLogger = (): {
+  readonly lines: { level: LogLevel; event: string; fields: LogFields }[];
+  log: (level: LogLevel, event: string, fields?: LogFields) => void;
+} => {
+  const lines: { level: LogLevel; event: string; fields: LogFields }[] = [];
+  return {
+    lines,
+    log: (level, event, fields = {}) => {
+      lines.push({ level, event, fields });
+    },
+  };
+};
 
 const DEMO = DEMO_MOVIE_IDS.production;
 
@@ -91,5 +106,45 @@ describe("analyzeChangeImpact", () => {
       change: { type: "CAST_UNAVAILABLE" } as unknown as TypedChange,
     });
     expect(!result.ok && result.error.code).toBe("INVALID_INPUT");
+  });
+});
+
+describe("analyzeChangeImpact timing (TASK-804)", () => {
+  it("logs one dependency_analysis line, with the correlation ID and a numeric duration", async () => {
+    const store = createMemoryStore();
+    await store.productions.save(createDemoMovie());
+    const logger = recordingLogger();
+    const analyze = createAnalyzeChangeImpact({ repositories: store, logger });
+
+    await analyze({ productionId: DEMO, change: sarahOnFriday, correlationId: "corr-9" });
+
+    expect(logger.lines).toHaveLength(1);
+    expect(logger.lines[0]).toMatchObject({ level: "info", event: "dependency_analysis" });
+    expect(logger.lines[0]?.fields).toMatchObject({
+      productionId: DEMO,
+      correlationId: "corr-9",
+      conflictCount: 2,
+    });
+    expect(typeof logger.lines[0]?.fields["durationMs"]).toBe("number");
+  });
+
+  it("does not log when the change is refused before analysis runs", async () => {
+    const store = createMemoryStore();
+    await store.productions.save(createDemoMovie());
+    const logger = recordingLogger();
+    const analyze = createAnalyzeChangeImpact({ repositories: store, logger });
+
+    await analyze({ productionId: "PROD-GHOST", change: sarahOnFriday });
+
+    expect(logger.lines).toEqual([]);
+  });
+
+  it("stays silent without a logger, the default every test above already relies on", async () => {
+    const store = createMemoryStore();
+    await store.productions.save(createDemoMovie());
+    const analyze = createAnalyzeChangeImpact({ repositories: store });
+
+    const result = await analyze({ productionId: DEMO, change: sarahOnFriday });
+    expect(result.ok).toBe(true);
   });
 });

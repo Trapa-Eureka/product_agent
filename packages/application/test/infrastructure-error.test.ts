@@ -3,7 +3,22 @@ import { describe, expect, it } from "vitest";
 import { createMemoryStore } from "@pca/memory-store";
 import { withFault, withRepositoryFault } from "@pca/test-support";
 
+import type { LogFields, LogLevel } from "../src";
 import { InfrastructureError, describeFailure, guardPort, guardRepositories } from "../src";
+
+/** Collects log lines instead of printing them, so a test can assert on shape. */
+const recordingLogger = (): {
+  readonly lines: { level: LogLevel; event: string; fields: LogFields }[];
+  log: (level: LogLevel, event: string, fields?: LogFields) => void;
+} => {
+  const lines: { level: LogLevel; event: string; fields: LogFields }[] = [];
+  return {
+    lines,
+    log: (level, event, fields = {}) => {
+      lines.push({ level, event, fields });
+    },
+  };
+};
 
 describe("InfrastructureError", () => {
   it("names the boundary, keeps the cause, and carries the correlation ID when attributed", () => {
@@ -77,5 +92,66 @@ describe("guardPort / guardRepositories", () => {
     await expect(faulty.list("PROD-DEMO")).rejects.toThrow("flaky");
     expect(await faulty.list("PROD-DEMO")).toEqual([]);
     expect(faulty.failures()).toBe(2);
+  });
+});
+
+describe("guardPort / guardRepositories timing (TASK-804)", () => {
+  it("logs one db_call line per successful call, with a numeric duration", async () => {
+    const logger = recordingLogger();
+    const guarded = guardPort("test.port", { read: () => Promise.resolve(42) }, { logger });
+
+    expect(await guarded.read()).toBe(42);
+
+    expect(logger.lines).toHaveLength(1);
+    expect(logger.lines[0]).toMatchObject({ level: "info", event: "db_call" });
+    expect(logger.lines[0]?.fields["boundary"]).toBe("test.port.read");
+    expect(logger.lines[0]?.fields["outcome"]).toBe("ok");
+    expect(typeof logger.lines[0]?.fields["durationMs"]).toBe("number");
+  });
+
+  it("logs outcome: error for a failed call, and still throws", async () => {
+    const logger = recordingLogger();
+    const guarded = guardPort(
+      "test.port",
+      { explode: () => Promise.reject(new Error("boom")) },
+      { logger },
+    );
+
+    await expect(guarded.explode()).rejects.toThrow(InfrastructureError);
+
+    expect(logger.lines).toHaveLength(1);
+    expect(logger.lines[0]?.fields["outcome"]).toBe("error");
+    expect(logger.lines[0]?.fields["boundary"]).toBe("test.port.explode");
+  });
+
+  it("logs a synchronous throw too", () => {
+    const logger = recordingLogger();
+    const guarded = guardPort(
+      "test.port",
+      {
+        explode: (): number => {
+          throw new Error("boom");
+        },
+      },
+      { logger },
+    );
+
+    expect(() => guarded.explode()).toThrow(InfrastructureError);
+    expect(logger.lines[0]?.fields["outcome"]).toBe("error");
+  });
+
+  it("stays silent without a logger, the default every test above already relies on", async () => {
+    const guarded = guardPort("test.port", { read: () => Promise.resolve(1) });
+    expect(await guarded.read()).toBe(1);
+  });
+
+  it("threads the logger through guardRepositories to every nested port", async () => {
+    const logger = recordingLogger();
+    const guarded = guardRepositories("memory", createMemoryStore(), { logger });
+
+    await guarded.productions.loadState("PROD-DEMO");
+
+    expect(logger.lines).toHaveLength(1);
+    expect(logger.lines[0]?.fields["boundary"]).toBe("memory.productions.loadState");
   });
 });

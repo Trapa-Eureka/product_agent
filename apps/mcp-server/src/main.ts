@@ -17,12 +17,19 @@ import { createProductionChangeServer } from "./server";
  */
 const main = async (): Promise<void> => {
   const logger = stderrJsonLogger();
-  const { repositories, selection, close } = await createRepositoriesFromEnv(process.env);
+  const { repositories, selection, close } = await createRepositoriesFromEnv(process.env, {
+    logger,
+  });
   const context = contextFromEnv(process.env);
 
   // Tool handlers are wired here as they land (analysis, proposal, write, verify follow).
   const { server, registeredTools } = createProductionChangeServer({
-    handlers: createAllToolHandlers({ repositories, clock: systemClock, ids: randomIdFactory }),
+    handlers: createAllToolHandlers({
+      repositories,
+      clock: systemClock,
+      ids: randomIdFactory,
+      logger,
+    }),
     context,
     logger,
   });

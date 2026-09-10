@@ -1,4 +1,4 @@
-import type { Clock, IdFactory, RepositorySet } from "@pca/application";
+import type { Clock, IdFactory, Logger, RepositorySet } from "@pca/application";
 
 import type { ToolHandlers } from "../server";
 import { createAnalysisToolHandlers } from "./analysis-tools";
@@ -16,6 +16,8 @@ export const createAllToolHandlers = (dependencies: {
   readonly repositories: RepositorySet;
   readonly clock: Clock;
   readonly ids: IdFactory;
+  /** Logs a `dependency_analysis` line per `analyze_change_impact` call (TASK-804). */
+  readonly logger?: Logger;
 }): ToolHandlers => ({
   ...createReadToolHandlers(dependencies),
   ...createAnalysisToolHandlers(dependencies),

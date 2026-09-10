@@ -752,6 +752,46 @@ Capture latency for:
 
 This creates a natural performance-debugging story similar to real production engineering.
 
+Implementation (TASK-804): correlation IDs for HTTP, the agent job/queue
+message/job event, and the MCP call context were already contract-enforced
+and threaded end to end before this task (`X-Correlation-Id`,
+`JobEnvelope`/`JobRun`/`AgentJobEvent.correlationId`, `CallContext`). A
+proposal carries none of its own, deliberately, same as an approval: both
+already trace back to their originating request by joining through
+`changeRequestId` → `ChangeRequest.correlationId`, or through the
+`AuditEvent.correlationId` recorded when each was created — a second,
+redundant field would duplicate what the join already answers. An MCP call
+likewise stays server-generated only (MCP.md: "a per-call correlation ID";
+never a client-supplied one) — the caller is a model, and accepting an
+arbitrary string from it into the audit/log trail is a trust boundary this
+product does not cross.
+
+What TASK-804 actually added is the latency half, and the logging seam it
+needed: `Logger`/`LogFields` (`packages/application/src/ports/logging.ts`),
+a port promoted out of `apps/api` and `apps/mcp-server`'s two
+previously-duplicated, structurally-identical logger types (both now alias
+it). `guardPort`/`guardRepositories` (`packages/application/src/
+infrastructure-error.ts`) log one `db_call` line per repository call —
+boundary, outcome, `durationMs` — with an optional logger, across every
+adapter (file, memory, Mongo) for free, since they already wrap every
+method. `guardModelPort` logs `model_call` the same way. `analyzeChangeImpact`
+logs one `dependency_analysis` line per call, with the production ID and
+correlation ID it already has, around the deterministic engine's own
+traversal — HTTP request `durationMs` (`apps/api/src/app.ts`) and MCP tool
+`durationMs` (`apps/mcp-server/src/server.ts`, MCP.md §2) already existed
+before this task and needed no change. Every real entry point
+(`apps/api/src/main.ts`, `apps/mcp-server/src/main.ts`, the E2E harness's
+`apps/api/e2e/server.ts`) now passes its own logger down into all of these,
+so a live run actually produces the lines, not just the capability to.
+
+One thing this surfaced: `apps/api/src/main.ts` already guarded its model
+twice — once in `@pca/bootstrap`'s `createModel`, again inside
+`createRunChangeAgent`'s own `guardModelPort` call, harmless before because
+neither layer logged. Passing a logger to both would have doubled every
+`model_call` line, so `main.ts` deliberately logs only at the inner,
+actually-used layer; the outer double-guard itself is untouched, a
+pre-existing redundancy outside this task's scope.
+
 ## 17. Architecture rule of thumb
 
 If the AI provider, MongoDB, AWS, or MCP transport were replaced tomorrow, the core change-analysis tests should still pass unchanged.

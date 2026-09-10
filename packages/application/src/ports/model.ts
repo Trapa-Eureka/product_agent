@@ -13,6 +13,8 @@ import {
   rankedCandidatesOutputSchema,
 } from "@pca/contracts";
 
+import type { Logger } from "./logging";
+
 /**
  * The model port (ARCHITECTURE.md §7, SPEC.md §6).
  *
@@ -121,6 +123,8 @@ const assertGroundedRanking = (
 export type ModelGuardOptions = {
   /** Per-call budget. A model that does not answer in time is a provider fault, not a reason to wait. */
   readonly timeoutMs?: number;
+  /** Logs one `model_call` line per call: operation, durationMs, outcome (TASK-804, ARCHITECTURE.md §16). */
+  readonly logger?: Logger;
 };
 
 const withTimeout = async <T>(
@@ -149,10 +153,22 @@ const callProvider = async <T>(
   operation: keyof ModelPort,
   run: () => Promise<T>,
   timeoutMs: number | undefined,
+  logger: Logger | undefined,
 ): Promise<T> => {
+  const startedAt = Date.now();
+  const record = (outcome: "ok" | "error"): void => {
+    logger?.log("info", "model_call", {
+      operation,
+      outcome,
+      durationMs: Date.now() - startedAt,
+    });
+  };
   try {
-    return await withTimeout(operation, run(), timeoutMs);
+    const result = await withTimeout(operation, run(), timeoutMs);
+    record("ok");
+    return result;
   } catch (error) {
+    record("error");
     if (error instanceof ModelError) {
       throw error;
     }
@@ -194,6 +210,7 @@ export const guardModelPort = (port: ModelPort, options: ModelGuardOptions = {})
       "interpretChange",
       () => port.interpretChange(input),
       options.timeoutMs,
+      options.logger,
     );
     const output = parseOr("interpretChange", () => interpretedChangeSchema.safeParse(raw));
     assertGroundedInterpretation(input, output);
@@ -204,6 +221,7 @@ export const guardModelPort = (port: ModelPort, options: ModelGuardOptions = {})
       "explainImpact",
       () => port.explainImpact(input),
       options.timeoutMs,
+      options.logger,
     );
     return parseOr("explainImpact", () => explanationOutputSchema.safeParse(raw));
   },
@@ -212,6 +230,7 @@ export const guardModelPort = (port: ModelPort, options: ModelGuardOptions = {})
       "rankCandidates",
       () => port.rankCandidates(input),
       options.timeoutMs,
+      options.logger,
     );
     const output = parseOr("rankCandidates", () => rankedCandidatesOutputSchema.safeParse(raw));
     assertGroundedRanking(input, output);
