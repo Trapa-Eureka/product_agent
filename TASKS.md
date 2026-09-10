@@ -524,12 +524,15 @@ Complete. Three Playwright specs (`e2e/golden-{1,2,3}-*.spec.ts`), one per golde
 
 Prerequisite for anyone running it locally: `pnpm exec playwright install chromium` (one-time; not run by `pnpm install`).
 
-## TASK-605 CI
+## TASK-605 CI — DONE
 
 Run deterministic `verify`.
 
 **Free scope**  
 The repository is hosted on GitHub, so GitHub Actions is the executed pipeline. Author `.gitlab-ci.yml` with the same stages for portfolio purposes; it runs only if the repo is mirrored to GitLab.com.
+
+**Status**  
+Complete. `.github/workflows/ci.yml`: one job, on every push to `main` and every pull request, that installs dependencies, installs Playwright's Chromium (TASK-604), and runs `pnpm run verify` — the exact local completion gate, not a re-typed copy of its step order. `.gitlab-ci.yml` mirrors the same pipeline as separate staged jobs (TESTING.md §12's suggested list, plus `web` for the Angular specs) for portfolio purposes; it never executes here. Verified for real: pushed the branch, watched the Actions run to completion (`gh run watch`), all 9 `verify` steps green in CI.
 
 ---
 

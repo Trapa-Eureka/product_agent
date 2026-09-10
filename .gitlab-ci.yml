@@ -1,0 +1,104 @@
+# TASK-605 (TESTING.md §12): documentation only — this repository is
+# hosted on GitHub, so `.github/workflows/ci.yml` is the pipeline that
+# actually runs. This file mirrors the same stages for portfolio purposes;
+# it only executes if the repo is mirrored to GitLab.com.
+#
+# Every job installs the workspace once (frozen lockfile, so a stale
+# `pnpm-lock.yaml` fails loudly rather than silently drifting) and runs the
+# one root script that does its job — never a hand-copied version of what
+# scripts/verify.mjs already runs locally. TESTING.md §12 suggests
+# install/quality/unit/integration/contract/build/e2e; `web` is added for
+# the Angular specs, which have no home in that list otherwise.
+
+stages:
+  - install
+  - quality
+  - unit
+  - integration
+  - contract
+  - build
+  - web
+  - e2e
+
+image: node:22-slim
+
+variables:
+  PNPM_HOME: "${CI_PROJECT_DIR}/.pnpm-home"
+
+cache:
+  key:
+    files:
+      - pnpm-lock.yaml
+  paths:
+    - .pnpm-store
+
+before_script:
+  - corepack enable
+  - corepack prepare pnpm@10.30.1 --activate
+  - pnpm config set store-dir .pnpm-store
+  - pnpm install --frozen-lockfile
+
+install:
+  stage: install
+  script:
+    - echo "Dependencies installed and cached for later stages."
+
+typecheck:
+  stage: quality
+  script:
+    - pnpm run typecheck
+
+lint:
+  stage: quality
+  script:
+    - pnpm run lint
+
+format:
+  stage: quality
+  script:
+    - pnpm run format:check
+
+unit:
+  stage: unit
+  script:
+    - pnpm run test
+
+# mongodb-memory-server downloads its own MongoDB binary; no external
+# database service is declared or required.
+integration:
+  stage: integration
+  script:
+    - pnpm run test:integration
+
+contract:
+  stage: contract
+  script:
+    - pnpm run test:contract
+
+build:
+  stage: build
+  script:
+    - pnpm run build
+
+web:
+  stage: web
+  script:
+    - pnpm run test:web
+
+# Both servers Playwright drives (the API, the Angular dev server) are
+# started and torn down by playwright.config.ts itself, against a memory
+# store — no external service here either.
+e2e:
+  stage: e2e
+  before_script:
+    - corepack enable
+    - corepack prepare pnpm@10.30.1 --activate
+    - pnpm config set store-dir .pnpm-store
+    - pnpm install --frozen-lockfile
+    - apt-get update && apt-get install -y --no-install-recommends
+      libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2
+      libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2
+      libgbm1 libasound2
+    - pnpm exec playwright install chromium
+  script:
+    - pnpm run test:e2e
