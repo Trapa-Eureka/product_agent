@@ -6,3 +6,4 @@
  */
 export * from "./scenario";
 export * from "./repository-contract";
+export * from "./determinism";

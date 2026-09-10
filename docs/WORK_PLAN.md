@@ -45,7 +45,7 @@ for free. Only P7 infrastructure and live Bedrock/SQS connections are deferred.
 ### Stage 2 — Application core (P1), golden scenarios in-memory first
 
 5. TASK-101 Repository ports + free adapters — **done**. Ports in `packages/application`, with in-memory and JSON file adapters under `packages/adapters`. Built before Mongo so steps 6-12 need no database.
-6. TASK-103 Change intake use case (correlation ID).
+6. TASK-103 Change intake use case — **done**. Confirms IDs against the production, persists raw sentence plus typed change, audit event, correlation ID.
 7. TASK-104 Dependency impact engine. GOLDEN-1/2/3 impact sets must match exactly.
 8. TASK-105 Candidate shoot-day generator (simple rules, no solver).
 9. TASK-106 Simulation / validation (side-effect free).

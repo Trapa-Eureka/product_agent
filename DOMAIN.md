@@ -217,7 +217,7 @@ type AuditEvent = {
   actorType: "USER" | "AGENT" | "SYSTEM";
   actorId?: string;
   action: string;
-  entityType?: string;
+  entityType?: AuditSubjectType; // any EntityType, or CHANGE_REQUEST | PROPOSAL | APPROVAL | JOB
   entityId?: string;
   metadata?: Record<string, unknown>;
   createdAt: string;
