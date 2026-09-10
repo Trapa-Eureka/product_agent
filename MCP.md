@@ -295,9 +295,16 @@ with its conflicts, so the coordinator can see exactly why it cannot be
 approved. A base version that is no longer current returns
 `PRODUCTION_VERSION_MISMATCH`.
 
+The proposer recorded on a created proposal is the server's acting identity
+from its context, never a value the agent supplies. That is what makes the
+"Agent proposed P-104" audit line trustworthy.
+
 ### `get_proposal`
 
 Returns proposal operations, impacts, validation state, digest, and status.
+
+A plain read of the stored record. Its validity is whatever the last create,
+validate, or apply wrote, which is why `validate_proposal` persists its verdict.
 
 ## 7. Write tools
 
