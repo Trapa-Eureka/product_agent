@@ -420,7 +420,10 @@ Complete. `@pca/ws-gateway` (`ws`) forwards notifications from the application's
 
 Publish job/proposal status.
 
-## TASK-405 Reconnect/recovery
+## TASK-405 Reconnect/recovery — DONE
+
+**Status**  
+Complete. Recovery queries in the application layer: `createGetRecoverySnapshot` (production version, every job run newest first, open proposals `DRAFT` / `AWAITING_APPROVAL` / `APPROVED`) and `createGetJobRun` (visible only through its own production); contract `recoverySnapshotSchema`. `@pca/realtime-client` is the framework-independent reconnecting client: on every connection it subscribes to the productions it follows, waits for each `subscribed` acknowledgement, and only then reads the snapshot, which closes the gap between snapshot and subscription. Live notifications apply on top; ones that arrive during a recovery are held and applied after it; a notification about an unknown job or proposal triggers another recovery; a notification the record already reflects is ignored. Reconnects with exponential backoff through an injected timer. The REST routes that serve the snapshot are TASK-110.
 
 Client can recover canonical state after socket loss.
 

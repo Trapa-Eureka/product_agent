@@ -202,6 +202,7 @@ product_agent/
 │   │   ├── memory-queue/    # in-process queue (free default)
 │   │   ├── ws-gateway/      # WebSocket notifications (ws)
 │   │   └── mongo-store/     # MongoDB repositories (TASK-102)
+│   ├── realtime-client/     # reconnecting client (browser or Node)
 │   ├── fixtures/            # deterministic Demo Movie
 │   └── test-support/        # fakes, builders, shared contract suites
 ├── infra/
@@ -507,6 +508,24 @@ explicitly; an `authorize` hook can refuse one, subscriptions per connection
 are capped, malformed messages get an `error` reply rather than a
 disconnect, and a heartbeat drops sockets that stop answering. The gateway
 attaches to the API's HTTP server on a path or listens on its own.
+
+Recovery (TASK-405) is a read plus an ordering rule. The read is
+`createGetRecoverySnapshot`: the production version, every job run (newest
+first), and every proposal still open (`DRAFT`, `AWAITING_APPROVAL`,
+`APPROVED`); `createGetJobRun` reads one run, visible only through its own
+production. The REST API serves both (TASK-110). The ordering rule lives in
+`@pca/realtime-client`, which runs unchanged in a browser or under Node: on
+every connection, first or re-established, it subscribes to each production
+it follows, waits for the server's `subscribed` acknowledgement, and only
+then reads the snapshot. Anything that happens after the acknowledgement
+arrives live; the snapshot, read after it, covers everything before, so no
+event can fall between them. Live notifications are merged into the
+recovered records; one that arrives while a recovery is in flight is held
+and applied after the snapshot; one about a job or proposal the client does
+not know triggers another recovery rather than a guess; one the record
+already reflects is ignored. Reconnection backs off exponentially through an
+injected timer, and a socket that closes mid-recovery discards what it held,
+because the next recovery is the truth.
 
 Suggested event:
 

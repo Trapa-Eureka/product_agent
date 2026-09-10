@@ -217,6 +217,12 @@ The notification sources are tested in the application package: the hub,
 job-event forwarding, and the proposal-save decorator, including that a save
 that throws publishes nothing.
 
+Reconnect and recovery (TASK-405) are tested with a fake socket and a manual
+timer (subscribe, acknowledge, recover; held notifications; unknown job or
+proposal; backoff; close), and once end to end: a real gateway is closed
+under a connected client and restarted on the same port while a job moves
+on, and the client comes back with the canonical state and live events.
+
 AWS-specific adapter tests can be separate and optional in normal local verification.
 
 Implementation (TASK-401): `describeQueueContract` in `@pca/test-support` is

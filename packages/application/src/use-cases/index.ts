@@ -9,3 +9,4 @@ export * from "./apply-approved-proposal";
 export * from "./verify-applied-proposal";
 export * from "./interpret-change";
 export * from "./run-change-agent";
+export * from "./recovery";

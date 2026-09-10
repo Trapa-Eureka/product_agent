@@ -1,0 +1,26 @@
+{
+  "name": "@pca/realtime-client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Reconnecting realtime client: re-subscribes after welcome and recovers canonical state over REST (TASK-405)",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@pca/contracts": "workspace:*",
+    "zod": "^4.6.1"
+  },
+  "devDependencies": {
+    "@pca/application": "workspace:*",
+    "@pca/fixtures": "workspace:*",
+    "@pca/memory-queue": "workspace:*",
+    "@pca/memory-store": "workspace:*",
+    "@pca/test-support": "workspace:*",
+    "@pca/ws-gateway": "workspace:*",
+    "@types/ws": "^8.18.1",
+    "ws": "^8.18.3"
+  }
+}

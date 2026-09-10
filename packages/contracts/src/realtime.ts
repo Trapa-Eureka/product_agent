@@ -1,8 +1,13 @@
 import { z } from "zod";
 
-import { agentJobEventSchema } from "./job";
-import { entityIdSchema, explanationSchema, isoDateTimeSchema } from "./primitives";
-import { proposalStatusSchema, validationStatusSchema } from "./proposal";
+import { agentJobEventSchema, jobRunSchema } from "./job";
+import {
+  entityIdSchema,
+  explanationSchema,
+  isoDateTimeSchema,
+  productionVersionSchema,
+} from "./primitives";
+import { proposalSchema, proposalStatusSchema, validationStatusSchema } from "./proposal";
 
 /**
  * Realtime contracts (SPEC.md §7, ARCHITECTURE.md §11, TASK-404).
@@ -65,6 +70,24 @@ export const realtimeServerMessageSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+/** Proposal statuses a coordinator still has to act on or watch. */
+export const OPEN_PROPOSAL_STATUSES = ["DRAFT", "AWAITING_APPROVAL", "APPROVED"] as const;
+
+/**
+ * What a client reads to recover after losing the socket (TASK-405). The
+ * REST API serves it; the realtime client applies it and then resumes
+ * applying live notifications on top.
+ */
+export const recoverySnapshotSchema = z.strictObject({
+  productionId: entityIdSchema,
+  productionVersion: productionVersionSchema,
+  asOf: isoDateTimeSchema,
+  /** Newest first. */
+  jobs: z.array(jobRunSchema),
+  openProposals: z.array(proposalSchema),
+});
+
+export type RecoverySnapshot = z.infer<typeof recoverySnapshotSchema>;
 export type ProposalStatusNotification = z.infer<typeof proposalStatusNotificationSchema>;
 export type RealtimeNotification = z.infer<typeof realtimeNotificationSchema>;
 export type RealtimeClientMessage = z.infer<typeof realtimeClientMessageSchema>;
