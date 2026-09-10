@@ -169,7 +169,7 @@ flowchart TB
     AGENT --> MCPCLIENT["MCP Client"]
 
     MCPCLIENT --> MCPSERVER["MCP Server"]
-    MCPSERVER --> TOOLS["allow-listed tools<br/>(read / analyze / simulate / propose / write)"]
+    MCPSERVER --> TOOLS["allow-listed tools<br/>(read / analyze / simulate / propose / write / verify)"]
     TOOLS --> APPSVC["Application services<br/>(same use cases the API calls)"]
     APPSVC --> REPO
 
