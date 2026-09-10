@@ -280,6 +280,26 @@ Concrete implementations:
 - MCP server
 - Angular UI
 
+### REST API
+
+`apps/api` (TASK-110) is an adapter like the MCP server. Routes under
+`/api/productions/:productionId` parse HTTP, hand the application a typed
+input and a call context, and render the result. Reads, analysis, proposal,
+apply, and verify routes run the same tool handlers as MCP
+(`@pca/mcp-server/handlers`), so a route and a tool validate the same input,
+run the same use case, and validate the same output; a route cannot expose a
+capability the tool surface lacks. Two things are REST-only because a human
+does them: recording a decision on a proposal, and submitting a change as a
+job whose progress the UI follows (`POST .../changes`, resumable at
+`resolving` with the chosen change). Apply runs synchronously, or as a job
+continuing a run's timeline when `jobId` is given. Errors are the same
+`ToolError` as everywhere, with the HTTP status derived from the code and
+never chosen per route. Authorization is the server-side production
+allow-list, checked before any handler runs; the acting identity is the
+`X-Actor-Id` header (a deployment puts an auth layer in front);
+`X-Correlation-Id` is honoured and always echoed. The WebSocket gateway is
+attached to the same HTTP server on `/ws`.
+
 ## 7. AI architecture
 
 Use a provider interface:

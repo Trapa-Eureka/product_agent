@@ -119,6 +119,13 @@ pnpm run verify
 
 `verify` prints a per-step pass/fail summary and stops at the first failure with the command to re-run.
 
+### Run the API
+
+```bash
+PCA_STORAGE=memory PCA_API_PORT=3000 pnpm exec tsx apps/api/src/main.ts
+# REST under http://127.0.0.1:3000/api, WebSocket on ws://127.0.0.1:3000/ws
+```
+
 ### Runtime environment
 
 | Variable | Default | Meaning |
@@ -131,6 +138,8 @@ pnpm run verify
 | `PCA_QUEUE` | `memory` | `memory` (in-process, free) or `sqs` (deferred, paid) |
 | `PCA_ALLOWED_PRODUCTIONS` | `*` | Comma-separated production IDs the MCP server may act on |
 | `PCA_ACTOR_ID` | `mcp-agent` | Identity recorded for agent actions |
+| `PCA_API_PORT` | `3000` | REST API and WebSocket port |
+| `PCA_API_HOST` | `127.0.0.1` | Interface the API binds to |
 
 ## Documentation
 

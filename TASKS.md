@@ -217,7 +217,10 @@ Implement post-write verification checks.
 **Status**  
 Complete. `verifyOperationsApplied`, `verifyAvailabilityHonoured`, and `verifyInvariantsHold` in `packages/domain` observe stored state operation by operation. `verifyAppliedProposal` in `packages/application` adds the version, status, and apply-audit checks that catch a write whose bookkeeping did not land, returns the full named list, and audits the outcome. With this, P1 is complete: intake through verification runs end to end on the Demo Movie.
 
-## TASK-110 REST API
+## TASK-110 REST API — DONE
+
+**Status**  
+Complete. `apps/api` (Express 5) under `/api/productions/:productionId`: reads (production, scene, cast and location search, availability, schedule, call sheet, tasks), analysis, candidates, simulations, proposals (create, get, list by status, validation, verification), change requests (synchronous intake and read), a human's `decision`, `apply` (synchronous, or as a job when `jobId` is given), `changes` (asynchronous job; resume at `resolving` with `jobId` and the chosen change), jobs (list, get), `recovery`, and `audit`; plus `/api/health`. The WebSocket gateway is attached to the same server on `/ws`. Reads, analysis, proposal, apply, and verify routes run the MCP tool handlers, so both surfaces validate the same contracts; errors are the same `ToolError` with a status derived from the code. Authorization is the server-side production allow-list; the actor comes from `X-Actor-Id`; `X-Correlation-Id` is honoured and echoed. Entry point `apps/api/src/main.ts` (`PCA_API_PORT`, `PCA_API_HOST`). 12 API tests run in the contract suite.
 
 **Goal**  
 Expose application use cases over HTTP in `apps/api` (Express).

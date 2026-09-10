@@ -33,6 +33,13 @@ Test every tool schema and safety boundary.
 ### API tests
 Test REST endpoints and auth/context boundaries.
 
+Implementation (TASK-110): `apps/api/test/*.contract.test.ts`, run in the
+contract suite with real HTTP against a server on an ephemeral port: context
+boundaries (allow-list, correlation ID, malformed input, unknown routes,
+cross-production smuggling), reads, GOLDEN-1 driven through REST alone, the
+stable error codes, changes as jobs with recovery, ambiguity resumed on the
+same job, and the WebSocket gateway on the same server.
+
 ### E2E
 Angular → API → agent/mock → MCP/application → DB → UI.
 

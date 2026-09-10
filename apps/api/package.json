@@ -1,0 +1,31 @@
+{
+  "name": "@pca/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "REST API over the application use cases, with the WebSocket gateway attached (TASK-110)",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@pca/application": "workspace:*",
+    "@pca/bootstrap": "workspace:*",
+    "@pca/contracts": "workspace:*",
+    "@pca/mcp-server": "workspace:*",
+    "@pca/ws-gateway": "workspace:*",
+    "express": "^5.2.1",
+    "zod": "^4.6.1"
+  },
+  "devDependencies": {
+    "@pca/fixtures": "workspace:*",
+    "@pca/memory-queue": "workspace:*",
+    "@pca/memory-store": "workspace:*",
+    "@pca/rule-model": "workspace:*",
+    "@pca/test-support": "workspace:*",
+    "@types/express": "^5.0.6",
+    "@types/ws": "^8.18.1",
+    "ws": "^8.18.3"
+  }
+}
