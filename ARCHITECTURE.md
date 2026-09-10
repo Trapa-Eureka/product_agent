@@ -200,6 +200,7 @@ product_agent/
 │   │   ├── file-store/      # JSON file repositories (default)
 │   │   ├── memory-store/    # in-memory repositories
 │   │   ├── memory-queue/    # in-process queue (free default)
+│   │   ├── ws-gateway/      # WebSocket notifications (ws)
 │   │   └── mongo-store/     # MongoDB repositories (TASK-102)
 │   ├── fixtures/            # deterministic Demo Movie
 │   └── test-support/        # fakes, builders, shared contract suites
@@ -490,6 +491,22 @@ redelivered after a crash mid-verification verifies without applying again.
 A use-case error fails the run and the queue job (no retry); an exception
 propagates and the queue retries. `bindQueueToJobTracker` announces retries on
 the current stage and fails the run when the queue gives up.
+
+The gateway (TASK-404, `@pca/ws-gateway`, built on `ws`) is a notification
+channel only. The application publishes `RealtimeNotification`s to an
+in-process `NotificationHub`: job events are forwarded from the tracker
+(`forwardJobEvents`), and proposal status comes from
+`withProposalNotifications`, a decorator on the proposal repository that
+publishes after every successful save, which is the one place every status
+change passes through. The gateway subscribes to the hub and forwards each
+notification to the connections that subscribed to that production. It
+holds no history and replays nothing; its first message on every connection
+(`welcome`) names REST as the canonical source, and a reconnecting client
+re-reads job runs and proposals (TASK-405). Clients name productions
+explicitly; an `authorize` hook can refuse one, subscriptions per connection
+are capped, malformed messages get an `error` reply rather than a
+disconnect, and a heartbeat drops sockets that stop answering. The gateway
+attaches to the API's HTTP server on a path or listens on its own.
 
 Suggested event:
 
