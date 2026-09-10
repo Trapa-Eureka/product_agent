@@ -469,9 +469,12 @@ Complete. `ChangeWorkspace`'s Reject and Approve & Apply buttons enable only whi
 
 Reject / Approve & Apply with explicit confirmation.
 
-## TASK-506 Realtime progress
+## TASK-506 Realtime progress — DONE
 
 Render job stages.
+
+**Status**  
+Complete. The workspace's "Progress" panel, previously a raw list of `ProductionStore.openJobs`, now renders DESIGN.md §6's compact ✓/●/○ timeline for the one job the workspace is tracking (`ChangeSubmissionService.job`, the same job every other panel reads). `buildJobProgress` (`apps/web/src/app/workspace/job-progress-format.ts`) is a pure function of the job's `history`: a stage is `done` once its own `COMPLETED` event exists, `active` while it is the run's current stage, `pending` otherwise — including a stage the run's actual path skipped (an already-resolved change never visits `resolving`; a `NOTHING_TO_DO`/rejection path never visits `applying`/`verifying`), which stays `pending` rather than `done`. A `failed` run returns only the failed stage and its message, not the full list. `JobProgressTimeline` renders the result with no logic of its own; each row carries a distinct icon plus bold text for the active row, so status is never color-only. 10 new Angular tests (6 for `buildJobProgress`, 3 for `JobProgressTimeline`'s render, 1 confirming `ChangeWorkspace` wires the tracked job through); `pnpm verify` passes.
 
 ## TASK-507 Schedule view
 

@@ -66,6 +66,17 @@ in the component itself rather than a leaf) overrides the component's own
 `ChangeSubmissionService` provider with `TestBed.overrideComponent` to
 verify it without HTTP.
 
+TASK-506 adds `job-progress-format`, pure tests of `buildJobProgress` for a
+fresh job, the happy path partway to `awaiting_approval` (with `resolving`
+correctly left `pending`, not `done`, because that run skipped it), a fully
+completed pipeline (every stage `done`), a rejected job (`applying`/
+`verifying` still `pending` though the job itself is `completed`, and
+nothing `active`), and a `failed` job (only the failed stage and its
+message, not the eight-row list); a `JobProgressTimeline` render spec
+checking the ✓/●/○ text and `data-status` attribute per row and the
+failure-only view; and one more assertion in `ChangeWorkspace`'s own spec
+that the tracked job reaches the panel.
+
 ### Integration tests
 Test:
 - application use cases + Mongo test database/adaptor;
