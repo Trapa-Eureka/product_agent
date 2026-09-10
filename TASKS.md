@@ -406,7 +406,10 @@ Implement enqueue/consume/retry/DLQ-oriented behavior.
 **Free scope**  
 None executed. The in-memory queue (TASK-401) is the only queue adapter until an AWS account exists.
 
-## TASK-403 Job state machine
+## TASK-403 Job state machine — DONE
+
+**Status**  
+Complete. `packages/application/src/jobs/`: a pure stage machine (`JOB_STAGE_TRANSITIONS`, `advanceJobRun`, `failJobRun`, `noteJobRun`; a disallowed move throws `JobStageError`, and `applying` is reachable only from `awaiting_approval`), a `JobTracker` that persists `JobRun` records and publishes `AgentJobEvent`s, queue handlers for `ANALYZE_CHANGE` / `APPLY_PROPOSAL` / `VERIFY_PROPOSAL` that read the run's stage before acting (so redelivery never applies twice), and `bindQueueToJobTracker` for retries and queue-level failures. `runChangeAgent` reports `analyzing` / `simulating` / `validating` through a `progress` hook. Contracts: `jobRunSchema` and the three payload schemas. Job runs live in `@pca/memory-queue` beside the queue.
 
 Implement documented job stages.
 

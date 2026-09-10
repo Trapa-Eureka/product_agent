@@ -1,7 +1,13 @@
-import type { ModelPort, QueuePolicy, QueuePort, RepositorySet } from "@pca/application";
+import type {
+  JobRunRepository,
+  ModelPort,
+  QueuePolicy,
+  QueuePort,
+  RepositorySet,
+} from "@pca/application";
 import { guardModelPort } from "@pca/application";
 import { createFileStore, defaultDataFilePath } from "@pca/file-store";
-import { createMemoryQueue } from "@pca/memory-queue";
+import { createMemoryJobRunRepository, createMemoryQueue } from "@pca/memory-queue";
 import { createMemoryStore } from "@pca/memory-store";
 import { connectMongoStore, defaultMongoUri } from "@pca/mongo-store";
 import { createRuleModelAdapter } from "@pca/rule-model";
@@ -146,3 +152,13 @@ export const createQueue = (
 
 export const createQueueFromEnv = (env: Environment = process.env): QueuePort =>
   createQueue(selectQueue(env));
+
+/** Job runs pair with the queue: in-process jobs keep in-process runs. */
+export const createJobRuns = (kind: QueueKind): JobRunRepository => {
+  switch (kind) {
+    case "memory":
+      return createMemoryJobRunRepository();
+    case "sqs":
+      throw new Error("PCA_QUEUE=sqs is deferred (paid); see TASKS.md TASK-402. Use memory.");
+  }
+};

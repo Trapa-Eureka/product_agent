@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { createDemoMovie } from "@pca/fixtures";
 
 import {
+  createJobRuns,
   createModel,
   createQueue,
   createRepositories,
@@ -85,6 +86,12 @@ describe("queue selection", () => {
     });
     await queue.drain();
     expect((await queue.getJob(record.job.id))?.state).toBe("COMPLETED");
+  });
+
+  it("keeps job runs beside the in-process queue", async () => {
+    const runs = createJobRuns("memory");
+    expect(await runs.findById("JOB-1")).toBeNull();
+    expect(() => createJobRuns("sqs")).toThrow(/deferred/u);
   });
 
   it("refuses an unknown queue kind, and names the deferred one honestly", () => {

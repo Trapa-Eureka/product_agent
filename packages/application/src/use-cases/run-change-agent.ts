@@ -54,6 +54,8 @@ export type RunChangeAgentInput = {
   readonly change?: TypedChange;
   readonly requestedBy: string;
   readonly correlationId?: string;
+  /** Called as the loop enters analysis, simulation, and validation, for a job timeline. */
+  readonly progress?: (stage: "analyzing" | "simulating" | "validating") => Promise<void> | void;
 };
 
 export type AgentOutcome =
@@ -243,6 +245,7 @@ export const createRunChangeAgent = (dependencies: {
     if (!submitted.ok) return submitted;
     const changeRequest = submitted.value;
 
+    await input.progress?.("analyzing");
     await audit(
       input.productionId,
       correlationId,
@@ -377,6 +380,7 @@ export const createRunChangeAgent = (dependencies: {
       }
     }
 
+    await input.progress?.("simulating");
     const simulated = await simulate({
       productionId: input.productionId,
       baseProductionVersion: analysis.productionVersion,
@@ -400,6 +404,7 @@ export const createRunChangeAgent = (dependencies: {
       ...(narrative === undefined ? {} : { narrative }),
     });
 
+    await input.progress?.("validating");
     const proposed = await propose({
       productionId: input.productionId,
       changeRequestId: changeRequest.id,

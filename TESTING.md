@@ -202,6 +202,12 @@ Test:
 - terminal failure;
 - event state transitions.
 
+The job stage machine (TASK-403) is tested at three levels: the pure graph
+(every allowed edge, every refused one, and that `applying` is reachable only
+from `awaiting_approval`), the tracker (persist and publish together), and the
+handlers end to end through the in-process queue against the Demo Movie,
+including redelivery after a transient failure and a queue that gives up.
+
 AWS-specific adapter tests can be separate and optional in normal local verification.
 
 Implementation (TASK-401): `describeQueueContract` in `@pca/test-support` is

@@ -468,6 +468,29 @@ WebSocket publishes job state and user-visible events.
 
 Do not make WebSocket the source of truth. The client can reconnect and fetch canonical job/proposal state via REST.
 
+Implementation (TASK-403): the job stage machine in `packages/application/src/jobs/`
+is pure. `JOB_STAGE_TRANSITIONS` is the only way a run moves, and it has no
+edge into `applying` except from `awaiting_approval` and no edge out of
+`completed` or `failed`; a disallowed move throws `JobStageError`. A `JobRun`
+(`jobRunSchema`) is the canonical record: current stage, its status, a
+message, the linked change request and proposal, and every event ever
+published for it. `JobTracker` applies the machine, persists the run through
+the `JobRunRepository` port, and publishes `AgentJobEvent`s, so an event
+exists only if the record also holds it. Each move publishes the stage left
+as `COMPLETED` (or `FAILED`) and the stage entered as `STARTED`.
+
+Queue handlers drive the machine. The analyze handler walks `received →
+resolving → analyzing → simulating → validating → awaiting_approval`, using
+`runChangeAgent`'s `progress` hook; an ambiguous sentence leaves the run at
+`resolving` with the question as its message until a resolved change arrives;
+nothing to propose completes from `analyzing`; an invalid proposal fails at
+`validating`. The apply handler walks `awaiting_approval → applying →
+verifying → completed` and reads the run's stage before acting, so a job
+redelivered after a crash mid-verification verifies without applying again.
+A use-case error fails the run and the queue job (no retry); an exception
+propagates and the queue retries. `bindQueueToJobTracker` announces retries on
+the current stage and fails the run when the queue gives up.
+
 Suggested event:
 
 ```ts

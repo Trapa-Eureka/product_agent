@@ -1,4 +1,4 @@
-import type { EntityId, JobEnvelope, JobType } from "@pca/contracts";
+import type { EntityId, JobEnvelope, JobRun, JobType } from "@pca/contracts";
 import { jobEnvelopeSchema } from "@pca/contracts";
 import type {
   Clock,
@@ -8,6 +8,7 @@ import type {
   JobHandler,
   JobHandlerOutcome,
   JobRecord,
+  JobRunRepository,
   JobState,
   JobTransition,
   QueuePolicy,
@@ -288,6 +289,32 @@ export const createMemoryQueue = (options: MemoryQueueOptions = {}): MemoryQueue
 
     redeliver(jobId) {
       ready.push(jobId);
+    },
+  };
+};
+
+/**
+ * Job runs for the in-process queue (TASK-403). They live and die with the
+ * process, as its jobs do. Newest first when listed.
+ */
+export const createMemoryJobRunRepository = (): JobRunRepository => {
+  const runs = new Map<EntityId, JobRun>();
+  return {
+    // eslint-disable-next-line @typescript-eslint/require-await -- port methods are async; nothing here awaits
+    async save(run) {
+      runs.set(run.id, structuredClone(run));
+    },
+    // eslint-disable-next-line @typescript-eslint/require-await -- port methods are async; nothing here awaits
+    async findById(jobId) {
+      const run = runs.get(jobId);
+      return run === undefined ? null : structuredClone(run);
+    },
+    // eslint-disable-next-line @typescript-eslint/require-await -- port methods are async; nothing here awaits
+    async listByProduction(productionId) {
+      return [...runs.values()]
+        .filter((run) => run.productionId === productionId)
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+        .map((run) => structuredClone(run));
     },
   };
 };
