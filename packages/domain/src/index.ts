@@ -19,6 +19,7 @@ export * from "./invariants";
 export * from "./impact";
 export * from "./candidates";
 export * from "./simulation";
+export * from "./verification";
 
 /** Re-exported so consumers can depend on the domain alone for entity types. */
 export type {

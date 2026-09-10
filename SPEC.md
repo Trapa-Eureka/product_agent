@@ -114,6 +114,12 @@ After mutation, the system re-reads affected entities and validates expected pos
 
 A failed verification is surfaced clearly and recorded.
 
+Verification observes rather than predicts: each operation's postcondition is
+checked against stored state, not a copy, and the bookkeeping around the write
+(proposal status, apply audit) is checked against its effects so a write that
+landed without its records is caught. The full list of named checks is
+returned, and the outcome is audited whether it passed or failed.
+
 ### FR-9 Audit
 
 Record:

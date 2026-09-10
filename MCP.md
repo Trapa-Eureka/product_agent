@@ -340,6 +340,19 @@ Returns:
 }
 ```
 
+Verification observes; simulation predicts. The tool re-reads the production
+and runs, in order: one named check per operation asking whether its
+postcondition holds; for each recorded availability fact, that no scene
+requiring the cast member or location remains scheduled inside the window
+(SPEC.md scenario A step 10); that every invariant holds; that the production
+version advanced past the proposal's base; that the proposal is marked
+`APPLIED`; and that an apply audit event exists.
+
+The last two are what notice a write that landed without its bookkeeping. The
+whole list is returned, not the first failure, and the outcome is written to
+the audit trail either way as `PROPOSAL_VERIFIED` or
+`PROPOSAL_VERIFICATION_FAILED`. Verifying a proposal that was never applied is
+not an error; it reports honestly that nothing holds.
 ## 9. Error model
 
 Tools return stable codes such as:

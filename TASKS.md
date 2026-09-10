@@ -207,9 +207,12 @@ Implement high-level approved proposal execution with idempotency and version in
 **Status**  
 Complete. `applyApprovedProposal` runs the fixed check order (idempotency, then the INV-5/INV-6 gate, then apply to a copy, then atomic commit, then bookkeeping) and writes only the records that changed. The operation allow-list gained `RECORD_CAST_UNAVAILABILITY` and `RECORD_LOCATION_UNAVAILABILITY` by the user's decision, so an applied availability change is remembered by the production. GOLDEN-1 and GOLDEN-3 run end to end through intake, proposal, approval, and apply.
 
-## TASK-109 Verification
+## TASK-109 Verification — DONE
 
 Implement post-write verification checks.
+
+**Status**  
+Complete. `verifyOperationsApplied`, `verifyAvailabilityHonoured`, and `verifyInvariantsHold` in `packages/domain` observe stored state operation by operation. `verifyAppliedProposal` in `packages/application` adds the version, status, and apply-audit checks that catch a write whose bookkeeping did not land, returns the full named list, and audits the outcome. With this, P1 is complete: intake through verification runs end to end on the Demo Movie.
 
 ## TASK-110 REST API
 
