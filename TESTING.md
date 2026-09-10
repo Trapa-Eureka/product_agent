@@ -184,6 +184,11 @@ Also test malformed model output:
 
 All model output is schema-validated.
 
+`createFakeModelAdapter` in `packages/test-support` answers the three golden
+sentences and can be told to misbehave (`malformed`, `hallucinate`, `throw`,
+`hang`). Those tests exercise `guardModelPort`, which every adapter sits
+behind, so a real provider cannot get past what the fake cannot.
+
 ## 6. Queue mocking
 
 Create an in-memory/fake queue implementing the same application port as SQS.

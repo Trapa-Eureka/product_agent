@@ -68,7 +68,7 @@ for free. Only P7 infrastructure and live Bedrock/SQS connections are deferred.
 ### Stage 4 — AI orchestration (P3), free scope
 
 22. TASK-301 `ModelPort` — **done**. Contracts for model I/O plus a guard that validates and grounds every answer.
-23. TASK-302 `FakeModelAdapter`: deterministic outputs for the three scenarios plus malformed JSON / hallucinated ID / timeout cases.
+23. TASK-302 Fake and rule-based model adapters — **done**. Rules are the free default behind the guard; the fake misbehaves on demand and the guard catches it.
 24. TASK-304 Change interpreter (NL → schema-validated typed change → entity resolution). Weekday resolution rule: see §6.
 25. TASK-305 Orchestration (interpret → read → analyze → candidates → simulate → validate → explain → propose). No write before approval.
 26. TASK-306 Explanation layer.

@@ -127,6 +127,7 @@ pnpm run verify
 | `PCA_DATA_FILE` | `~/.production-change-agent/data.json` | JSON store location |
 | `PCA_MONGO_URI` | `mongodb://127.0.0.1:27017/?replicaSet=rs0` | Mongo connection; must be a replica set |
 | `PCA_MONGO_DB` | `production_change_agent` | Mongo database name |
+| `PCA_MODEL` | `rules` | `rules` (free, no network), `ollama` (later), or `bedrock` (deferred, paid) |
 | `PCA_ALLOWED_PRODUCTIONS` | `*` | Comma-separated production IDs the MCP server may act on |
 | `PCA_ACTOR_ID` | `mcp-agent` | Identity recorded for agent actions |
 

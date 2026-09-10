@@ -139,6 +139,19 @@ importers:
         specifier: ^10.1.4
         version: 10.4.3
 
+  packages/adapters/rule-model:
+    dependencies:
+      '@pca/application':
+        specifier: workspace:*
+        version: link:../../application
+      '@pca/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+    devDependencies:
+      '@pca/fixtures':
+        specifier: workspace:*
+        version: link:../../fixtures
+
   packages/application:
     dependencies:
       '@pca/contracts':
@@ -172,6 +185,9 @@ importers:
       '@pca/mongo-store':
         specifier: workspace:*
         version: link:../adapters/mongo-store
+      '@pca/rule-model':
+        specifier: workspace:*
+        version: link:../adapters/rule-model
     devDependencies:
       '@pca/fixtures':
         specifier: workspace:*

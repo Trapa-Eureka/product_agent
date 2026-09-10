@@ -8,3 +8,4 @@ export * from "./scenario";
 export * from "./repository-contract";
 export * from "./determinism";
 export * from "./golden-scenarios";
+export * from "./fake-model";
