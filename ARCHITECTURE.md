@@ -340,6 +340,17 @@ The first MVP candidate generator can be simple and explicit rather than “smar
 
 Optimization/constraint-solving can be added later.
 
+`runChangeAgent` in the application layer is the loop: interpret, intake,
+analyze, candidates, rank, simulate, explain, propose. Every step before
+"propose" is a read or a record, and the proposal is a persisted plan awaiting
+a human; no production state changes on any path. The model is asked three
+things only: to read the sentence, to order candidates the engine already
+validated, and to put findings into prose. The plan's shape is deterministic
+code: the recorded fact first, then the remedy to the top-ranked day, then a
+stale mark for every touched call sheet. When the model cannot rank or explain,
+the agent falls back to date order and a data-only summary rather than
+stopping.
+
 ## 9. MongoDB
 
 MongoDB stores operational state and audit records.

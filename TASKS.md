@@ -361,7 +361,10 @@ Natural language → schema-validated typed change candidate → entity resoluti
 **Status**  
 Complete. `interpretChange` in `packages/application` builds the interpretation context from the snapshot (names, scene numbers, shoot days, today in the production's timezone), calls the model behind the guard, and checks every returned ID against the production once more. Resolved changes, ambiguity as options, and unsupported sentences each have a documented outcome; a misbehaving model yields a retry or rephrase hint, never a fabricated change.
 
-## TASK-305 Agent orchestration
+## TASK-305 Agent orchestration — DONE
+
+**Status**  
+Complete. `runChangeAgent` in `packages/application` runs interpret, intake, analyze, candidates, rank, simulate, explain, propose. Outcomes: `PROPOSED`, `NEEDS_RESOLUTION` (before anything is recorded), `NO_CANDIDATE`, `NOTHING_TO_DO`. The plan shape matches the golden suite; the model's failures fall back to data. A test proves no production state changes on any path.
 
 Implement:
 
