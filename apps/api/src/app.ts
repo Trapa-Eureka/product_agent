@@ -2,6 +2,7 @@ import express, { type Express, type NextFunction, type Request, type Response }
 import { z } from "zod";
 
 import type {
+  AnalyzeChangeImpact,
   ApplyApprovedProposal,
   Clock,
   DecideProposal,
@@ -14,6 +15,7 @@ import type {
   UseCaseResult,
 } from "@pca/application";
 import {
+  createAnalyzeChangeImpact,
   createApplyApprovedProposal,
   createDecideProposal,
   createGetJobRun,
@@ -51,6 +53,13 @@ import { silentApiLogger } from "./logging";
  * context, checked before any handler runs. The acting identity comes from
  * the `X-Actor-Id` header (a deployment would put an auth layer in front);
  * `X-Correlation-Id` is honoured when present and always echoed back.
+ *
+ * Three things are REST-only, because a human or the UI does them and the
+ * MCP tool contracts have no room for them: recording a decision on a
+ * proposal, submitting a change as an asynchronous job whose progress the
+ * UI follows, and the DESIGN.md §3 impact panel (`.../analysis/explanation`,
+ * TASK-503) — the agent-facing `analyze_change_impact` tool returns only
+ * `impacts`/`conflicts`, the machine-readable form it reasons over.
  */
 
 export type ApiDependencies = {
@@ -106,6 +115,8 @@ const changeRequestBodySchema = z.strictObject({
   change: typedChangeSchema,
 });
 
+const impactExplanationBodySchema = z.strictObject({ change: typedChangeSchema });
+
 const decisionBodySchema = z.strictObject({
   decision: approvalDecisionSchema,
 });
@@ -139,6 +150,7 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
   const decide: DecideProposal = createDecideProposal({ repositories, clock, ids });
   const apply: ApplyApprovedProposal = createApplyApprovedProposal({ repositories, clock, ids });
   const submit = createSubmitChangeRequest({ repositories, clock, ids });
+  const analyzeImpact: AnalyzeChangeImpact = createAnalyzeChangeImpact({ repositories });
   // The tracker is the job-run store the queries read; `save` never runs through this path.
   const jobRuns = {
     findById: (jobId: EntityId) => tracker.get(jobId),
@@ -295,6 +307,31 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
       ? { ...(request.body as Record<string, unknown>), productionId }
       : { productionId };
   scoped.post("/analysis", tool("analyze_change_impact", withProduction));
+
+  // DESIGN.md §3 impact panel (TASK-503): the same analysis, rendered for a
+  // human — BLOCKING, AFFECTED grouped by kind, and WHY, built by
+  // `describeImpact` from the snapshot the analysis was computed against.
+  scoped.post("/analysis/explanation", async (request, response) => {
+    const call = response.locals["call"] as Call;
+    const productionId = response.locals["productionId"] as EntityId;
+    const parsed = impactExplanationBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      const { message, path } = issueMessage(parsed.error);
+      sendError(response, invalidInput(message, path), call.correlationId);
+      return;
+    }
+    const result = await analyzeImpact({
+      productionId,
+      change: parsed.data.change,
+      correlationId: call.correlationId,
+    });
+    if (!result.ok) {
+      sendError(response, result.error, call.correlationId);
+      return;
+    }
+    response.json(result.value.explanation);
+  });
+
   scoped.post("/candidates", tool("generate_schedule_candidates", withProduction));
   scoped.post("/simulations", tool("simulate_proposal", withProduction));
   scoped.post("/proposals", tool("create_proposal", withProduction, 201));

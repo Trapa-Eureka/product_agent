@@ -139,6 +139,14 @@ describe("analyze_change_impact", () => {
       "CAST_UNAVAILABLE_ON_SHOOT_DAY",
       "CAST_UNAVAILABLE_ON_SHOOT_DAY",
     ]);
+    // The DESIGN.md §3 impact panel is REST-only (TASK-503); the strict MCP
+    // output schema has no room for it, so the agent sees only these four keys.
+    expect(Object.keys(result).sort()).toEqual([
+      "affectedEntityIds",
+      "conflicts",
+      "impacts",
+      "productionVersion",
+    ]);
   });
 
   it("refuses a change naming an entity the production does not have, with the lookup tool", async () => {

@@ -82,4 +82,29 @@ describe("ProductionApi", () => {
       .flush({ id: "CR-1", type: "CAST_UNAVAILABLE" });
     expect((await pending).id).toBe("CR-1");
   });
+
+  it("posts a change to the impact-explanation route and reads the panel back", async () => {
+    const change = {
+      type: "CAST_UNAVAILABLE" as const,
+      castId: "CAST-SARAH",
+      unavailable: { start: "2026-09-18", end: "2026-09-18" },
+    };
+    const pending = api.getImpactExplanation("PROD-DEMO", change);
+    const request = http.expectOne("/api/productions/PROD-DEMO/analysis/explanation");
+    expect(request.request.method).toBe("POST");
+    expect(request.request.body).toEqual({ change });
+    request.flush({
+      blocking: ["2 scheduled scenes conflict with Sarah's availability."],
+      affected: {
+        scenes: ["07", "12"],
+        shootDays: [],
+        callSheets: [],
+        tasks: [],
+        castMembers: [],
+        locations: [],
+      },
+      why: ["Scene 07 requires Sarah and is scheduled Fri Sep 18."],
+    });
+    expect((await pending).blocking).toHaveLength(1);
+  });
 });

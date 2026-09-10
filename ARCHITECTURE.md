@@ -328,6 +328,14 @@ the UI correctly regardless of timing. Because the Angular router can reuse
 the workspace component instance across productions, `ChangeWorkspace`
 resets the service whenever the open production changes.
 
+The impact panel (TASK-503) follows the same shape once more: the DESIGN.md
+§3 explanation is application logic (`analyzeChangeImpact`'s `explanation`
+field, via `describeImpact`), a REST-only route
+(`POST .../analysis/explanation`) exposes it because the MCP tool contract
+has no room for it, `ChangeSubmissionService` fetches it once the tracked
+job's change request is known, and `ImpactPanel` renders it with no logic of
+its own — every line of text is the server's.
+
 ## 7. AI architecture
 
 Use a provider interface:

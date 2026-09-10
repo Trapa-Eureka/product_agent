@@ -117,7 +117,7 @@ describe("ChangeSubmissionService", () => {
     expect(service.job()).toBeNull();
   });
 
-  it("a live event for the tracked job re-reads it over REST, and loads the change request once known", async () => {
+  it("a live event for the tracked job re-reads it over REST, loads the change request, then the impact panel", async () => {
     const pending = service.submit(DEMO, "Sarah cannot shoot Friday.");
     http.expectOne(`/api/productions/${DEMO}/changes`).flush({ job: receivedJob });
     await pending;
@@ -143,12 +143,37 @@ describe("ChangeSubmissionService", () => {
 
     expect(service.job()?.stage).toBe("awaiting_approval");
 
+    const change = {
+      type: "CAST_UNAVAILABLE" as const,
+      castId: "CAST-SARAH",
+      unavailable: { start: "2026-09-18", end: "2026-09-18" },
+    };
     http
       .expectOne(`/api/productions/${DEMO}/change-requests/CR-1`)
-      .flush({ id: "CR-1", type: "CAST_UNAVAILABLE" });
+      .flush({ id: "CR-1", type: "CAST_UNAVAILABLE", payload: change });
     await settle();
 
     expect(service.changeRequest()?.id).toBe("CR-1");
+
+    const explanationRequest = http.expectOne(`/api/productions/${DEMO}/analysis/explanation`);
+    expect(explanationRequest.request.body).toEqual({ change });
+    explanationRequest.flush({
+      blocking: ["2 scheduled scenes conflict with Sarah's availability."],
+      affected: {
+        scenes: ["07", "12"],
+        shootDays: [],
+        callSheets: [],
+        tasks: [],
+        castMembers: [],
+        locations: [],
+      },
+      why: [],
+    });
+    await settle();
+
+    expect(service.impactExplanation()?.blocking).toEqual([
+      "2 scheduled scenes conflict with Sarah's availability.",
+    ]);
   });
 
   it("ignores a live event that does not change anything about the job it already has", async () => {
@@ -176,6 +201,7 @@ describe("ChangeSubmissionService", () => {
     service.reset();
     expect(service.job()).toBeNull();
     expect(service.changeRequest()).toBeNull();
+    expect(service.impactExplanation()).toBeNull();
     expect(service.originalText()).toBe("");
     expect(service.state()).toBe("idle");
     expect(service.error()).toBeNull();

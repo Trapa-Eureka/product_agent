@@ -102,6 +102,17 @@ from the impact report and the snapshot (a count per blocking reason, affected
 entities by kind, the engine's reasons), and `renderImpactExplanation` renders
 this text form. Both are pure functions of data.
 
+Implementation (TASK-503): `analyzeChangeImpact` now computes this panel
+alongside the raw impacts/conflicts and returns it as `explanation`. The MCP
+`analyze_change_impact` tool does not forward it — the strict output schema
+gives the agent only the machine-readable `impacts`/`conflicts` it reasons
+over — so the REST API exposes it on its own route,
+`POST .../analysis/explanation`, one of TASK-110's documented REST-only
+exceptions. `ChangeSubmissionService` fetches it once the tracked job's
+change request is known, and `ImpactPanel` renders `blocking`, the six
+`affected` groups in the same order as `renderImpactExplanation` (empty ones
+omitted), and `why` — a presentational component with no logic of its own.
+
 ## 4. Proposal comparison
 
 A proposal must show operations before approval.

@@ -1,23 +1,30 @@
 import { Injectable, effect, inject, signal, untracked } from "@angular/core";
 
-import type { ChangeRequest, JobRun, ToolError, TypedChange } from "@pca/contracts";
+import type {
+  ChangeRequest,
+  ImpactExplanation,
+  JobRun,
+  ToolError,
+  TypedChange,
+} from "@pca/contracts";
 
 import { ApiError, ProductionApi } from "../api/production-api";
 import { RealtimeService } from "../realtime/realtime.service";
 
 /**
  * Owns the one job the change workspace's input panel just submitted
- * (TASK-502, ARCHITECTURE.md §11).
+ * (TASK-502/503, ARCHITECTURE.md §11).
  *
  * Follows the ARCHITECTURE.md §11 rule literally: the notification channel
  * is a hint, never the truth. A live event for the tracked job's ID is read
  * only to decide *whether* to re-read the job over REST, not *what* it now
- * says — `job` and `changeRequest` are always what the last REST read
- * returned. This is also what makes ambiguity resolution work: the run's
- * `options` field only ever reaches this service through a REST read
- * (`AgentJobEvent` does not carry it), so every path here — the initial
- * submit, resuming a resolved job, and the live-update refresh — reads the
- * canonical record rather than trusting a socket message to be complete.
+ * says — `job`, `changeRequest`, and `impactExplanation` are always what the
+ * last REST read returned. This is also what makes ambiguity resolution
+ * work: the run's `options` field only ever reaches this service through a
+ * REST read (`AgentJobEvent` does not carry it), so every path here — the
+ * initial submit, resuming a resolved job, and the live-update refresh —
+ * reads the canonical record rather than trusting a socket message to be
+ * complete.
  *
  * Component-scoped (provided by `ChangeWorkspace`), one instance per
  * workspace. `reset()` is the caller's job whenever the production changes,
@@ -33,6 +40,7 @@ export class ChangeSubmissionService {
 
   readonly job = signal<JobRun | null>(null);
   readonly changeRequest = signal<ChangeRequest | null>(null);
+  readonly impactExplanation = signal<ImpactExplanation | null>(null);
   readonly originalText = signal("");
   readonly state = signal<SubmissionState>("idle");
   readonly error = signal<ToolError | null>(null);
@@ -52,6 +60,7 @@ export class ChangeSubmissionService {
   reset(): void {
     this.job.set(null);
     this.changeRequest.set(null);
+    this.impactExplanation.set(null);
     this.originalText.set("");
     this.state.set("idle");
     this.error.set(null);
@@ -113,8 +122,24 @@ export class ChangeSubmissionService {
       const changeRequest = await this.api.getChangeRequest(productionId, job.changeRequestId);
       if (this.job()?.id !== job.id) return;
       this.changeRequest.set(changeRequest);
+      await this.loadImpactExplanation(productionId, job.id, changeRequest);
     } catch {
       // Non-fatal: the detected-change card stays empty until the next successful read.
+    }
+  }
+
+  /** DESIGN.md §3 impact panel (TASK-503), fetched once the change request that names the change is known. */
+  private async loadImpactExplanation(
+    productionId: string,
+    jobId: string,
+    changeRequest: ChangeRequest,
+  ): Promise<void> {
+    try {
+      const explanation = await this.api.getImpactExplanation(productionId, changeRequest.payload);
+      if (this.job()?.id !== jobId) return;
+      this.impactExplanation.set(explanation);
+    } catch {
+      // Non-fatal: the impact panel stays empty until the next successful read.
     }
   }
 

@@ -15,8 +15,10 @@ import type { ToolHandlers } from "../server";
  * Each is a thin adapter over an application use case: pass the correlation
  * ID through, and shape the answer to the output contract. No logic lives
  * here. Notably, validate_proposal's use case also returns the refreshed
- * proposal; the tool does not, because the contract says so and the strict
- * output schema would refuse the extra field.
+ * proposal, and analyze_change_impact's also returns the DESIGN.md §3
+ * impact panel (TASK-503); the tool does not forward either, because the
+ * contract says so and the strict output schema would refuse the extra
+ * field. The REST API has a dedicated route for the impact panel instead.
  */
 export const createAnalysisToolHandlers = (dependencies: {
   readonly repositories: RepositorySet;
@@ -28,8 +30,12 @@ export const createAnalysisToolHandlers = (dependencies: {
   const validate = createValidateProposal({ repositories });
 
   return {
-    analyze_change_impact: (input, call) =>
-      analyze({ ...input, correlationId: call.correlationId }),
+    analyze_change_impact: async (input, call) => {
+      const result = await analyze({ ...input, correlationId: call.correlationId });
+      if (!result.ok) return result;
+      const { productionVersion, impacts, conflicts, affectedEntityIds } = result.value;
+      return succeed({ productionVersion, impacts, conflicts, affectedEntityIds });
+    },
 
     generate_schedule_candidates: (input, call) =>
       generate({

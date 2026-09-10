@@ -218,6 +218,18 @@ describe("REST API", () => {
       expect(analysis.status).toBe(200);
       expect((analysis.body as { conflicts: unknown[] }).conflicts).toHaveLength(2);
 
+      const explanation = await api(
+        "POST",
+        `/productions/${DEMO}/analysis/explanation`,
+        { change },
+        { "x-correlation-id": "corr-g1" },
+      );
+      expect(explanation.status).toBe(200);
+      expect(explanation.body).toMatchObject({
+        blocking: ["2 scheduled scenes conflict with Sarah's availability."],
+        affected: { scenes: ["07", "12"], shootDays: ["Fri Sep 18"] },
+      });
+
       const candidates = await api("POST", `/productions/${DEMO}/candidates`, {
         sceneIds: [scenes.s07, scenes.s12],
       });
@@ -350,6 +362,51 @@ describe("REST API", () => {
       });
       expect(staleSimulation.status).toBe(409);
       expect((await store.productions.loadState(DEMO))?.production.version).toBe(1);
+    });
+  });
+
+  describe("impact explanation", () => {
+    it("GOLDEN-3: groups a requirement change's affected scene, and says why", async () => {
+      const reply = await api("POST", `/productions/${DEMO}/analysis/explanation`, {
+        change: {
+          type: "SCENE_REQUIREMENT_CHANGED",
+          sceneId: scenes.s18,
+          requirement: { type: "PROP", name: "red car" },
+        },
+      });
+      expect(reply.status).toBe(200);
+      expect(reply.body).toMatchObject({ affected: { scenes: ["18"] } });
+      expect((reply.body as { why: string[] }).why[0]).toContain("red car");
+    });
+
+    it("refuses an unknown production and a malformed body with stable codes", async () => {
+      const change = { type: "CAST_UNAVAILABLE", castId: cast.sarah, unavailable: onDay(friday) };
+      const unknownProduction = await api("POST", "/productions/PROD-GHOST/analysis/explanation", {
+        change,
+      });
+      expect(unknownProduction.status).toBe(403);
+      expect(errorOf(unknownProduction).code).toBe("TOOL_UNAUTHORIZED");
+
+      const unknownEntity = await api("POST", `/productions/${DEMO}/analysis/explanation`, {
+        change: { ...change, castId: "CAST-GHOST" },
+      });
+      expect(unknownEntity.status).toBe(404);
+      expect(errorOf(unknownEntity).code).toBe("ENTITY_NOT_FOUND");
+
+      const malformed = await api("POST", `/productions/${DEMO}/analysis/explanation`, {
+        change: { type: "DELETE_EVERYTHING" },
+      });
+      expect(malformed.status).toBe(400);
+      expect(errorOf(malformed).code).toBe("INVALID_INPUT");
+    });
+
+    it("never lets a route name a production other than the one in the path", async () => {
+      const reply = await api("POST", `/productions/${DEMO}/analysis/explanation`, {
+        productionId: "PROD-OTHER",
+        change: { type: "CAST_UNAVAILABLE", castId: cast.sarah, unavailable: onDay(friday) },
+      });
+      expect(reply.status).toBe(400);
+      expect(errorOf(reply).code).toBe("INVALID_INPUT");
     });
   });
 

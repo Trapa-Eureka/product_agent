@@ -14,6 +14,7 @@ import { AmbiguityResolution } from "./ambiguity-resolution";
 import { ChangeInput } from "./change-input";
 import { ChangeSubmissionService } from "./change-submission.service";
 import { DetectedChangeCard } from "./detected-change-card";
+import { ImpactPanel } from "./impact-panel";
 
 /** `awaiting_approval` → "Awaiting approval"; a plain word, not TASK-506's full timeline. */
 const humanizeStage = (stage: JobStage): string => {
@@ -24,8 +25,8 @@ const humanizeStage = (stage: JobStage): string => {
 /**
  * DESIGN.md §2 right column. Each panel is a stated question the UI answers
  * in order (DESIGN.md §1); the components that answer them land in
- * TASK-502 (input, ambiguity resolution, detected change — this task),
- * TASK-503 (impact), TASK-504 (proposed plan and warnings), TASK-505
+ * TASK-502 (input, ambiguity resolution, detected change), TASK-503
+ * (impact — this task), TASK-504 (proposed plan and warnings), TASK-505
  * (approval), TASK-506 (the full progress timeline). Until a panel has its
  * component it says so, never a fake answer.
  *
@@ -39,7 +40,7 @@ const humanizeStage = (stage: JobStage): string => {
   selector: "pca-change-workspace",
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [ChangeSubmissionService],
-  imports: [ChangeInput, AmbiguityResolution, DetectedChangeCard],
+  imports: [ChangeInput, AmbiguityResolution, DetectedChangeCard, ImpactPanel],
   template: `
     <section class="workspace" aria-labelledby="ws-title">
       <h1 id="ws-title">Change Workspace</h1>
@@ -74,7 +75,7 @@ const humanizeStage = (stage: JobStage): string => {
       </div>
       <div class="panel" data-panel="impact">
         <h2>What is affected?</h2>
-        <p class="pending">BLOCKING / AFFECTED / WHY arrive with TASK-503.</p>
+        <pca-impact-panel [explanation]="submission.impactExplanation()" />
       </div>
       <div class="panel" data-panel="plan">
         <h2>What do you recommend?</h2>

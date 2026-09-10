@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import type { TypedChange } from "@pca/contracts";
+import { impactExplanationSchema } from "@pca/contracts";
 import { DEMO_MOVIE_DATES, DEMO_MOVIE_IDS, createDemoMovie } from "@pca/fixtures";
 import { createMemoryStore, type MemoryStore } from "@pca/memory-store";
 
@@ -32,6 +33,22 @@ describe("analyzeChangeImpact", () => {
     expect(result.value.productionVersion).toBe(1);
     expect(result.value.affectedEntityIds).toContain(DEMO_MOVIE_IDS.scenes.s07);
     expect(result.value.conflicts).toHaveLength(2);
+  });
+
+  it("GOLDEN-1: also returns the DESIGN.md §3 impact panel, grouped and named by Sarah", async () => {
+    const result = await analyze({ productionId: DEMO, change: sarahOnFriday });
+    if (!result.ok) throw new Error(result.error.message);
+
+    expect(impactExplanationSchema.parse(result.value.explanation)).toEqual(
+      result.value.explanation,
+    );
+    expect(result.value.explanation.blocking).toEqual([
+      "2 scheduled scenes conflict with Sarah's availability.",
+    ]);
+    expect(result.value.explanation.affected.scenes).toEqual(["07", "12"]);
+    expect(result.value.explanation.affected.shootDays).toEqual(["Fri Sep 18"]);
+    expect(result.value.explanation.affected.callSheets).toEqual(["Call sheet Fri Sep 18"]);
+    expect(result.value.explanation.why[0]).toContain("Scene 07");
   });
 
   it("reflects the current version after the production changes", async () => {

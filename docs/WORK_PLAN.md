@@ -87,7 +87,7 @@ for free. Only P7 infrastructure and live Bedrock/SQS connections are deferred.
 33. TASK-110 REST API — **done**. Express 5 over the MCP tool handlers plus decision, intake, jobs, recovery, and audit routes; the WebSocket gateway on the same server; GOLDEN-1 driven through REST alone in the contract suite.
 34. TASK-501 Angular shell — **done**. Header, nav, routed workspace frame; REST and realtime connection points; `ng build` and `ng test` in the verify gate.
 35. TASK-502 Input / ambiguity resolution / detected-change card — **done**. `JobRun` gained an `options` field for ambiguity; the workspace submits a job, resolves and resumes it, and renders the persisted change request once known.
-36. TASK-503 Impact panel (BLOCKING / AFFECTED / WHY).
+36. TASK-503 Impact panel (BLOCKING / AFFECTED / WHY) — **done**. `describeImpact`'s output exposed on a REST-only route since the MCP tool contract has no room for it; `ImpactPanel` renders it with no logic of its own.
 37. TASK-504 Proposal comparison.
 38. TASK-505 Approval flow (Reject / Approve & Apply with final confirmation).
 39. TASK-506 Realtime progress timeline.

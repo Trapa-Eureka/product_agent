@@ -35,6 +35,12 @@ change-request fetch follows; and component-level renders of `ChangeInput`,
 service, including that two ambiguity options sharing a label still render
 a distinguishing detail each.
 
+TASK-503 extends the same cascade test through a third fetch
+(`POST .../analysis/explanation`, triggered once the change request is
+known) and adds `ImpactPanel`'s own spec: BLOCKING/AFFECTED/WHY in the
+server's exact group order, empty groups omitted, no BLOCKING section at all
+when nothing blocks, and a plain message when nothing is affected.
+
 ### Integration tests
 Test:
 - application use cases + Mongo test database/adaptor;
