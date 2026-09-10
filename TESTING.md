@@ -455,6 +455,20 @@ e2e
 
 Cache dependencies, but never make correctness depend on cache state.
 
+Implementation (TASK-605): the repository is hosted on GitHub, so
+`.github/workflows/ci.yml` is the pipeline that actually runs, on every push
+to `main` and every pull request. It is one job that runs `pnpm run verify`
+— the same completion gate a contributor runs locally — rather than a
+second, hand-kept-in-sync copy of `scripts/verify.mjs`'s step order and
+pass/fail logic. No external service: the integration suite's Mongo is
+`mongodb-memory-server` (an in-process binary), and the E2E suite's servers
+are started and torn down by Playwright itself against a memory store — the
+one extra step CI needs beyond `pnpm install` is `pnpm exec playwright
+install --with-deps chromium` (TASK-604). `.gitlab-ci.yml` is documentation
+only — it never runs here — and spells the same pipeline out as separate
+staged jobs (the suggested list above, plus `web` for the Angular specs,
+which has no home in it otherwise), for anyone comparing the two systems.
+
 ## 13. Definition of done
 
 A feature is done only when:

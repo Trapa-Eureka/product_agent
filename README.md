@@ -1,5 +1,7 @@
 # AI Production Change Agent
 
+[![CI](https://github.com/Trapa-Eureka/product_agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Trapa-Eureka/product_agent/actions/workflows/ci.yml)
+
 **MCP-powered production workflow assistant**
 
 An independent portfolio project inspired by connected film/video production workflows. The system analyzes how a change to cast, locations, scenes, or schedules affects the rest of a production, proposes safe alternatives, and applies only human-approved changes through explicit MCP tools.

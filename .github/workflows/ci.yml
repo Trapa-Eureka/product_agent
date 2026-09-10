@@ -1,0 +1,41 @@
+name: CI
+
+# TASK-605 (TESTING.md §12): the repository is hosted on GitHub, so this is
+# the pipeline that actually runs. It does one thing — `pnpm run verify`,
+# the same completion gate a contributor runs locally — so there is exactly
+# one place the step order and pass/fail logic live (scripts/verify.mjs),
+# not a second copy hand-kept in sync here. No external service: the
+# integration suite's Mongo is `mongodb-memory-server` (an in-process
+# binary, downloaded once), and the E2E suite's API/web servers are both
+# started and torn down by Playwright itself against a memory store.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright's Chromium (TASK-604)
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Verify
+        run: pnpm run verify
