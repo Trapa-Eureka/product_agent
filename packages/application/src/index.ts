@@ -7,4 +7,5 @@
  */
 export * from "./ports";
 export * from "./result";
+export * from "./explanation";
 export * from "./use-cases";

@@ -4,6 +4,7 @@ import type {
   EntityId,
   InterpretationOption,
   Proposal,
+  ProposalExplanation,
   ProposedOperation,
   RankedCandidate,
   RejectedScheduleDay,
@@ -15,6 +16,7 @@ import { callSheetsFor, indexProduction, scheduledShootDay } from "@pca/domain";
 
 import type { Clock, IdFactory, ModelPort, RepositorySet } from "../ports";
 import { ModelError, guardModelPort } from "../ports";
+import { describeProposal, toProposalSummary } from "../explanation";
 import type { UseCaseResult } from "../result";
 import { succeed } from "../result";
 import { createAnalyzeChangeImpact, type ChangeImpactReport } from "./analyze-change-impact";
@@ -38,6 +40,11 @@ import { createSubmitChangeRequest } from "./submit-change-request";
  * prose. The plan's shape is deterministic code, the same shape the golden
  * suite pins: the recorded fact first, then the remedy, then a stale mark for
  * every touched call sheet.
+ *
+ * The proposal's summary is the deterministic explanation card (TASK-306):
+ * headline, effects, and operations come from data, and the model's prose is
+ * an optional narrative underneath. If the model cannot explain, the card
+ * stands on its own.
  */
 
 export type RunChangeAgentInput = {
@@ -63,7 +70,8 @@ export type AgentOutcome =
       readonly ranked: RankedCandidate[];
       readonly rejected: RejectedScheduleDay[];
       readonly proposal: Proposal;
-      readonly explanation: string;
+      /** The DESIGN.md §4 card; its rendered form is the proposal's `summary`. */
+      readonly explanation: ProposalExplanation;
     }
   | {
       readonly kind: "NO_CANDIDATE";
@@ -190,10 +198,11 @@ export const createRunChangeAgent = (dependencies: {
     await repositories.auditEvents.append(event);
   };
 
-  const explain = async (
+  /** The model's prose, or the fallback when the model cannot answer. */
+  const explain = async <Fallback extends string | undefined>(
     input: Parameters<ModelPort["explainImpact"]>[0],
-    fallback: string,
-  ): Promise<string> => {
+    fallback: Fallback,
+  ): Promise<string | Fallback> => {
     try {
       return (await model.explainImpact(input)).explanation;
     } catch (error) {
@@ -375,22 +384,28 @@ export const createRunChangeAgent = (dependencies: {
       correlationId,
     });
     if (!simulated.ok) return simulated;
-    const explanation = await explain(
+    const narrative = await explain(
       {
         ...explainInput,
         impacts: simulated.value.impacts.length > 0 ? simulated.value.impacts : analysis.impacts,
         resolvedConflicts: simulated.value.resolvedConflicts,
         warnings: simulated.value.warnings,
       },
-      `${operations.length} operations proposed.`,
+      undefined,
     );
+    const explanation = describeProposal({
+      state,
+      operations,
+      simulation: simulated.value,
+      ...(narrative === undefined ? {} : { narrative }),
+    });
 
     const proposed = await propose({
       productionId: input.productionId,
       changeRequestId: changeRequest.id,
       baseProductionVersion: analysis.productionVersion,
       operations,
-      summary: explanation,
+      summary: toProposalSummary(explanation),
       proposedBy: "agent",
       actorType: "AGENT",
       ...trace,

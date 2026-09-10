@@ -351,6 +351,15 @@ stale mark for every touched call sheet. When the model cannot rank or explain,
 the agent falls back to date order and a data-only summary rather than
 stopping.
 
+The explanation layer (`explanation.ts` in the application package, TASK-306)
+is what makes the data-only summary possible: `describeProposal` builds the
+DESIGN.md §4 card (headline, `+`/`!` effects, operation lines) from the
+snapshot, the operations, and the simulation findings, and `describeImpact`
+builds the DESIGN.md §3 panel from an impact report. Both are pure functions
+with contracts in `packages/contracts` (`explanation.ts`). The model's prose
+is attached as an optional `narrative`; the rendered card is the proposal's
+`summary`.
+
 ## 9. MongoDB
 
 MongoDB stores operational state and audit records.
