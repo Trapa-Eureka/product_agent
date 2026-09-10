@@ -3,3 +3,5 @@ export * from "./analyze-change-impact";
 export * from "./generate-schedule-candidates";
 export * from "./simulate-proposal";
 export * from "./validate-proposal";
+export * from "./create-proposal";
+export * from "./decide-proposal";

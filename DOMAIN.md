@@ -266,6 +266,15 @@ No consequential proposal operation may be applied without a valid approval.
 ### INV-6 Approval freshness
 Approval is valid only for the exact proposal digest and expected production version.
 
+Approving is strict: the proposal must be valid, un-tampered, and fresh, and it
+is re-simulated once more against the current production before the record is
+written. Rejecting is lenient: a coordinator may always say no, including to a
+stale proposal.
+
+A decision is final. Repeating the same decision returns the existing record;
+contradicting it is refused. A rejected proposal is not revived; a new one is
+made.
+
 ### INV-7 Post-write versioning
 A successful consequential mutation increments the production version.
 
