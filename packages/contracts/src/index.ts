@@ -16,3 +16,4 @@ export * from "./audit";
 export * from "./errors";
 export * from "./job";
 export * from "./mcp";
+export * from "./model";

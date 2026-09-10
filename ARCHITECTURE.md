@@ -296,6 +296,22 @@ Do not couple domain types to a Bedrock response shape.
 
 Structured AI output must be schema-validated before use.
 
+The port's three operations are the only things a model is asked. Their
+input and output shapes are contracts in `packages/contracts` (`model.ts`),
+and `guardModelPort` in the application layer wraps any adapter so that every
+answer is schema-validated and grounded before anything downstream sees it:
+
+- an interpretation may name only IDs that were in the context it was given,
+  so a confident answer about a made-up entity is refused as
+  `UNGROUNDED_OUTPUT` rather than reaching intake;
+- a ranking must be a permutation of the candidates it was given, with ranks
+  1..n and a reason each; nothing added, nothing dropped;
+- a malformed answer, a provider exception, and a missed time budget become
+  `ModelError`s with a stable code and no prompt text.
+
+Adapters therefore stay simple. The rule-based adapter, a local Ollama, and
+Bedrock all sit behind the same guard, and the guarantee is tested once.
+
 ## 8. Change engine
 
 The change engine is deterministic.
