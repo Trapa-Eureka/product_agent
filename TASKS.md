@@ -122,7 +122,10 @@ Fixture integrity test.
 
 # P1 — Persistence and Application Core
 
-## TASK-101 Repository ports + free default adapters
+## TASK-101 Repository ports + free default adapters — DONE
+
+**Status**  
+Complete. `packages/application` defines the six repository ports and the shared production-isolation guard. `@pca/memory-store` and `@pca/file-store` implement them, and one contract suite in `@pca/test-support` runs unchanged against both: 34 cases per adapter. `PCA_STORAGE` selection moves to the composition root in TASK-110, since no package below it may know more than one adapter exists.
 
 **Goal**  
 Define repository interfaces required by application use cases and ship the two zero-install adapters.
@@ -133,9 +136,9 @@ TASK-003, TASK-004.
 **Scope**
 
 - repository ports in `packages/application`
-- in-memory adapter (`packages/test-support`) for unit tests
+- in-memory adapter (`packages/adapters/memory-store`) for unit tests and demo runs
 - JSON file adapter (`packages/adapters/file-store`) as the default runtime store for the npm distribution: single file under a user data directory, atomic write (temp file + rename), production `version` preserved for stale-proposal detection
-- runtime selection via `PCA_STORAGE=file|memory|mongo` (Mongo lands in TASK-102)
+- runtime selection via `PCA_STORAGE=file|memory|mongo`, wired in the composition root (TASK-110); Mongo lands in TASK-102
 
 **Acceptance**
 

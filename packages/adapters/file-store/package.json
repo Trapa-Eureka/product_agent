@@ -1,22 +1,22 @@
 {
-  "name": "@pca/test-support",
+  "name": "@pca/file-store",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Fakes, builders, and in-memory adapters for tests (TASK-004, TASK-101)",
+  "description": "JSON file repository adapter, the free zero-install default",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts"
   },
-  "scripts": {},
   "dependencies": {
     "@pca/application": "workspace:*",
     "@pca/contracts": "workspace:*",
     "@pca/domain": "workspace:*",
-    "@pca/fixtures": "workspace:*"
+    "zod": "^4.6.1"
   },
   "devDependencies": {
-    "vitest": "^3.2.4"
+    "@pca/fixtures": "workspace:*",
+    "@pca/test-support": "workspace:*"
   }
 }

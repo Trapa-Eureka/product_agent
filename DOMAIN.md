@@ -194,6 +194,7 @@ approval rather than silently widening it (INV-6).
 ```ts
 type Approval = {
   id: string;
+  productionId: string;
   proposalId: string;
   proposalDigest: string;
   productionVersion: number;
@@ -202,6 +203,10 @@ type Approval = {
   createdAt: string;
 };
 ```
+
+`productionId` is present so every repository read can be scoped by production
+(INV-4). Deriving tenancy by first loading the proposal would make the isolation
+boundary depend on a join a caller can forget.
 
 ### AuditEvent
 

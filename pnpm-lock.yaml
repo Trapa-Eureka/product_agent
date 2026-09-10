@@ -45,6 +45,56 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@24.13.4)
 
+  packages/adapters/file-store:
+    dependencies:
+      '@pca/application':
+        specifier: workspace:*
+        version: link:../../application
+      '@pca/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+      '@pca/domain':
+        specifier: workspace:*
+        version: link:../../domain
+      zod:
+        specifier: ^4.6.1
+        version: 4.6.1
+    devDependencies:
+      '@pca/fixtures':
+        specifier: workspace:*
+        version: link:../../fixtures
+      '@pca/test-support':
+        specifier: workspace:*
+        version: link:../../test-support
+
+  packages/adapters/memory-store:
+    dependencies:
+      '@pca/application':
+        specifier: workspace:*
+        version: link:../../application
+      '@pca/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+      '@pca/domain':
+        specifier: workspace:*
+        version: link:../../domain
+    devDependencies:
+      '@pca/fixtures':
+        specifier: workspace:*
+        version: link:../../fixtures
+      '@pca/test-support':
+        specifier: workspace:*
+        version: link:../../test-support
+
+  packages/application:
+    dependencies:
+      '@pca/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@pca/domain':
+        specifier: workspace:*
+        version: link:../domain
+
   packages/contracts:
     dependencies:
       zod:
@@ -72,9 +122,22 @@ importers:
 
   packages/test-support:
     dependencies:
+      '@pca/application':
+        specifier: workspace:*
+        version: link:../application
       '@pca/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@pca/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@pca/fixtures':
+        specifier: workspace:*
+        version: link:../fixtures
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@24.13.4)
 
 packages:
 

@@ -101,6 +101,7 @@ describe("proposalSchema", () => {
 describe("approvalSchema", () => {
   const base = {
     id: "A-77",
+    productionId: "PROD-DEMO",
     proposalId: "P-104",
     proposalDigest: digest,
     productionVersion: 12,

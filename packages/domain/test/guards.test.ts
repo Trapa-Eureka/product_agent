@@ -34,6 +34,7 @@ const anApproval = (
   overrides: Partial<Approval> = {},
 ): Approval => ({
   id: "A-77",
+  productionId: proposal.productionId,
   proposalId: proposal.id,
   proposalDigest: proposal.digest,
   productionVersion: proposal.baseProductionVersion,

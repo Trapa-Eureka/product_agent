@@ -19,6 +19,12 @@ export const approvalDecisionSchema = z.enum(["APPROVE", "REJECT"]);
 
 export const approvalSchema = z.strictObject({
   id: entityIdSchema,
+  /**
+   * Present so every repository read can be scoped by production (INV-4).
+   * Deriving tenancy by first loading the proposal would make the isolation
+   * boundary depend on a join that a caller can forget.
+   */
+  productionId: entityIdSchema,
   proposalId: entityIdSchema,
   proposalDigest: proposalDigestSchema,
   productionVersion: productionVersionSchema,
