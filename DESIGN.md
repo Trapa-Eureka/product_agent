@@ -185,6 +185,23 @@ Before a consequential write, show a final confirmation containing:
 
 The backend, not the UI, enforces approval validity.
 
+Implementation (TASK-505): the workspace's Reject and Approve & Apply buttons
+enable only while the tracked job is `awaiting_approval`. Approve & Apply
+first opens `ApprovalConfirmation` — the headline from the already-shown
+proposal card as the summary, `operations.length`, the `ATTENTION` effects as
+warnings, `ProductionStore.version()` as the current version, and the fixed
+notice — and only its own Confirm button calls
+`ChangeSubmissionService.approveAndApply`: decide `APPROVE` (whose response
+names the exact production version the proposal was built against, not a
+guess at the current one), then apply as a job continuing the same run's
+timeline. Reject has no such gate — it is a decision, not the write — and
+completes the job it came from immediately rather than waiting on the
+socket (`POST .../decision` accepts the job's ID for exactly this; SPEC.md
+§7 already named `awaiting_approval → completed` as rejection's edge, but
+nothing called it before this task). Either action can still fail at the
+backend (a stale version, an approval that no longer matches); `ChangeInput`'s
+error display shows the `ToolError` the same way a failed submission does.
+
 ## 6. Job/realtime states
 
 Show a compact progress timeline:

@@ -52,6 +52,20 @@ headline and the ranked/rejected shoot days once it reaches
 `awaiting_approval`; GOLDEN-3 asserts a non-scheduling change carries no
 candidate comparison at all.
 
+TASK-505 tests the approval flow at three levels: `ChangeSubmissionService`
+gains `reject` (decides with the job's ID, then re-reads the job so
+completion shows without waiting on a live event) and `approveAndApply`
+(decides, then applies with `expectedProductionVersion` from the decision's
+own response, not a guess), both against `HttpTestingController`; a new API
+contract test rejects a real job through the whole stack and asserts it
+reaches `completed`, including that a replayed rejection does not error;
+and `ChangeWorkspace`'s own spec (the only workspace-level spec so far,
+justified because the wiring — the disabled/enabled gate, the confirmation
+opening, and resetting a stale "confirming" flag for a different job — lives
+in the component itself rather than a leaf) overrides the component's own
+`ChangeSubmissionService` provider with `TestBed.overrideComponent` to
+verify it without HTTP.
+
 ### Integration tests
 Test:
 - application use cases + Mongo test database/adaptor;

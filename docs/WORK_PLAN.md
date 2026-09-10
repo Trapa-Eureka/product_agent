@@ -89,7 +89,7 @@ for free. Only P7 infrastructure and live Bedrock/SQS connections are deferred.
 35. TASK-502 Input / ambiguity resolution / detected-change card — **done**. `JobRun` gained an `options` field for ambiguity; the workspace submits a job, resolves and resumes it, and renders the persisted change request once known.
 36. TASK-503 Impact panel (BLOCKING / AFFECTED / WHY) — **done**. `describeImpact`'s output exposed on a REST-only route since the MCP tool contract has no room for it; `ImpactPanel` renders it with no logic of its own.
 37. TASK-504 Proposal comparison — **done**. The card `runChangeAgent` already built, plus ranked/rejected candidates, ride on the `JobRun` the same way ambiguity options do; no new REST route.
-38. TASK-505 Approval flow (Reject / Approve & Apply with final confirmation).
+38. TASK-505 Approval flow (Reject / Approve & Apply with final confirmation) — **done**. Reject completes the job it came from; Approve & Apply applies with the version the proposal was actually built against, behind a confirmation gate.
 39. TASK-506 Realtime progress timeline.
 40. TASK-507 Schedule before/after view, TASK-508 Audit view.
 

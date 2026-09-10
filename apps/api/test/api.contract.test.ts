@@ -469,6 +469,44 @@ describe("REST API", () => {
       expect(changeRequest.status).toBe(200);
     });
 
+    it("TASK-505: rejects a job's proposal, completing the job without changing production state", async () => {
+      const submitted = await api("POST", `/productions/${DEMO}/changes`, {
+        text: "Sarah cannot shoot Friday.",
+      });
+      const job = (submitted.body as { job: { id: string } }).job;
+      await queue.drain();
+      await settle();
+      const followed = await api("GET", `/productions/${DEMO}/jobs/${job.id}`);
+      const run = followed.body as { proposalId: string };
+
+      const decided = await api(
+        "POST",
+        `/productions/${DEMO}/proposals/${run.proposalId}/decision`,
+        { decision: "REJECT", jobId: job.id },
+      );
+      expect(decided.status).toBe(200);
+      expect((decided.body as { proposal: { status: string } }).proposal.status).toBe("REJECTED");
+
+      const done = await api("GET", `/productions/${DEMO}/jobs/${job.id}`);
+      expect(done.body).toMatchObject({
+        stage: "completed",
+        status: "COMPLETED",
+        message: "Rejected; nothing will change.",
+      });
+      expect((await store.productions.loadState(DEMO))?.production.version).toBe(1);
+
+      // A replayed rejection (lenient per DOMAIN.md) does not error trying to re-complete the job.
+      const repeated = await api(
+        "POST",
+        `/productions/${DEMO}/proposals/${run.proposalId}/decision`,
+        { decision: "REJECT", jobId: job.id },
+      );
+      expect(repeated.status).toBe(200);
+      expect((await api("GET", `/productions/${DEMO}/jobs/${job.id}`)).body).toMatchObject({
+        stage: "completed",
+      });
+    });
+
     it("hands ambiguity back at resolving and resumes the same job with the chosen change", async () => {
       const state = createDemoMovie();
       await store.productions.save({

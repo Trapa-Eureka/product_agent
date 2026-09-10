@@ -103,6 +103,57 @@ export class ChangeSubmissionService {
     }
   }
 
+  /**
+   * DESIGN.md §5: rejects the tracked job's proposal. A rejection is not the
+   * consequential write approval leads to, so it needs no confirmation step
+   * — the backend still enforces validity either way. `jobId` completes the
+   * job server-side; the read afterward reflects that immediately rather
+   * than waiting on the socket round trip.
+   */
+  async reject(productionId: string): Promise<void> {
+    const current = this.job();
+    if (current?.proposalId === undefined) return;
+    this.state.set("submitting");
+    this.error.set(null);
+    try {
+      await this.api.decideProposal(productionId, current.proposalId, "REJECT", current.id);
+      await this.refresh(productionId, current.id);
+      this.state.set("idle");
+    } catch (error) {
+      this.state.set("error");
+      this.error.set(this.asToolError(error));
+    }
+  }
+
+  /**
+   * DESIGN.md §5: the consequential write, after the UI's own confirmation
+   * step. Approves, then applies as a job continuing this run's timeline;
+   * `expectedProductionVersion` comes from the decision's own response, the
+   * version the proposal was actually built against, not a guess at the
+   * production's current one.
+   */
+  async approveAndApply(productionId: string): Promise<void> {
+    const current = this.job();
+    if (current?.proposalId === undefined) return;
+    const proposalId = current.proposalId;
+    this.state.set("submitting");
+    this.error.set(null);
+    try {
+      const decided = await this.api.decideProposal(productionId, proposalId, "APPROVE");
+      const { job } = await this.api.applyProposalAsJob(productionId, proposalId, {
+        approvalId: decided.approval.id,
+        expectedProductionVersion: decided.proposal.baseProductionVersion,
+        idempotencyKey: crypto.randomUUID(),
+        jobId: current.id,
+      });
+      this.job.set(job);
+      this.state.set("idle");
+    } catch (error) {
+      this.state.set("error");
+      this.error.set(this.asToolError(error));
+    }
+  }
+
   private async refresh(productionId: string, jobId: string): Promise<void> {
     try {
       const job = await this.api.getJob(productionId, jobId);

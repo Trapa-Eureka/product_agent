@@ -462,7 +462,10 @@ Complete. `runChangeAgent` already built the DESIGN.md §4 structured proposal c
 
 Operations, warnings, candidate comparison.
 
-## TASK-505 Approval flow
+## TASK-505 Approval flow — DONE
+
+**Status**  
+Complete. `ChangeWorkspace`'s Reject and Approve & Apply buttons enable only while the tracked job is `awaiting_approval`. `ChangeSubmissionService.reject` decides `REJECT` with the job's ID (the decision route then completes that job server-side, `awaiting_approval → completed` — an edge `JOB_STAGE_TRANSITIONS` already named but nothing called before this task, added best-effort and idempotently) and re-reads the job immediately. `approveAndApply` decides `APPROVE`, then applies as a job continuing the run's timeline, using `expectedProductionVersion` from the decision's own response (the version the proposal was actually built against). `ApprovalConfirmation` gates Approve & Apply with DESIGN.md §5's final confirmation: proposal summary, operation count, warnings (the explanation's `ATTENTION` effects), current production version, and the fixed notice that the plan will change; the backend still enforces validity either way. 22 new tests (1 API contract for the reject-completes-the-job route, 21 Angular incl. the workspace's own wiring spec); `pnpm verify` passes.
 
 Reject / Approve & Apply with explicit confirmation.
 

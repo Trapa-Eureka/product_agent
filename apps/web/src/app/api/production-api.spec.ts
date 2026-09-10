@@ -107,4 +107,48 @@ describe("ProductionApi", () => {
     });
     expect((await pending).blocking).toHaveLength(1);
   });
+
+  it("posts a decision, including the job ID when a rejection should complete it", async () => {
+    const pending = api.decideProposal("PROD-DEMO", "P-1", "REJECT", "JOB-1");
+    const request = http.expectOne("/api/productions/PROD-DEMO/proposals/P-1/decision");
+    expect(request.request.method).toBe("POST");
+    expect(request.request.body).toEqual({ decision: "REJECT", jobId: "JOB-1" });
+    request.flush({
+      approval: { id: "A-1", decision: "REJECT" },
+      proposal: { id: "P-1", status: "REJECTED" },
+      alreadyDecided: false,
+    });
+    expect((await pending).proposal.status).toBe("REJECTED");
+  });
+
+  it("omits jobId from the decision body when none is given", async () => {
+    const pending = api.decideProposal("PROD-DEMO", "P-1", "APPROVE");
+    const request = http.expectOne("/api/productions/PROD-DEMO/proposals/P-1/decision");
+    expect(request.request.body).toEqual({ decision: "APPROVE" });
+    request.flush({
+      approval: { id: "A-1", decision: "APPROVE" },
+      proposal: { id: "P-1", status: "APPROVED" },
+      alreadyDecided: false,
+    });
+    await pending;
+  });
+
+  it("applies a proposal as a job continuation and reads the echoed run back", async () => {
+    const pending = api.applyProposalAsJob("PROD-DEMO", "P-1", {
+      approvalId: "A-1",
+      expectedProductionVersion: 1,
+      idempotencyKey: "idem-key-apply-1",
+      jobId: "JOB-1",
+    });
+    const request = http.expectOne("/api/productions/PROD-DEMO/proposals/P-1/apply");
+    expect(request.request.method).toBe("POST");
+    expect(request.request.body).toEqual({
+      approvalId: "A-1",
+      expectedProductionVersion: 1,
+      idempotencyKey: "idem-key-apply-1",
+      jobId: "JOB-1",
+    });
+    request.flush({ job: { id: "JOB-1", stage: "awaiting_approval" } });
+    expect((await pending).job.stage).toBe("awaiting_approval");
+  });
 });

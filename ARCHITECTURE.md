@@ -347,6 +347,23 @@ TASK-403): no REST route, no `ChangeSubmissionService` fetch — they arrive
 with the job the service already reads. `ProposalCard` and
 `CandidateComparisonPanel` render them, again with no logic of their own.
 
+The approval flow (TASK-505) is `ChangeSubmissionService`'s last two
+methods: `reject` and `approveAndApply`, both gated in the UI to a job at
+`awaiting_approval` and both still fully re-checked by the backend (DESIGN.md
+§5, "the backend, not the UI, enforces approval validity"). `reject` posts
+the decision with the job's ID, which the decision route uses to complete
+that job server-side (`awaiting_approval → completed`, the edge
+`JOB_STAGE_TRANSITIONS` already named but nothing exercised before this
+task) — best-effort and idempotent, since the decision itself is what
+matters and a repeat rejection finds the job already terminal.
+`approveAndApply` decides `APPROVE`, then applies as a job continuing the
+same run's timeline using `expectedProductionVersion` from the decision's
+own response (the version the proposal was actually built against) rather
+than reading the production's current version and hoping nothing moved. The
+UI's own gate before that call — `ApprovalConfirmation` — is what DESIGN.md
+§5 asks for: a summary, the operation count, warnings, the current version,
+and the fixed notice that approving changes the plan.
+
 ## 7. AI architecture
 
 Use a provider interface:
