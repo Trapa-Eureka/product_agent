@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { typedChangeSchema } from "./change";
+import { interpretationOptionSchema } from "./model";
 import {
   correlationIdSchema,
   entityIdSchema,
@@ -68,6 +69,12 @@ export const jobEnvelopeSchema = z.strictObject({
  * `stage` is where the job is; `status` is how that stage stands
  * (`STARTED` while in progress or waiting, `COMPLETED`/`FAILED` when it is
  * terminal). `history` is every event ever published for the job.
+ *
+ * `options` is set only while `stage` is `resolving` (TASK-502): the
+ * interpretations the sentence could mean, so a client can render the
+ * choice and resume the same job with the one the user picks. Like
+ * `message`, it is not cleared on the next transition; a client reads it
+ * only when `stage === "resolving"`.
  */
 export const jobRunSchema = z.strictObject({
   id: entityIdSchema,
@@ -79,6 +86,7 @@ export const jobRunSchema = z.strictObject({
   message: explanationSchema.optional(),
   changeRequestId: entityIdSchema.optional(),
   proposalId: entityIdSchema.optional(),
+  options: z.array(interpretationOptionSchema).optional(),
   history: z.array(agentJobEventSchema),
   createdAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,

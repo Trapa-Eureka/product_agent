@@ -25,6 +25,16 @@ jsdom) as the verify step `test:web`, separate from the root vitest suites,
 which exclude them. They cover the shell's rendering, the REST client's
 error mapping, and the realtime service's signals with a fake socket.
 
+The change workspace's specs (TASK-502) add: `typed-change-format`, pure
+tests for all four change kinds and both golden date shapes; a fake
+`RealtimeService` whose `view` is a real Angular signal, used to drive
+`ChangeSubmissionService` through submit, an ApiError, resuming a job at
+`resolving`, and a live event that must be re-read over REST before a
+change-request fetch follows; and component-level renders of `ChangeInput`,
+`AmbiguityResolution`, and `DetectedChangeCard` against a fake submission
+service, including that two ambiguity options sharing a label still render
+a distinguishing detail each.
+
 ### Integration tests
 Test:
 - application use cases + Mongo test database/adaptor;

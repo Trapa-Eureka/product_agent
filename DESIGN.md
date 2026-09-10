@@ -45,6 +45,18 @@ Examples appear as helper text:
 
 Do not hide ambiguity. If multiple Sarahs or multiple warehouses exist, present a resolution step.
 
+Implementation (TASK-502): the input panel (`ChangeInput`) submits the
+sentence as a job (`POST .../changes`) and shows the golden-scenario
+sentences as clickable examples. `ChangeSubmissionService` tracks the one job
+the panel just submitted; when it lands at `resolving`, `AmbiguityResolution`
+renders the run's `message` as the question and its `options` (label plus
+the resolved change) as buttons, distinguishing options that share a label
+(two cast members both named "Sarah") by the change underneath. Picking one
+resumes the same job (`jobId` + the chosen change). `AgentJobEvent` does not
+carry `options` — only the `JobRun` record does (TASK-403's contract) — so
+the live socket event is read only as a hint to re-fetch the job over REST,
+never as the answer itself (ARCHITECTURE.md §11).
+
 ### Detected change card
 
 Show:
@@ -53,6 +65,16 @@ Show:
 - date/scene;
 - confidence only if meaningful;
 - editable correction before analysis.
+
+Implementation (TASK-502): `DetectedChangeCard` renders the persisted
+`ChangeRequest` once the tracked job's `changeRequestId` is known, using
+`formatTypedChange` (a pure formatter, unit-tested for all four change
+types) for the type label and the resolved fields. Two bullets above are
+known gaps rather than omissions: confidence is the model's own score,
+computed during interpretation and never written into the persisted
+`ChangeRequest`, so there is nothing to read it from; an editable correction
+would need a pause after interpretation, but `runChangeAgent` (TASK-305)
+runs interpret through propose as one loop with no such pause today.
 
 ### Impact panel
 

@@ -121,6 +121,47 @@ describe("jobRunSchema and job payloads", () => {
     expect(jobRunSchema.safeParse({ ...run, stage: "auto_applying" }).success).toBe(false);
   });
 
+  it("carries interpretation options while resolving (TASK-502) and rejects a malformed one", async () => {
+    const { jobRunSchema } = await import("../src/job");
+    const withOptions = {
+      id: "JOB-1",
+      productionId: "PROD-DEMO",
+      correlationId: "corr-1",
+      type: "ANALYZE_CHANGE",
+      stage: "resolving",
+      status: "STARTED",
+      message: "The sentence could refer to more than one person. Which one?",
+      options: [
+        {
+          label: "Sarah",
+          change: {
+            type: "CAST_UNAVAILABLE",
+            castId: "CAST-SARAH",
+            unavailable: { start: "2026-09-18", end: "2026-09-18" },
+          },
+        },
+        {
+          label: "Sarah",
+          change: {
+            type: "CAST_UNAVAILABLE",
+            castId: "CAST-SARAH-2",
+            unavailable: { start: "2026-09-18", end: "2026-09-18" },
+          },
+        },
+      ],
+      history: [],
+      createdAt: "2026-09-10T12:00:00.000Z",
+      updatedAt: "2026-09-10T12:00:00.000Z",
+    };
+    expect(jobRunSchema.parse(withOptions)).toEqual(withOptions);
+    expect(
+      jobRunSchema.safeParse({
+        ...withOptions,
+        options: [{ label: "Sarah" }],
+      }).success,
+    ).toBe(false);
+  });
+
   it("every payload names the run it advances", async () => {
     const {
       analyzeChangeJobPayloadSchema,
