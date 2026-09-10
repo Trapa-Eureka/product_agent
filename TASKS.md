@@ -515,9 +515,14 @@ Implement approval/cross-production/schema/tool-boundary tests.
 **Status**  
 Complete, pulled forward from P6 into the registry-wide suite: arbitrary tool and operation names, a tampered digest on validate and apply, a stale approval, prompt-shaped input, and a wide-open allow-list that still never echoes another production's data. Every refusal proves nothing changed.
 
-## TASK-604 Playwright E2E
+## TASK-604 Playwright E2E — DONE
 
 Three core scenarios.
+
+**Status**  
+Complete. Three Playwright specs (`e2e/golden-{1,2,3}-*.spec.ts`), one per golden scenario, drive a real Chromium against the real stack: `playwright.config.ts`'s `webServer` starts `apps/api/e2e/server.ts` (the same composition `main.ts` uses — `createRuleModelAdapter`, the in-process queue, a memory store — seeded with three independent copies of the Demo Movie fixture, `PROD-E2E-1/2/3`, so the three specs can run in parallel without one's mutation breaking another's preconditions) and `ng serve`. Each spec follows DESIGN.md §10's demo story: submit the golden sentence, read the impact/proposal panels, approve through the §5 confirmation, wait for the §6 progress timeline to finish, check the Schedule and Audit nav views. Two real things this surfaced along the way: `ng serve`'s Vite dependency pre-bundler cannot resolve the workspace packages' extensionless relative imports (fixed with `prebundle: false` in `angular.json`, ARCHITECTURE.md), and the real rule model ranks Tuesday over Monday for GOLDEN-1/2 (fewest new warnings) where the GOLDEN-1 unit test's own scripted model picks Monday — a legitimate model-implementation difference, not a bug, so the specs assert the move and the result rather than a specific target day. `scripts/run-e2e.mjs` now actually runs `playwright test`; `pnpm verify` passes with real E2E coverage for the first time.
+
+Prerequisite for anyone running it locally: `pnpm exec playwright install chromium` (one-time; not run by `pnpm install`).
 
 ## TASK-605 CI
 

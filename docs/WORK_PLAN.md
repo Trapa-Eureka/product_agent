@@ -95,7 +95,7 @@ for free. Only P7 infrastructure and live Bedrock/SQS connections are deferred.
 
 ### Stage 7 — E2E / CI (P6)
 
-41. TASK-604 Playwright E2E, three scenarios (fake model + memory-server).
+41. TASK-604 Playwright E2E, three scenarios — **done**. Built against the real rule-based model (deterministic, not a `FakeModelAdapter`) and a memory store, not the fake-model plan first sketched here — see TESTING.md §2 "E2E" for why: the rule model is itself fully deterministic, so nothing about using it for real costs determinism, and it caught a real ranking difference a fake model would have hidden.
 42. TASK-605 CI: GitHub Actions runs `verify`. `.gitlab-ci.yml` written with the same stages, not executed.
 
 ### Stage 8 — Portfolio polish (P8)

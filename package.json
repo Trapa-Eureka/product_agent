@@ -30,10 +30,12 @@
     "@pca/domain": "workspace:*",
     "@pca/fixtures": "workspace:*",
     "@pca/test-support": "workspace:*",
+    "@playwright/test": "^1.63.0",
     "@types/node": "^24.10.1",
     "eslint": "^9.39.1",
     "globals": "^17.12.0",
     "prettier": "^3.6.2",
+    "tsx": "^4.23.13",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.4",
     "vitest": "^3.2.4"

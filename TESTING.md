@@ -119,6 +119,33 @@ Angular → API → agent/mock → MCP/application → DB → UI.
 
 Keep E2E focused on the three core demo scenarios.
 
+Implementation (TASK-604): three Playwright specs under `e2e/`, one per
+golden scenario, each driving a real Chromium against the real stack —
+Angular dev server, the REST API, `createRuleModelAdapter` (the free "agent"
+`main.ts` itself defaults to, not a mock), the application/domain engine,
+and a memory store — the "agent" and "DB" above, kept real rather than
+mocked, because that is what makes this suite worth having on top of the
+unit/integration layers, which already exercise the pipeline against a
+`FakeModelAdapter` (TESTING.md §5). Each spec gets its own copy of the Demo
+Movie fixture (`PROD-E2E-1/2/3`, seeded by `apps/api/e2e/server.ts`, the
+process `playwright.config.ts`'s `webServer` starts) so the three can run in
+parallel without one's mutation — Friday's scenes moving elsewhere —
+breaking another's preconditions. A spec follows the DESIGN.md §10 demo
+story exactly: submit the golden sentence (clicking its own example
+button), read the impact/proposal panels, approve through the §5
+confirmation, wait for the §6 progress timeline to show all eight steps
+done, then check the Schedule and Audit nav views for the result.
+
+One real finding this suite surfaced that the fixed-model unit/integration
+suites cannot: GOLDEN-1/2's real ranking (fewest new warnings) picks Tuesday
+over Monday for the demo fixture, not the Monday the GOLDEN-1 unit test's
+own model is scripted to pick — a legitimate difference in model
+implementation, not a bug, so the specs assert the move and the result
+(scenes off Friday) rather than pinning a specific target day.
+
+One-time local setup Playwright itself does not do: `pnpm exec playwright
+install chromium` (downloads the browser binary; not run by `pnpm install`).
+
 ## 3. Deterministic fixture: Demo Movie
 
 Create one canonical fixture.
