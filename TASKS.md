@@ -413,7 +413,10 @@ Complete. `packages/application/src/jobs/`: a pure stage machine (`JOB_STAGE_TRA
 
 Implement documented job stages.
 
-## TASK-404 WebSocket gateway
+## TASK-404 WebSocket gateway — DONE
+
+**Status**  
+Complete. `@pca/ws-gateway` (`ws`) forwards notifications from the application's `NotificationHub` to clients subscribed per production; it holds no history and replays nothing, and its `welcome` message names REST as the canonical source. Sources: `forwardJobEvents` (tracker → hub) and `withProposalNotifications` (a repository decorator that notifies after every proposal save, so creation, validation, decision, apply, and failure all publish). Contracts in `realtime.ts`: client messages `subscribe` / `unsubscribe` / `ping`, server messages `welcome` / `subscribed` / `unsubscribed` / `job` / `proposal` / `pong` / `error`. Malformed messages get an error, not a disconnect; an `authorize` hook can refuse a production; subscriptions per connection are capped; a heartbeat drops dead sockets. Attaches to an existing HTTP server (`attach`) or listens alone (`listen`).
 
 Publish job/proposal status.
 

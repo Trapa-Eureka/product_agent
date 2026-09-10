@@ -208,6 +208,15 @@ from `awaiting_approval`), the tracker (persist and publish together), and the
 handlers end to end through the in-process queue against the Demo Movie,
 including redelivery after a transient failure and a queue that gives up.
 
+The WebSocket gateway (TASK-404) is tested with real `ws` clients against a
+gateway on an ephemeral port: greeting, per-production delivery, proposal
+notifications, tracker-to-socket order, unsubscribe, ping, malformed
+messages, an unauthorized production, the subscription cap, disconnect,
+shutdown close code, heartbeats, and attaching to an existing HTTP server.
+The notification sources are tested in the application package: the hub,
+job-event forwarding, and the proposal-save decorator, including that a save
+that throws publishes nothing.
+
 AWS-specific adapter tests can be separate and optional in normal local verification.
 
 Implementation (TASK-401): `describeQueueContract` in `@pca/test-support` is
