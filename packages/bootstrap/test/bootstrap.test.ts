@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { createDemoMovie } from "@pca/fixtures";
 
-import { createRepositories, selectStorage } from "../src";
+import { createModel, createRepositories, selectModel, selectStorage } from "../src";
 
 describe("selectStorage", () => {
   it("defaults to the file store, the free zero-install path", () => {
@@ -48,5 +48,18 @@ describe("createRepositories", () => {
       "Demo Movie",
     );
     await close();
+  });
+});
+
+describe("model selection", () => {
+  it("defaults to the rule-based adapter, which needs no network", () => {
+    expect(selectModel({})).toBe("rules");
+    expect(typeof createModel("rules").interpretChange).toBe("function");
+  });
+
+  it("refuses an unknown model kind, and names the deferred ones honestly", () => {
+    expect(() => selectModel({ PCA_MODEL: "gpt" })).toThrow(/rules, ollama, bedrock/u);
+    expect(() => createModel("bedrock")).toThrow(/deferred/u);
+    expect(() => createModel("ollama")).toThrow(/not wired yet/u);
   });
 });

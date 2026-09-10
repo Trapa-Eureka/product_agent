@@ -1,7 +1,9 @@
-import type { RepositorySet } from "@pca/application";
+import type { ModelPort, RepositorySet } from "@pca/application";
+import { guardModelPort } from "@pca/application";
 import { createFileStore, defaultDataFilePath } from "@pca/file-store";
 import { createMemoryStore } from "@pca/memory-store";
 import { connectMongoStore, defaultMongoUri } from "@pca/mongo-store";
+import { createRuleModelAdapter } from "@pca/rule-model";
 
 /**
  * The composition root (ARCHITECTURE.md §9, "Storage adapters").
@@ -78,3 +80,38 @@ export const createRepositories = async (selection: StorageSelection): Promise<R
 
 export const createRepositoriesFromEnv = (env: Environment = process.env): Promise<Repositories> =>
   createRepositories(selectStorage(env));
+
+export type ModelKind = "rules" | "ollama" | "bedrock";
+
+const MODEL_KINDS: readonly ModelKind[] = ["rules", "ollama", "bedrock"];
+
+/** Reads PCA_MODEL; the default is the rule-based adapter, which needs no network and no key. */
+export const selectModel = (env: Environment): ModelKind => {
+  const raw = env["PCA_MODEL"] ?? "rules";
+  if (!MODEL_KINDS.includes(raw as ModelKind)) {
+    throw new Error(
+      `PCA_MODEL="${raw}" is not one of ${MODEL_KINDS.join(", ")}. Unset it for the rule-based default.`,
+    );
+  }
+  return raw as ModelKind;
+};
+
+/** Every model is handed out behind the guard; no caller can reach an unguarded provider. */
+export const createModel = (
+  kind: ModelKind,
+  options: { readonly timeoutMs?: number } = {},
+): ModelPort => {
+  switch (kind) {
+    case "rules":
+      return guardModelPort(createRuleModelAdapter(), options);
+    case "ollama":
+      throw new Error(
+        "PCA_MODEL=ollama is not wired yet; the Ollama adapter is an optional later step. Use rules.",
+      );
+    case "bedrock":
+      throw new Error("PCA_MODEL=bedrock is deferred (paid); see TASKS.md TASK-303. Use rules.");
+  }
+};
+
+export const createModelFromEnv = (env: Environment = process.env): ModelPort =>
+  createModel(selectModel(env));

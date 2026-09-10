@@ -323,7 +323,10 @@ Define provider-independent model interface.
 **Status**  
 Complete. `ModelPort` in `packages/application` with three operations; input and output schemas in `packages/contracts/src/model.ts`; `guardModelPort` wraps any adapter to schema-validate and ground every answer (no invented IDs, rankings are permutations), wrap provider faults, and enforce a time budget, raising `ModelError` with a stable code. 24 guard tests and 7 schema tests.
 
-## TASK-302 Fake model adapter + rule-based interpreter adapter
+## TASK-302 Fake model adapter + rule-based interpreter adapter — DONE
+
+**Status**  
+Complete. `@pca/rule-model` is the runtime default: it interprets the SPEC.md §5 sentence shapes and close variants deterministically, returns ambiguity as options and unknown shapes as `UNSUPPORTED` with a reason, explains from findings, and ranks by fewest warnings then earliest date. `createFakeModelAdapter` in test-support answers the golden sentences and can misbehave in each way a provider might; the guard catches all four. `PCA_MODEL` selection lives in bootstrap, every model behind the guard. The Ollama adapter remains an optional later step.
 
 **Goal**  
 Provide two free `ModelPort` implementations with distinct roles.
