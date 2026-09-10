@@ -235,6 +235,10 @@ final. Analysis stops at `awaiting_approval`; a human decision starts the
 apply. A job waiting on the user's answer to an ambiguous request stays at
 `resolving`.
 
+A client that loses the socket recovers by reading the production's job runs
+and open proposals again, then resumes live updates; it never depends on a
+replayed message.
+
 ## 8. Non-functional requirements
 
 ### Reliability

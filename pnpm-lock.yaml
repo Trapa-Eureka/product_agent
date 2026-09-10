@@ -278,6 +278,40 @@ importers:
         specifier: workspace:*
         version: link:../test-support
 
+  packages/realtime-client:
+    dependencies:
+      '@pca/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      zod:
+        specifier: ^4.6.1
+        version: 4.6.1
+    devDependencies:
+      '@pca/application':
+        specifier: workspace:*
+        version: link:../application
+      '@pca/fixtures':
+        specifier: workspace:*
+        version: link:../fixtures
+      '@pca/memory-queue':
+        specifier: workspace:*
+        version: link:../adapters/memory-queue
+      '@pca/memory-store':
+        specifier: workspace:*
+        version: link:../adapters/memory-store
+      '@pca/test-support':
+        specifier: workspace:*
+        version: link:../test-support
+      '@pca/ws-gateway':
+        specifier: workspace:*
+        version: link:../adapters/ws-gateway
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
+      ws:
+        specifier: ^8.18.3
+        version: 8.21.3
+
   packages/test-support:
     dependencies:
       '@pca/application':
