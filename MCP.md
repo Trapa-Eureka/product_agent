@@ -76,7 +76,11 @@ Write tools additionally require:
   `structuredContent`: clients validate `structuredContent` against the tool's
   advertised output schema, and an error is not an output. A handler that
   throws becomes `INTERNAL_ERROR` carrying the correlation ID, with the cause
-  logged and not echoed to the client.
+  logged and not echoed to the client. When the cause is an infrastructure
+  fault (an `InfrastructureError` from a guarded store), the message names the
+  boundary, e.g. `get_production failed at mongo.productions.loadState`, so the
+  operator knows where to look while the driver's own text stays out of the
+  tool result (TASK-602).
 - **Logging goes to stderr** as JSON lines, because stdout is the stdio
   transport. Each call logs tool, correlation ID, duration, and outcome or
   error code, and nothing else: no prompt text, no entity payloads.

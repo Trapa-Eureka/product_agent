@@ -7,7 +7,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { fail, succeed } from "@pca/application";
+import { InfrastructureError, fail, succeed } from "@pca/application";
 import { MCP_TOOL_NAMES } from "@pca/contracts";
 import { DEMO_MOVIE_IDS, createDemoMovie } from "@pca/fixtures";
 import { createMemoryStore, type MemoryStore } from "@pca/memory-store";
@@ -283,8 +283,36 @@ describe("MCP server foundation", () => {
       });
       expect(JSON.stringify(result.content)).not.toContain("database on fire");
       expect(logger.lines.find((line) => line.event === "tool_crash")?.fields["error"]).toBe(
-        "database on fire",
+        "database on fire (correlation corr-1)",
       );
+    });
+
+    it("names the boundary of an infrastructure fault, and still hides the cause", async () => {
+      await connect(
+        handlers({
+          get_production: async () => {
+            throw new InfrastructureError(
+              "mongo.productions.loadState",
+              new Error("MongoNetworkError: connection 3 to 127.0.0.1:27017 closed"),
+            );
+          },
+        }),
+      );
+      const result = await client.callTool({
+        name: "get_production",
+        arguments: { productionId: DEMO },
+      });
+
+      expect(readToolError(result)).toMatchObject({
+        code: "INTERNAL_ERROR",
+        correlationId: "corr-1",
+        message:
+          "get_production failed at mongo.productions.loadState. Retry once the store is reachable.",
+      });
+      expect(JSON.stringify(result.content)).not.toContain("27017");
+      const crash = logger.lines.find((line) => line.event === "tool_crash");
+      expect(crash?.fields["boundary"]).toBe("mongo.productions.loadState");
+      expect(crash?.fields["error"]).toContain("(correlation corr-1)");
     });
 
     it("refuses to forward output that violates the tool's contract", async () => {

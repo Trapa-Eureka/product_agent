@@ -474,7 +474,10 @@ Implement GOLDEN-1/2/3.
 **Status**  
 Complete, pulled forward from P6 as the regression baseline for everything after P1. `describeGoldenScenarios` in `packages/test-support` runs the full pipeline (intake, analysis, candidates, simulation, proposal, refused apply, approval, apply, replay, re-simulation, verification) once per scenario and asserts every TESTING.md §4 bullet by name, on both the memory store and the file store.
 
-## TASK-602 Failure injection
+## TASK-602 Failure injection — DONE
+
+**Status**  
+Complete. `packages/application/test/failure-injection.test.ts` is the one place for every failure in TESTING.md §8: repository failure (direct and through the queue, where the second attempt applies exactly once), stale production version (simulate, create, apply), approval mismatch (wrong approval; edited proposal), queue retry exhaustion with dead letter, partial operation failure (refused whole, nothing committed, proposal `FAILED`, audited), verification failure (named check, audited), and model provider failure (hang, ungrounded). Each case asserts the outcome, that nothing was written, and that the message names the failing boundary and the correlation ID. Infrastructure: `InfrastructureError` + `guardPort` / `guardRepositories` name a thrown fault `<adapter>.<repository>.<method>`; bootstrap guards every store; the queue's retry reason and the MCP `INTERNAL_ERROR` carry boundary and correlation ID. `withFault` / `withRepositoryFault` in `@pca/test-support` script faults. A Mongo failure integration test closes the client and asserts the named boundary. WebSocket disconnect/reconnect is covered by TASK-405's suites.
 
 Implement stale version, provider failure, queue retry, partial failure cases.
 

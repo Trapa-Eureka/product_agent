@@ -8,7 +8,7 @@ import {
 import { z } from "zod";
 
 import type { IdFactory, UseCaseResult } from "@pca/application";
-import { randomIdFactory } from "@pca/application";
+import { InfrastructureError, describeFailure, randomIdFactory } from "@pca/application";
 import type { McpToolInput, McpToolName, McpToolOutput, ToolError } from "@pca/contracts";
 import { MCP_TOOL_CONTRACTS, MCP_TOOL_NAMES } from "@pca/contracts";
 
@@ -170,13 +170,16 @@ export const createProductionChangeServer = (options: McpServerOptions): Product
       logger.log("error", "tool_crash", {
         tool: name,
         correlationId,
-        error: error instanceof Error ? error.message : String(error),
+        error: describeFailure(error, correlationId),
+        ...(error instanceof InfrastructureError ? { boundary: error.boundary } : {}),
       });
-      return finish(
-        errorResult(internalError(`${name} failed unexpectedly.`, correlationId)),
-        "error",
-        "INTERNAL_ERROR",
-      );
+      // An infrastructure fault names its boundary so the operator knows where to look;
+      // anything else stays opaque, because a stack trace is not a tool result.
+      const message =
+        error instanceof InfrastructureError
+          ? `${name} failed at ${error.boundary}. Retry once the store is reachable.`
+          : `${name} failed unexpectedly.`;
+      return finish(errorResult(internalError(message, correlationId)), "error", "INTERNAL_ERROR");
     }
 
     if (!result.ok) {

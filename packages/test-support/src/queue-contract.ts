@@ -194,7 +194,8 @@ export const describeQueueContract = (name: string, create: QueueFactory): void 
           state: "COMPLETED",
           job: { attempt: 2 },
         });
-        expect(transitions).toContain("RUNNING>QUEUED@2:store unreachable");
+        // The reason names the request the failure happened in (TESTING.md §8).
+        expect(transitions).toContain("RUNNING>QUEUED@2:store unreachable (correlation corr-1)");
       });
     });
 

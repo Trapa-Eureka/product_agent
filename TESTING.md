@@ -265,6 +265,17 @@ Add tests for:
 
 Error messages should identify the failing boundary and correlation ID.
 
+Implementation (TASK-602): the suite is
+`packages/application/test/failure-injection.test.ts`, with the Mongo case as
+an integration test in the Mongo adapter and disconnect/reconnect in the
+realtime client's suites. Faults are scripted with `withFault` /
+`withRepositoryFault` from `@pca/test-support` (always, or the first N calls).
+A thrown infrastructure fault is an `InfrastructureError` naming
+`<adapter>.<repository>.<method>` (bootstrap wraps every store with
+`guardRepositories`); the queue's retry reason, the job run's failure
+message, the audit trail, and the MCP `INTERNAL_ERROR` carry the boundary and
+the correlation ID, and never the raw driver message or prompt text.
+
 ## 9. Security tests
 
 At minimum:

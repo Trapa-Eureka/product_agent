@@ -17,6 +17,7 @@ import type {
 } from "@pca/application";
 import {
   DEFAULT_QUEUE_POLICY,
+  describeFailure,
   randomIdFactory,
   systemClock,
   timerScheduler,
@@ -70,9 +71,6 @@ const snapshot = (record: MutableRecord): JobRecord => ({
   enqueuedAt: record.enqueuedAt,
   updatedAt: record.updatedAt,
 });
-
-const errorMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
 
 export const createMemoryQueue = (options: MemoryQueueOptions = {}): MemoryQueue => {
   const policy: QueuePolicy = { ...DEFAULT_QUEUE_POLICY, ...options.policy };
@@ -178,7 +176,8 @@ export const createMemoryQueue = (options: MemoryQueueOptions = {}): MemoryQueue
     try {
       outcome = await handler({ ...record.job });
     } catch (error) {
-      outcome = { kind: "RETRY", reason: errorMessage(error) };
+      // The reason names the boundary that failed and the request it failed in.
+      outcome = { kind: "RETRY", reason: describeFailure(error, record.job.correlationId) };
     }
     settle(record, outcome);
     return true;
