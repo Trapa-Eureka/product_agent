@@ -22,10 +22,12 @@
     "test:web": "pnpm --filter @pca/web test",
     "test:e2e": "node scripts/run-e2e.mjs",
     "build": "pnpm -r --if-present build",
-    "verify": "node scripts/verify.mjs"
+    "verify": "node scripts/verify.mjs",
+    "seed": "tsx scripts/seed.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@pca/bootstrap": "workspace:*",
     "@pca/contracts": "workspace:*",
     "@pca/domain": "workspace:*",
     "@pca/fixtures": "workspace:*",

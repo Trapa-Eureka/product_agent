@@ -113,6 +113,43 @@ export class FileStore implements RepositorySet {
     commit: (mutation) => this.#mutate((database) => commitInto(database, mutation, this.#now())),
   };
 
+  /**
+   * TASK-801's seed/reset command: replaces one production's state and
+   * clears every change request, proposal, approval, audit event, and
+   * idempotency record that belongs to it. `productions.save` (the "seed
+   * and reset path" for the production's own entities, per
+   * `ProductionRepository`'s own doc comment) does not touch these — a
+   * demo restarted with a previous run's stale proposals and audit trail
+   * sitting alongside the fresh state would not be restored, just
+   * contaminated. Not part of `RepositorySet`: this is a file-store-only
+   * administrative operation (TASK-806's `seed` subcommand names it that
+   * way), not a capability every adapter needs.
+   */
+  async resetProduction(state: ProductionState): Promise<void> {
+    await this.#mutate((database) => {
+      assertStateIsolation(state);
+      const productionId = state.production.id;
+      return {
+        database: {
+          ...database,
+          productions: { ...database.productions, [productionId]: toSnapshot(state) },
+          changeRequests: database.changeRequests.filter(
+            (record) => record.productionId !== productionId,
+          ),
+          proposals: database.proposals.filter((record) => record.productionId !== productionId),
+          approvals: database.approvals.filter((record) => record.productionId !== productionId),
+          auditEvents: database.auditEvents.filter(
+            (record) => record.productionId !== productionId,
+          ),
+          idempotency: database.idempotency.filter(
+            (record) => record.productionId !== productionId,
+          ),
+        },
+        result: undefined,
+      };
+    });
+  }
+
   readonly changeRequests: ChangeRequestRepository = {
     save: (changeRequest) =>
       this.#mutate((database) => ({

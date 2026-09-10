@@ -550,6 +550,20 @@ from `PCA_STORAGE` (`file`, `memory`, or `mongo`) and its companions
 depends on every adapter; the MCP server and the API ask it for a
 `RepositorySet` and never name a driver.
 
+The seed/reset command (TASK-801, `pnpm run seed`) is the one exception to
+"never name a driver": `FileStore.resetProduction` clears every change
+request, proposal, approval, audit event, and idempotency record belonging
+to a production alongside replacing its state — `productions.save` alone
+(the ordinary seed/reset path every adapter has) never touches those, so a
+demo "restored" while still carrying a previous run's stale proposals and
+audit trail would not be restored, just contaminated. No other adapter
+needs this: the memory store is thrown away with the process, and Mongo is
+the portfolio target, not the free runtime default this command exists
+for. `resetDemoMovie` (`@pca/bootstrap`) wires `FileStore.resetProduction`
+to the environment and refuses for any other `PCA_STORAGE`; `scripts/seed.ts`
+is the one-command entry point, and the function it calls is what TASK-806's
+future `seed` CLI subcommand will call too.
+
 ## 10. Queue/SQS
 
 Use asynchronous jobs for operations that may involve model calls or larger analysis.

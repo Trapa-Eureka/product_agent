@@ -122,6 +122,7 @@ pnpm run verify
 | `pnpm run test:web` | Angular specs (`apps/web/src/**/*.spec.ts`), via `ng test` |
 | `pnpm run test:e2e` | Playwright suite: three golden scenarios against a real browser (`e2e/`) |
 | `pnpm run verify` | Local completion gate: runs the whole pipeline in order |
+| `pnpm run seed` | Restores the Demo Movie fixture into the file store, clearing any stale proposals/audit trail from a previous run |
 
 `verify` prints a per-step pass/fail summary and stops at the first failure with the command to re-run.
 

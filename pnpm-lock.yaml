@@ -11,6 +11,9 @@ importers:
       '@eslint/js':
         specifier: ^9.39.1
         version: 9.39.5
+      '@pca/bootstrap':
+        specifier: workspace:*
+        version: link:packages/bootstrap
       '@pca/contracts':
         specifier: workspace:*
         version: link:packages/contracts
@@ -330,9 +333,15 @@ importers:
       '@pca/application':
         specifier: workspace:*
         version: link:../application
+      '@pca/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@pca/file-store':
         specifier: workspace:*
         version: link:../adapters/file-store
+      '@pca/fixtures':
+        specifier: workspace:*
+        version: link:../fixtures
       '@pca/memory-queue':
         specifier: workspace:*
         version: link:../adapters/memory-queue
@@ -345,10 +354,6 @@ importers:
       '@pca/rule-model':
         specifier: workspace:*
         version: link:../adapters/rule-model
-    devDependencies:
-      '@pca/fixtures':
-        specifier: workspace:*
-        version: link:../fixtures
 
   packages/contracts:
     dependencies:

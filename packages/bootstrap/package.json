@@ -11,13 +11,12 @@
   },
   "dependencies": {
     "@pca/application": "workspace:*",
+    "@pca/contracts": "workspace:*",
     "@pca/file-store": "workspace:*",
+    "@pca/fixtures": "workspace:*",
     "@pca/memory-queue": "workspace:*",
     "@pca/memory-store": "workspace:*",
     "@pca/mongo-store": "workspace:*",
     "@pca/rule-model": "workspace:*"
-  },
-  "devDependencies": {
-    "@pca/fixtures": "workspace:*"
   }
 }
