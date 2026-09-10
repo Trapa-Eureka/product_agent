@@ -1,9 +1,14 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
+import { randomIdFactory, systemClock } from "@pca/application";
 import { createRepositoriesFromEnv } from "@pca/bootstrap";
 
 import { contextFromEnv } from "./context";
-import { createAnalysisToolHandlers, createReadToolHandlers } from "./handlers";
+import {
+  createAnalysisToolHandlers,
+  createProposalToolHandlers,
+  createReadToolHandlers,
+} from "./handlers";
 import { stderrJsonLogger } from "./logging";
 import { createProductionChangeServer } from "./server";
 
@@ -24,6 +29,7 @@ const main = async (): Promise<void> => {
     handlers: {
       ...createReadToolHandlers({ repositories }),
       ...createAnalysisToolHandlers({ repositories }),
+      ...createProposalToolHandlers({ repositories, clock: systemClock, ids: randomIdFactory }),
     },
     context,
     logger,

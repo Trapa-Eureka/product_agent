@@ -281,9 +281,12 @@ Implement:
 - simulate_proposal
 - validate_proposal
 
-## TASK-204 Proposal tools
+## TASK-204 Proposal tools — DONE
 
 Implement create/get proposal.
+
+**Status**  
+Complete. `create_proposal` records the server context's acting identity as the proposer; `get_proposal` is a plain read of the stored record. Both wired into the entry point with the system clock and random ID factory. Contract tests cover advertisement, refusals, sealing with the actor audited, an invalid draft, and round-tripping.
 
 ## TASK-205 Safe write tool
 
