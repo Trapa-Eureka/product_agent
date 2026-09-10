@@ -78,7 +78,10 @@ Schemas exist for ChangeRequest, Impact, Proposal, Approval, MCP inputs/outputs,
 **Tests**
 Valid/invalid schema cases.
 
-## TASK-003 Domain model
+## TASK-003 Domain model — DONE
+
+**Status**  
+Complete. `packages/domain` implements the production snapshot and index, calendar helpers, requirement identity, proposal digests, natural idempotency, and INV-1 through INV-8 as pure functions. 189 unit tests pass, including a structural test that fails if the domain imports anything outside an allow-list.
 
 **Goal**  
 Implement entities and invariants from `DOMAIN.md`.

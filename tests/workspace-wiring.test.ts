@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { changeTypeSchema } from "@pca/contracts";
-import { PACKAGE_NAME as domain } from "@pca/domain";
+import { nextProductionVersion } from "@pca/domain";
 import { PACKAGE_NAME as fixtures } from "@pca/fixtures";
 import { PACKAGE_NAME as testSupport } from "@pca/test-support";
 
@@ -15,11 +15,11 @@ describe("workspace wiring", () => {
     expect(changeTypeSchema.safeParse("CAST_UNAVAILABLE").success).toBe(true);
   });
 
+  it("resolves the domain across a package boundary", () => {
+    expect(nextProductionVersion(12)).toBe(13);
+  });
+
   it("resolves the packages still awaiting implementation", () => {
-    expect([domain, fixtures, testSupport]).toEqual([
-      "@pca/domain",
-      "@pca/fixtures",
-      "@pca/test-support",
-    ]);
+    expect([fixtures, testSupport]).toEqual(["@pca/fixtures", "@pca/test-support"]);
   });
 });
