@@ -1,4 +1,11 @@
-import type { AgentJobEvent, EntityId, JobRun, JobStage, JobType } from "@pca/contracts";
+import type {
+  AgentJobEvent,
+  EntityId,
+  InterpretationOption,
+  JobRun,
+  JobStage,
+  JobType,
+} from "@pca/contracts";
 
 import type { Clock, IdFactory, JobRunRepository } from "../ports";
 import {
@@ -35,7 +42,11 @@ export interface JobTracker {
     options?: AdvanceOptions,
   ): Promise<JobRun>;
   fail(jobId: EntityId, message: string): Promise<JobRun>;
-  note(jobId: EntityId, message: string): Promise<JobRun>;
+  note(
+    jobId: EntityId,
+    message: string,
+    options?: readonly InterpretationOption[],
+  ): Promise<JobRun>;
   get(jobId: EntityId): Promise<JobRun | null>;
   listByProduction(productionId: EntityId): Promise<JobRun[]>;
   onEvent(listener: JobEventListener): () => void;
@@ -95,7 +106,8 @@ export const createJobTracker = (dependencies: {
     advance: async (jobId, to, options = {}) =>
       commit(advanceJobRun(await load(jobId), to, clock.now(), options)),
     fail: async (jobId, message) => commit(failJobRun(await load(jobId), message, clock.now())),
-    note: async (jobId, message) => commit(noteJobRun(await load(jobId), message, clock.now())),
+    note: async (jobId, message, options) =>
+      commit(noteJobRun(await load(jobId), message, clock.now(), options)),
     get: (jobId) => repository.findById(jobId),
     listByProduction: (productionId) => repository.listByProduction(productionId),
     onEvent: (listener) => {

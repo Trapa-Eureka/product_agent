@@ -86,7 +86,7 @@ export const createAnalyzeChangeJobHandler = (dependencies: {
     const outcome = result.value;
     switch (outcome.kind) {
       case "NEEDS_RESOLUTION":
-        await tracker.note(jobId, outcome.question);
+        await tracker.note(jobId, outcome.question, outcome.options);
         return { kind: "COMPLETED" };
       case "PROPOSED": {
         const { proposal } = outcome;

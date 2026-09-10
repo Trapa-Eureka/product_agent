@@ -1,4 +1,11 @@
-import type { AgentJobEvent, IsoDateTime, JobRun, JobStage, JobType } from "@pca/contracts";
+import type {
+  AgentJobEvent,
+  InterpretationOption,
+  IsoDateTime,
+  JobRun,
+  JobStage,
+  JobType,
+} from "@pca/contracts";
 
 /**
  * Job stage machine (TASK-403, SPEC.md §7, DESIGN.md §6).
@@ -173,12 +180,27 @@ export const failJobRun = (run: JobRun, message: string, now: IsoDateTime): Stag
 /**
  * Re-announces the current stage with a message, without moving: a retry in
  * progress, or a question the run is waiting on. Terminal runs cannot be noted.
+ *
+ * `options` is how a `resolving` run carries the interpretations a sentence
+ * could mean (TASK-502); omit it for every other kind of note (a retry
+ * reason has none).
  */
-export const noteJobRun = (run: JobRun, message: string, now: IsoDateTime): StageMove => {
+export const noteJobRun = (
+  run: JobRun,
+  message: string,
+  now: IsoDateTime,
+  options?: readonly InterpretationOption[],
+): StageMove => {
   if (isTerminalStage(run.stage)) throw new JobStageError(run.id, run.stage, run.stage);
   const noted = event(run, run.stage, "STARTED", now, message);
   return {
-    run: { ...run, message, history: [...run.history, noted], updatedAt: now },
+    run: {
+      ...run,
+      message,
+      ...(options === undefined ? {} : { options: [...options] }),
+      history: [...run.history, noted],
+      updatedAt: now,
+    },
     events: [noted],
   };
 };

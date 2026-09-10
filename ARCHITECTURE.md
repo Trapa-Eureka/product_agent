@@ -317,6 +317,17 @@ itself with the DOM lib (the root TypeScript project excludes it) and is
 built with AOT and strict templates in the verify gate; its specs run with
 vitest and jsdom through `ng test`.
 
+The change workspace (TASK-502) adds a component-scoped
+`ChangeSubmissionService`, one instance per workspace, provided by
+`ChangeWorkspace` and shared by its `ChangeInput` and `AmbiguityResolution`
+children through DI. It follows §11's rule literally: a live event for the
+job it is tracking is read only as a hint to re-read that job over REST,
+never as the update itself, which is what lets a field the socket event
+cannot carry (the interpretation `options` a `resolving` run holds) reach
+the UI correctly regardless of timing. Because the Angular router can reuse
+the workspace component instance across productions, `ChangeWorkspace`
+resets the service whenever the open production changes.
+
 ## 7. AI architecture
 
 Use a provider interface:

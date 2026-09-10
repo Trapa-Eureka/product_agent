@@ -53,4 +53,33 @@ describe("ProductionApi", () => {
     request.flush({ job: { id: "JOB-1" } });
     expect((await pending).job.id).toBe("JOB-1");
   });
+
+  it("resumes a job by posting the chosen change and its jobId", async () => {
+    const change = {
+      type: "CAST_UNAVAILABLE" as const,
+      castId: "CAST-SARAH",
+      unavailable: { start: "2026-09-18", end: "2026-09-18" },
+    };
+    const pending = api.submitChange("PROD-DEMO", {
+      text: "Sarah cannot shoot Friday.",
+      change,
+      jobId: "JOB-1",
+    });
+    const request = http.expectOne("/api/productions/PROD-DEMO/changes");
+    expect(request.request.body).toEqual({
+      text: "Sarah cannot shoot Friday.",
+      change,
+      jobId: "JOB-1",
+    });
+    request.flush({ job: { id: "JOB-1" } });
+    await pending;
+  });
+
+  it("reads a change request by ID", async () => {
+    const pending = api.getChangeRequest("PROD-DEMO", "CR-1");
+    http
+      .expectOne("/api/productions/PROD-DEMO/change-requests/CR-1")
+      .flush({ id: "CR-1", type: "CAST_UNAVAILABLE" });
+    expect((await pending).id).toBe("CR-1");
+  });
 });

@@ -441,7 +441,10 @@ Complete. `apps/web` (Angular 21, zoneless, signals, standalone components): the
 
 Production navigation + change workspace.
 
-## TASK-502 Change input/resolution
+## TASK-502 Change input/resolution — DONE
+
+**Status**  
+Complete. `apps/web/src/app/workspace/`: `ChangeInput` submits a sentence as a job (`POST .../changes`) with the golden-scenario sentences as clickable examples; `ChangeSubmissionService` (component-scoped, one per workspace) tracks the submitted job, resuming it (`jobId` + the chosen change) when the user resolves an ambiguity, and refreshes it over REST on every live event for it rather than trusting the event's own content; `AmbiguityResolution` renders a `resolving` run's question and options, each option showing the resolved change so two entries sharing a label (two cast members named "Sarah") stay distinguishable; `DetectedChangeCard` renders the persisted `ChangeRequest` once known, via the pure formatter `typed-change-format.ts`. `JobRun` gained an `options` field (`jobRunSchema`, TASK-403's contract) carrying the interpretations while `stage === "resolving"`; `AgentJobEvent` does not carry it on purpose, matching "the socket is a hint, the record is the truth" (ARCHITECTURE.md §11). Confidence and a pre-analysis edit step are documented gaps (DESIGN.md §3), not implemented: confidence is not persisted past interpretation, and `runChangeAgent` (TASK-305) has no pause point between interpret and propose. 31 new Angular tests (formatter, service, 3 component specs, 2 more on the REST client) plus contract/application coverage for the new `options` field; `pnpm verify` passes.
 
 Input, ambiguity resolution, detected-change card.
 

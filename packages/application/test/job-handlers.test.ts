@@ -142,6 +142,14 @@ describe("job handlers", () => {
       expect(waiting).toMatchObject({ stage: "resolving", status: "STARTED" });
       expect(waiting.message).toContain("Which one?");
       expect(timeline(waiting).at(-1)).toBe("resolving:STARTED");
+      // The options a client needs to render the choice (TASK-502) travel with the run.
+      expect(waiting.options).toHaveLength(2);
+      expect(waiting.options?.map((option) => option.change)).toEqual(
+        expect.arrayContaining([
+          { type: "CAST_UNAVAILABLE", castId: cast.sarah, unavailable: onDay(friday) },
+          { type: "CAST_UNAVAILABLE", castId: "CAST-SARAH-2", unavailable: onDay(friday) },
+        ]),
+      );
 
       await queue.enqueue(
         envelope(

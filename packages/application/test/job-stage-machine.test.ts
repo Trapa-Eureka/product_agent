@@ -207,6 +207,28 @@ describe("events", () => {
     ]);
     expect(run.stage).toBe("resolving");
     expect(run.history).toHaveLength(waiting.history.length + 1);
+    expect(run.options).toBeUndefined();
+  });
+
+  it("noting with options carries them on the run but not on the event (TASK-502)", () => {
+    const waiting = walk(["resolving"]);
+    const friday = { start: "2026-09-18", end: "2026-09-18" };
+    const options = [
+      {
+        label: "Sarah",
+        change: { type: "CAST_UNAVAILABLE", castId: "CAST-SARAH", unavailable: friday },
+      },
+      {
+        label: "Sarah",
+        change: { type: "CAST_UNAVAILABLE", castId: "CAST-SARAH-2", unavailable: friday },
+      },
+    ] as const;
+    const { run, events } = noteJobRun(waiting, "Which one?", LATER, options);
+    expect(run.options).toEqual(options);
+    expect(events[0]).not.toHaveProperty("options");
+    // A second note, without options, does not erase the ones already recorded.
+    const followUp = noteJobRun(run, "Still waiting.", LATER);
+    expect(followUp.run.options).toEqual(options);
   });
 
   it("never mutates the run it is given", () => {

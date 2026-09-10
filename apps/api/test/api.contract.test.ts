@@ -432,6 +432,13 @@ describe("REST API", () => {
         stage: "resolving",
         message: expect.stringContaining("Which one?") as string,
       });
+      const options = (waiting.body as { options: { label: string; change: unknown }[] }).options;
+      expect(options).toHaveLength(2);
+      expect(options.map((option) => option.change)).toEqual(
+        expect.arrayContaining([
+          { type: "CAST_UNAVAILABLE", castId: cast.sarah, unavailable: onDay(friday) },
+        ]),
+      );
 
       const resumed = await api("POST", `/productions/${DEMO}/changes`, {
         text: "Sarah cannot shoot Friday.",
