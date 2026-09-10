@@ -1,0 +1,23 @@
+{
+  "name": "@pca/mongo-store",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MongoDB repository adapter, the portfolio target store",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@pca/application": "workspace:*",
+    "@pca/contracts": "workspace:*",
+    "@pca/domain": "workspace:*",
+    "mongodb": "^6.17.0"
+  },
+  "devDependencies": {
+    "@pca/fixtures": "workspace:*",
+    "@pca/test-support": "workspace:*",
+    "mongodb-memory-server": "^10.1.4"
+  }
+}

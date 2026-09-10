@@ -197,6 +197,18 @@ Test:
 
 AWS-specific adapter tests can be separate and optional in normal local verification.
 
+## 6a. MongoDB in tests
+
+The Mongo adapter is exercised with `mongodb-memory-server` in replica-set
+mode, so multi-document transactions are real. No server is installed and no
+account is needed. The first run downloads the mongod binary (about 66 MB, once,
+cached under the user's home); that download is the only network access in the
+test suite. One replica set starts per test file and each test gets its own
+database, so isolation costs nothing after start-up.
+
+Both the repository contract suite and the golden scenario suite run against
+Mongo in the integration suite, unchanged from the memory and file adapters.
+
 ## 7. Search mocking
 
 If OpenSearch is added:
