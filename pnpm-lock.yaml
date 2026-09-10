@@ -95,6 +95,22 @@ importers:
         specifier: workspace:*
         version: link:../../test-support
 
+  packages/adapters/memory-queue:
+    dependencies:
+      '@pca/application':
+        specifier: workspace:*
+        version: link:../../application
+      '@pca/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+      zod:
+        specifier: ^4.6.1
+        version: 4.6.1
+    devDependencies:
+      '@pca/test-support':
+        specifier: workspace:*
+        version: link:../../test-support
+
   packages/adapters/memory-store:
     dependencies:
       '@pca/application':
@@ -182,6 +198,9 @@ importers:
       '@pca/file-store':
         specifier: workspace:*
         version: link:../adapters/file-store
+      '@pca/memory-queue':
+        specifier: workspace:*
+        version: link:../adapters/memory-queue
       '@pca/memory-store':
         specifier: workspace:*
         version: link:../adapters/memory-store

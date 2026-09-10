@@ -12,6 +12,7 @@
   "dependencies": {
     "@pca/application": "workspace:*",
     "@pca/file-store": "workspace:*",
+    "@pca/memory-queue": "workspace:*",
     "@pca/memory-store": "workspace:*",
     "@pca/mongo-store": "workspace:*",
     "@pca/rule-model": "workspace:*"

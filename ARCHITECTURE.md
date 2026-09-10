@@ -199,6 +199,7 @@ product_agent/
 │   ├── adapters/
 │   │   ├── file-store/      # JSON file repositories (default)
 │   │   ├── memory-store/    # in-memory repositories
+│   │   ├── memory-queue/    # in-process queue (free default)
 │   │   └── mongo-store/     # MongoDB repositories (TASK-102)
 │   ├── fixtures/            # deterministic Demo Movie
 │   └── test-support/        # fakes, builders, shared contract suites
@@ -447,6 +448,19 @@ Requirements:
 - explicit failure state;
 - dead-letter strategy in AWS;
 - local in-memory/fake queue with identical application contract.
+
+Implementation (TASK-401): `QueuePort` in the application layer fixes the
+contract. An idempotency key names a job once (a repeat enqueue is a
+`DUPLICATE`); retry is bounded by `QueuePolicy.maxAttempts` and exhausting it
+is an explicit `FAILED` state plus a dead-letter entry; a handler answers
+`COMPLETED`, `RETRY`, or `FAILED`, and an exception it throws is retried as
+transient; every state change is observable through `onTransition`, which is
+what the job state machine and the WebSocket gateway consume. Timers go
+through a `Scheduler` port so tests can hold time still. `@pca/memory-queue`
+is the free default (`PCA_QUEUE=memory`), single-process, delivering one job
+at a time in enqueue order; `drain()` is its deterministic path and
+`start()`/`stop()` its background one. The SQS adapter (TASK-402) is deferred
+and would run the same contract suite.
 
 ## 11. Realtime/WebSocket
 

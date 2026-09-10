@@ -1,6 +1,7 @@
-import type { ModelPort, RepositorySet } from "@pca/application";
+import type { ModelPort, QueuePolicy, QueuePort, RepositorySet } from "@pca/application";
 import { guardModelPort } from "@pca/application";
 import { createFileStore, defaultDataFilePath } from "@pca/file-store";
+import { createMemoryQueue } from "@pca/memory-queue";
 import { createMemoryStore } from "@pca/memory-store";
 import { connectMongoStore, defaultMongoUri } from "@pca/mongo-store";
 import { createRuleModelAdapter } from "@pca/rule-model";
@@ -115,3 +116,33 @@ export const createModel = (
 
 export const createModelFromEnv = (env: Environment = process.env): ModelPort =>
   createModel(selectModel(env));
+
+export type QueueKind = "memory" | "sqs";
+
+const QUEUE_KINDS: readonly QueueKind[] = ["memory", "sqs"];
+
+/** Reads PCA_QUEUE; the default is the in-process queue, which needs no broker and no account. */
+export const selectQueue = (env: Environment): QueueKind => {
+  const raw = env["PCA_QUEUE"] ?? "memory";
+  if (!QUEUE_KINDS.includes(raw as QueueKind)) {
+    throw new Error(
+      `PCA_QUEUE="${raw}" is not one of ${QUEUE_KINDS.join(", ")}. Unset it for the in-process default.`,
+    );
+  }
+  return raw as QueueKind;
+};
+
+export const createQueue = (
+  kind: QueueKind,
+  options: { readonly policy?: Partial<QueuePolicy> } = {},
+): QueuePort => {
+  switch (kind) {
+    case "memory":
+      return createMemoryQueue(options);
+    case "sqs":
+      throw new Error("PCA_QUEUE=sqs is deferred (paid); see TASKS.md TASK-402. Use memory.");
+  }
+};
+
+export const createQueueFromEnv = (env: Environment = process.env): QueuePort =>
+  createQueue(selectQueue(env));

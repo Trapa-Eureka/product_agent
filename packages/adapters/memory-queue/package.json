@@ -1,0 +1,20 @@
+{
+  "name": "@pca/memory-queue",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "In-process queue adapter: bounded retry, idempotent enqueue, explicit terminal failure (TASK-401)",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@pca/application": "workspace:*",
+    "@pca/contracts": "workspace:*",
+    "zod": "^4.6.1"
+  },
+  "devDependencies": {
+    "@pca/test-support": "workspace:*"
+  }
+}

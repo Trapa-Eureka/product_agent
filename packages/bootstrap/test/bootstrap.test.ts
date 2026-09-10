@@ -5,7 +5,14 @@ import { describe, expect, it } from "vitest";
 
 import { createDemoMovie } from "@pca/fixtures";
 
-import { createModel, createRepositories, selectModel, selectStorage } from "../src";
+import {
+  createModel,
+  createQueue,
+  createRepositories,
+  selectModel,
+  selectQueue,
+  selectStorage,
+} from "../src";
 
 describe("selectStorage", () => {
   it("defaults to the file store, the free zero-install path", () => {
@@ -61,5 +68,27 @@ describe("model selection", () => {
     expect(() => selectModel({ PCA_MODEL: "gpt" })).toThrow(/rules, ollama, bedrock/u);
     expect(() => createModel("bedrock")).toThrow(/deferred/u);
     expect(() => createModel("ollama")).toThrow(/not wired yet/u);
+  });
+});
+
+describe("queue selection", () => {
+  it("defaults to the in-process queue, which needs no broker", async () => {
+    expect(selectQueue({})).toBe("memory");
+    const queue = createQueue("memory");
+    queue.register("ANALYZE_CHANGE", () => Promise.resolve({ kind: "COMPLETED" }));
+    const { record } = await queue.enqueue({
+      type: "ANALYZE_CHANGE",
+      productionId: "PROD-DEMO",
+      correlationId: "corr-1",
+      idempotencyKey: "idem-key-0001",
+      payload: {},
+    });
+    await queue.drain();
+    expect((await queue.getJob(record.job.id))?.state).toBe("COMPLETED");
+  });
+
+  it("refuses an unknown queue kind, and names the deferred one honestly", () => {
+    expect(() => selectQueue({ PCA_QUEUE: "rabbit" })).toThrow(/memory, sqs/u);
+    expect(() => createQueue("sqs")).toThrow(/deferred/u);
   });
 });
