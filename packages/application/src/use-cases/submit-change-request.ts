@@ -6,10 +6,10 @@ import type {
   TypedChange,
 } from "@pca/contracts";
 import { typedChangeSchema } from "@pca/contracts";
-import type { ProductionIndex } from "@pca/domain";
 import { indexProduction } from "@pca/domain";
 
 import type { Clock, IdFactory, RepositorySet } from "../ports";
+import { firstMissingReference } from "../references";
 import type { UseCaseResult } from "../result";
 import { fail, succeed } from "../result";
 
@@ -44,61 +44,6 @@ export type SubmitChangeRequestDependencies = {
 export type SubmitChangeRequest = (
   input: SubmitChangeRequestInput,
 ) => Promise<UseCaseResult<ChangeRequest>>;
-
-type Reference = {
-  readonly kind: "cast member" | "location" | "scene" | "shoot day";
-  readonly id: EntityId;
-  readonly exists: boolean;
-  readonly lookupTool: string;
-};
-
-/** Every entity a typed change points at, with whether this production owns it. */
-const referencesOf = (index: ProductionIndex, change: TypedChange): Reference[] => {
-  switch (change.type) {
-    case "CAST_UNAVAILABLE":
-      return [
-        {
-          kind: "cast member",
-          id: change.castId,
-          exists: index.castById.has(change.castId),
-          lookupTool: "find_cast",
-        },
-      ];
-    case "LOCATION_UNAVAILABLE":
-      return [
-        {
-          kind: "location",
-          id: change.locationId,
-          exists: index.locationById.has(change.locationId),
-          lookupTool: "find_location",
-        },
-      ];
-    case "SCENE_REQUIREMENT_CHANGED":
-      return [
-        {
-          kind: "scene",
-          id: change.sceneId,
-          exists: index.sceneById.has(change.sceneId),
-          lookupTool: "get_scene",
-        },
-      ];
-    case "SCHEDULE_CHANGED":
-      return [
-        ...change.sceneIds.map((sceneId): Reference => ({
-          kind: "scene",
-          id: sceneId,
-          exists: index.sceneById.has(sceneId),
-          lookupTool: "get_scene",
-        })),
-        {
-          kind: "shoot day",
-          id: change.toShootDayId,
-          exists: index.shootDayById.has(change.toShootDayId),
-          lookupTool: "get_schedule",
-        },
-      ];
-  }
-};
 
 /** The entity the audit trail should file this change under. */
 const subjectOf = (change: TypedChange): { type: AuditSubjectType; id: EntityId } => {
@@ -158,8 +103,8 @@ export const createSubmitChangeRequest = (
     }
 
     const index = indexProduction(state);
-    const missing = referencesOf(index, change).find((reference) => !reference.exists);
-    if (missing !== undefined) {
+    const missing = firstMissingReference(index, change);
+    if (missing !== null) {
       return fail(
         "ENTITY_NOT_FOUND",
         `No ${missing.kind} ${missing.id} exists in production ${input.productionId}.`,

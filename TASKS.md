@@ -163,12 +163,15 @@ Persist raw/typed change request and correlation ID.
 **Status**  
 Complete. `submitChangeRequest` in `packages/application` validates the typed change, confirms every referenced ID against the production, persists the request with the raw sentence and a correlation ID, and appends one audit event. `Clock` and `IdFactory` ports make the written records exactly assertable. 15 unit tests.
 
-## TASK-104 Dependency impact engine
+## TASK-104 Dependency impact engine — DONE
 
 Implement deterministic impact traversal.
 
 **Acceptance**
 Golden scenario impact sets are exact.
+
+**Status**  
+Complete. `analyzeImpact` in `packages/domain/src/impact` walks all four change types and returns impacts, conflicts, and affected IDs in canonical order. GOLDEN-1/2/3 are asserted as exact arrays against the Demo Movie, with the WHY text pinned. `analyzeChangeImpact` in `packages/application` wraps it as a read that returns the production version alongside. Reason codes are tabulated in `DOMAIN.md` §5.
 
 ## TASK-105 Candidate schedule generator
 

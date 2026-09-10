@@ -116,6 +116,13 @@ importers:
       '@pca/contracts':
         specifier: workspace:*
         version: link:../contracts
+    devDependencies:
+      '@pca/fixtures':
+        specifier: workspace:*
+        version: link:../fixtures
+      '@pca/test-support':
+        specifier: workspace:*
+        version: link:../test-support
 
   packages/fixtures:
     dependencies:

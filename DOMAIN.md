@@ -322,6 +322,41 @@ Preparation task
 Call-sheet impact
 ```
 
+### Reach
+
+Only entities the change actually reaches are reported. A scene that needs a
+cast member but shoots on a day outside their unavailability window is
+untouched and does not appear. Done tasks are skipped; open ones may now point
+at a stale plan. The subject of a change (the cast member who became
+unavailable, the location that closed) is the cause and is not listed as an
+effect. The golden scenarios assert exact sets: an over-eager list teaches a
+coordinator to skim, and a short one ships a broken day.
+
+### Reason codes
+
+Every impact carries one of a closed set of reason codes. The "WHY" a
+coordinator reads is derived from the code and the data behind it, so an
+explanation can never claim something the engine did not find.
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `SCENE_REQUIRES_UNAVAILABLE_CAST` | BLOCKING | A scheduled scene needs a cast member who is unavailable that day. |
+| `SCENE_AT_UNAVAILABLE_LOCATION` | BLOCKING | A scheduled scene shoots at a location that is unavailable that day. |
+| `CAST_REQUIRED_ON_TARGET_DAY` | WARNING or BLOCKING | A move needs this cast member on the target day; blocking if they are unavailable. |
+| `LOCATION_REQUIRED_ON_TARGET_DAY` | WARNING or BLOCKING | A move needs this location on the target day; blocking if unavailable. |
+| `SHOOT_DAY_CONTAINS_AFFECTED_SCENE` | WARNING | The day holds, loses, or gains an affected scene. |
+| `CALL_SHEET_DERIVED_FROM_AFFECTED_SHOOT_DAY` | WARNING | The call sheet describes a day that is changing and must be regenerated. |
+| `CAST_ATTACHED_TO_AFFECTED_SCENE` | INFO | Another cast member on an affected scene, whose schedule a move touches. |
+| `LOCATION_ATTACHED_TO_AFFECTED_SCENE` | INFO | The location of an affected scene, which a move must keep available. |
+| `TASK_LINKED_TO_AFFECTED_ENTITY` | INFO | An open task attached to an affected scene, day, call sheet, or requirement. |
+| `SCENE_REQUIREMENT_ADDED` | INFO | The scene gains a requirement it did not have. |
+| `SCENE_REQUIREMENT_ALREADY_PRESENT` | INFO | An equivalent requirement already exists; nothing to add. |
+| `SCENE_RESCHEDULED` | INFO | The scene moves to another day. |
+
+Impacts are returned in a canonical order: severity, then entity kind, then
+ID. Traversal order is an implementation detail; the order a coordinator reads
+is not, and a stable order is what lets a golden test assert the exact array.
+
 ## 6. Deterministic vs AI-owned behavior
 
 ### Deterministic
