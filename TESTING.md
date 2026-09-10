@@ -101,6 +101,17 @@ Test:
 - approval/application flow;
 - audit creation.
 
+Implementation (TASK-801): `FileStore.resetProduction`'s own tests live here
+(real filesystem, `packages/adapters/file-store/test/file-store.integration.test.ts`)
+— seed a production plus one change request/proposal/approval/audit
+event/idempotency record, call it again, and check the production's state
+came back fresh while every one of those is gone; a second test checks
+another production's records survive untouched. `resetDemoMovie`
+(`@pca/bootstrap`) — the environment-wired, `PCA_STORAGE`-checked entry
+point `scripts/seed.ts` calls — is tested in the unit suite alongside the
+rest of `packages/bootstrap`'s selection functions, the same place its
+existing file-store tests already run real (temp-directory) file I/O.
+
 ### MCP contract tests
 Test every tool schema and safety boundary.
 

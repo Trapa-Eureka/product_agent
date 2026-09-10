@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createDemoMovie } from "@pca/fixtures";
+import { DEMO_MOVIE_IDS, createDemoMovie } from "@pca/fixtures";
 import { describeRepositoryContract } from "@pca/test-support";
 
 import { createFileStore } from "../src";
@@ -125,5 +125,102 @@ describe("file store specifics", () => {
 
     expect((await store.productions.loadState("PROD-DEMO"))?.scenes).toHaveLength(4);
     expect(await readdir(join(filePath, ".."))).toEqual(["data.json"]);
+  });
+
+  describe("resetProduction (TASK-801)", () => {
+    const DEMO = DEMO_MOVIE_IDS.production;
+    const OTHER = "PROD-OTHER";
+
+    it("restores the production's own state and clears its stale records", async () => {
+      const filePath = await temporaryFile();
+      const store = createFileStore({ filePath });
+      await store.productions.save(createDemoMovie());
+      await store.changeRequests.save({
+        id: "CR-001",
+        productionId: DEMO,
+        type: "CAST_UNAVAILABLE",
+        rawText: "Sarah cannot shoot Friday.",
+        payload: {
+          type: "CAST_UNAVAILABLE",
+          castId: DEMO_MOVIE_IDS.cast.sarah,
+          unavailable: { start: "2026-09-18", end: "2026-09-18" },
+        },
+        correlationId: "corr-001",
+        createdBy: "coordinator@example.test",
+        createdAt: "2026-09-10T11:03:00.000Z",
+      });
+      await store.proposals.save({
+        id: "P-104",
+        productionId: DEMO,
+        changeRequestId: "CR-001",
+        baseProductionVersion: 1,
+        operations: [
+          {
+            type: "MOVE_SCENES",
+            sceneIds: [DEMO_MOVIE_IDS.scenes.s07],
+            fromShootDayId: DEMO_MOVIE_IDS.shootDays.friday,
+            toShootDayId: DEMO_MOVIE_IDS.shootDays.monday,
+          },
+        ],
+        impacts: [],
+        conflicts: [],
+        warnings: [],
+        validationStatus: "VALID",
+        status: "AWAITING_APPROVAL",
+        digest: "a".repeat(64),
+        summary: "Move Scene 07 to Monday.",
+        createdAt: "2026-09-10T11:04:00.000Z",
+      });
+      await store.approvals.save({
+        id: "A-77",
+        productionId: DEMO,
+        proposalId: "P-104",
+        proposalDigest: "a".repeat(64),
+        productionVersion: 1,
+        approvedBy: "coordinator@example.test",
+        decision: "APPROVE",
+        createdAt: "2026-09-10T11:05:00.000Z",
+      });
+      await store.auditEvents.append({
+        id: "AE-1",
+        productionId: DEMO,
+        actorType: "USER",
+        action: "CHANGE_REQUEST_SUBMITTED",
+        createdAt: "2026-09-10T11:03:00.000Z",
+      });
+      await store.idempotency.save(DEMO, {
+        key: "apply:P-104:aaaaaaaaaaaaaaaa",
+        proposalId: "P-104",
+        proposalDigest: "a".repeat(64),
+        productionVersionAfter: 2,
+        affectedEntityIds: ["S07", "S12"],
+      });
+
+      await store.resetProduction(createDemoMovie());
+
+      expect((await store.productions.loadState(DEMO))?.scenes).toHaveLength(4);
+      expect(await store.changeRequests.findById(DEMO, "CR-001")).toBeNull();
+      expect(await store.proposals.findById(DEMO, "P-104")).toBeNull();
+      expect(await store.approvals.findById(DEMO, "A-77")).toBeNull();
+      expect(await store.auditEvents.list(DEMO)).toEqual([]);
+      expect(await store.idempotency.find(DEMO, "apply:P-104:aaaaaaaaaaaaaaaa")).toBeNull();
+    });
+
+    it("leaves another production's records untouched", async () => {
+      const filePath = await temporaryFile();
+      const store = createFileStore({ filePath });
+      await store.productions.save(createDemoMovie());
+      await store.auditEvents.append({
+        id: "AE-OTHER",
+        productionId: OTHER,
+        actorType: "SYSTEM",
+        action: "CHANGE_REQUEST_SUBMITTED",
+        createdAt: "2026-09-10T11:03:00.000Z",
+      });
+
+      await store.resetProduction(createDemoMovie());
+
+      expect(await store.auditEvents.list(OTHER)).toHaveLength(1);
+    });
   });
 });

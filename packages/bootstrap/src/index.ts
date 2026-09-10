@@ -6,7 +6,9 @@ import type {
   RepositorySet,
 } from "@pca/application";
 import { guardModelPort, guardRepositories } from "@pca/application";
+import type { EntityId } from "@pca/contracts";
 import { createFileStore, defaultDataFilePath } from "@pca/file-store";
+import { createDemoMovie } from "@pca/fixtures";
 import { createMemoryJobRunRepository, createMemoryQueue } from "@pca/memory-queue";
 import { createMemoryStore } from "@pca/memory-store";
 import { connectMongoStore, defaultMongoUri } from "@pca/mongo-store";
@@ -108,6 +110,40 @@ export const createRepositories = async (selection: StorageSelection): Promise<R
 
 export const createRepositoriesFromEnv = (env: Environment = process.env): Promise<Repositories> =>
   createRepositories(selectStorage(env));
+
+export type ResetDemoMovieResult = {
+  readonly filePath: string;
+  readonly productionId: EntityId;
+};
+
+/**
+ * TASK-801's seed/reset command: one call restores the Demo Movie fixture,
+ * reusable by TASK-806's future `seed` CLI subcommand exactly as it is here.
+ *
+ * File-store only, deliberately: `FileStore.resetProduction` is the only
+ * adapter that clears a production's stale change requests, proposals,
+ * approvals, audit events, and idempotency records along with its state
+ * (`productions.save` alone never touches those — a demo "restored" while
+ * still carrying a previous run's proposals and audit trail would not be
+ * restored, just contaminated), and the memory store needs no reset since
+ * nothing survives past the process anyway. Any other `PCA_STORAGE` refuses
+ * loudly rather than silently doing a lesser reset it cannot really
+ * support.
+ */
+export const resetDemoMovie = async (
+  env: Environment = process.env,
+): Promise<ResetDemoMovieResult> => {
+  const selection = selectStorage(env);
+  if (selection.kind !== "file") {
+    throw new Error(
+      `The seed/reset command only resets the file store. PCA_STORAGE="${selection.kind}" is not "file" (or unset).`,
+    );
+  }
+  const store = createFileStore({ filePath: selection.filePath });
+  const state = createDemoMovie();
+  await store.resetProduction(state);
+  return { filePath: selection.filePath, productionId: state.production.id };
+};
 
 export type ModelKind = "rules" | "ollama" | "bedrock";
 

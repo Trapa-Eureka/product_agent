@@ -10,6 +10,7 @@ import {
   createModel,
   createQueue,
   createRepositories,
+  resetDemoMovie,
   selectModel,
   selectQueue,
   selectStorage,
@@ -56,6 +57,46 @@ describe("createRepositories", () => {
       "Demo Movie",
     );
     await close();
+  });
+});
+
+describe("resetDemoMovie (TASK-801)", () => {
+  it("restores the Demo Movie fixture into the file store the environment names", async () => {
+    const filePath = join(await mkdtemp(join(tmpdir(), "pca-bootstrap-")), "data.json");
+    const env = { PCA_STORAGE: "file", PCA_DATA_FILE: filePath };
+
+    const result = await resetDemoMovie(env);
+    expect(result).toEqual({ filePath, productionId: "PROD-DEMO" });
+
+    const { repositories, close } = await createRepositories({ kind: "file", filePath });
+    expect((await repositories.productions.loadState("PROD-DEMO"))?.scenes).toHaveLength(4);
+    await close();
+  });
+
+  it("clears a previous run's stale audit trail rather than layering a new one on top", async () => {
+    const filePath = join(await mkdtemp(join(tmpdir(), "pca-bootstrap-")), "data.json");
+    const env = { PCA_STORAGE: "file", PCA_DATA_FILE: filePath };
+
+    const { repositories, close } = await createRepositories({ kind: "file", filePath });
+    await repositories.productions.save(createDemoMovie());
+    await repositories.auditEvents.append({
+      id: "AE-STALE",
+      productionId: "PROD-DEMO",
+      actorType: "SYSTEM",
+      action: "CHANGE_REQUEST_SUBMITTED",
+      createdAt: "2026-09-01T00:00:00.000Z",
+    });
+    await close();
+
+    await resetDemoMovie(env);
+
+    const reopened = await createRepositories({ kind: "file", filePath });
+    expect(await reopened.repositories.auditEvents.list("PROD-DEMO")).toEqual([]);
+    await reopened.close();
+  });
+
+  it("refuses for any storage kind other than the file store", async () => {
+    await expect(resetDemoMovie({ PCA_STORAGE: "memory" })).rejects.toThrow(/file store/u);
   });
 });
 

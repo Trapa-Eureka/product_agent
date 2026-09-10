@@ -566,9 +566,12 @@ Choose cost-conscious runtime and document trade-offs before provisioning.
 
 # P8 — Portfolio Polish
 
-## TASK-801 Seed/reset command
+## TASK-801 Seed/reset command — DONE
 
 One command restores Demo Movie.
+
+**Status**  
+Complete. `pnpm run seed` (`scripts/seed.ts`) restores the Demo Movie fixture into the file store. `productions.save` (every adapter's ordinary seed/reset path) only ever touches a production's own entities, so a new `FileStore.resetProduction` (`packages/adapters/file-store`, file-store-only — the memory store is thrown away with the process, and Mongo is the portfolio target, not what this free-default command exists for) also clears every change request, proposal, approval, audit event, and idempotency record belonging to the production: a "restored" demo still carrying a previous run's stale proposals and audit trail would not be restored, just contaminated. `resetDemoMovie` (`@pca/bootstrap`) wires it to `PCA_STORAGE`/`PCA_DATA_FILE` and refuses loudly for any storage kind but `file`; it is exactly the function TASK-806's future `seed` CLI subcommand will call. 5 new tests (2 file-store integration, 3 bootstrap unit); `pnpm verify` passes.
 
 ## TASK-802 Architecture diagram
 
