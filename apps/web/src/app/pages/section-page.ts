@@ -3,13 +3,13 @@ import { ActivatedRoute } from "@angular/router";
 import { toSignal } from "@angular/core/rxjs-interop";
 import { map } from "rxjs";
 
-/** A nav destination whose view lands in a later task; it says so instead of showing nothing. */
+/** A nav destination outside this MVP's scope; it says so instead of showing nothing. */
 @Component({
   selector: "pca-section-page",
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <h1>{{ section() }}</h1>
-    <p class="pending">This view lands with {{ lands() }}.</p>
+    <p class="pending">This view lands in {{ lands() }}.</p>
   `,
   styles: `
     h1 {

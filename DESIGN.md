@@ -174,6 +174,16 @@ Use:
 - `Reject`
 - `Approve & Apply`
 
+Implementation (TASK-507): the production nav's Schedule entry (§2) shows
+before/after simply by always rendering the schedule the server currently
+has — approve a change and come back here, and the "after" is whatever
+changed. `get_schedule` only names each shoot day's scenes by ID, which is
+opaque (never assumed to encode anything), so `SchedulePage` resolves every
+one through `get_scene` before rendering: one shoot day per section,
+earliest first, each scene labelled by number, title, location, and
+required cast. `buildScheduleRows` (`apps/web`) is the pure function behind
+it; the component only fetches and lays it out.
+
 ## 5. Approval
 
 Before a consequential write, show a final confirmation containing:
@@ -266,6 +276,17 @@ The audit actions the agent loop writes, in order: `CHANGE_REQUEST_SUBMITTED`
 conflict count), `PROPOSAL_CREATED` (agent); then `PROPOSAL_APPROVED` or
 `PROPOSAL_REJECTED` (user), `PROPOSAL_APPLIED` and `PROPOSAL_VERIFIED`
 (system). All share the request's correlation ID.
+
+Implementation (TASK-508): `describeAuditEvent` (`apps/web`) turns each
+`AuditEvent` into exactly one of the lines above, reading only its `action`
+and structured `metadata` — never a model's own words, so there is nothing
+here that could be chain-of-thought. `AuditPage` fetches through the
+existing `listAudit` route (TASK-110), which answers newest first (the
+right order for "what just happened"), then reverses it: this view's job is
+the story in the order it happened. Each line's time is formatted in the
+production's own timezone, matching the header. An action outside this
+fixed vocabulary — none exists in the codebase today — still renders a
+humanized, non-blank line rather than nothing.
 
 ## 8. Accessibility
 

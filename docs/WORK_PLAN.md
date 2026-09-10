@@ -91,7 +91,7 @@ for free. Only P7 infrastructure and live Bedrock/SQS connections are deferred.
 37. TASK-504 Proposal comparison — **done**. The card `runChangeAgent` already built, plus ranked/rejected candidates, ride on the `JobRun` the same way ambiguity options do; no new REST route.
 38. TASK-505 Approval flow (Reject / Approve & Apply with final confirmation) — **done**. Reject completes the job it came from; Approve & Apply applies with the version the proposal was actually built against, behind a confirmation gate.
 39. TASK-506 Realtime progress timeline — **done**. The Progress panel now renders DESIGN.md §6's ✓/●/○ timeline for the tracked job, derived purely from its `history`; a failed run shows only the stage that failed and its message.
-40. TASK-507 Schedule before/after view, TASK-508 Audit view.
+40. TASK-507 Schedule before/after view, TASK-508 Audit view — **done**, together. Neither needed new backend surface; the Schedule nav view now resolves and renders the current schedule, and the Audit nav view narrates every audit action as a DESIGN.md §7 sentence, oldest first.
 
 ### Stage 7 — E2E / CI (P6)
 
