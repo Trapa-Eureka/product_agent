@@ -11,7 +11,7 @@ import {
   withLocationUnavailable,
 } from "@pca/test-support";
 
-import { createRunChangeAgent, type RunChangeAgent } from "../src";
+import { createRunChangeAgent, toProposalSummary, type RunChangeAgent } from "../src";
 
 const DEMO = DEMO_MOVIE_IDS.production;
 const { cast, callSheets, locations, scenes, shootDays } = DEMO_MOVIE_IDS;
@@ -75,8 +75,17 @@ describe("runChangeAgent", () => {
       [1, shootDays.tuesday],
       [2, shootDays.monday],
     ]);
-    expect(outcome.explanation).toContain("resolves 2 existing conflicts");
-    expect(outcome.proposal.summary).toBe(outcome.explanation);
+    expect(outcome.explanation.headline).toBe(
+      "Move Scene 07 and Scene 12 from Fri Sep 18 → Tue Sep 22",
+    );
+    expect(outcome.explanation.effects.map((effect) => effect.text)).toContain(
+      "resolves Sarah conflict on Scene 07 and Scene 12",
+    );
+    expect(outcome.explanation.narrative).toContain("resolves 2 existing conflicts");
+    expect(outcome.proposal.summary).toBe(toProposalSummary(outcome.explanation));
+    expect(outcome.proposal.summary).toContain(
+      "\nOperations\n- record Sarah unavailable Fri Sep 18",
+    );
     await unchanged();
   });
 
@@ -255,6 +264,8 @@ describe("runChangeAgent", () => {
     if (!result.ok || result.value.kind !== "PROPOSED") throw new Error("expected a proposal");
     expect(result.value.ranked[0]?.reason).toContain("did not answer");
     expect(result.value.proposal.operations[1]).toMatchObject({ toShootDayId: shootDays.monday });
-    expect(result.value.explanation).toBe("4 operations proposed.");
+    expect(result.value.explanation.narrative).toBeUndefined();
+    expect(result.value.explanation.operations).toHaveLength(7);
+    expect(result.value.proposal.summary).toMatch(/^Move Scene 07 and Scene 12 from Fri Sep 18/);
   });
 });

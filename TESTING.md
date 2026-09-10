@@ -16,7 +16,9 @@ Fast tests for:
 - candidate generation;
 - proposal validation;
 - proposal digest/version rules;
-- idempotency helpers.
+- idempotency helpers;
+- explanation cards (DESIGN.md §3 and §4), pinned exactly for the golden
+  scenarios so a wording change is a deliberate act.
 
 ### Integration tests
 Test:

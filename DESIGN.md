@@ -75,6 +75,11 @@ Scene 12 requires Sarah and is scheduled Sep 18.
 
 The `WHY` explanation should come from deterministic reason codes/data, optionally verbalized by AI.
 
+Implementation: `describeImpact` in `packages/application` builds this panel
+from the impact report and the snapshot (a count per blocking reason, affected
+entities by kind, the engine's reasons), and `renderImpactExplanation` renders
+this text form. Both are pure functions of data.
+
 ## 4. Proposal comparison
 
 A proposal must show operations before approval.
@@ -101,6 +106,24 @@ Operations
 ```
 
 Never use a vague button such as `Fix it`.
+
+Implementation (TASK-306): `describeProposal` in `packages/application` builds
+this card from the snapshot, the operations, and the simulation findings:
+
+- the headline names the remedy (a move, a requirement) or, failing that, the
+  recorded fact;
+- `+` effects are resolved conflicts (attributed to the person or place, with
+  the scenes), the target day's available location, and recorded facts;
+- `!` effects are conflicts that remain, cast required on the target day,
+  other engine warnings, skipped operations, call sheets to regenerate,
+  requirements to have ready, and new tasks;
+- operations are listed one concrete step per line.
+
+The model may add a `narrative` paragraph; it cannot add an effect or an
+operation. `renderProposalExplanation` produces the block above, and its
+rendered form is the proposal's `summary`, so the UI, the REST API, and an MCP
+client all show the same account. The structured shape is the
+`proposalExplanationSchema` contract.
 
 Use:
 - `Reject`

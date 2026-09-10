@@ -381,7 +381,10 @@ interpret
 
 No write occurs here before approval.
 
-## TASK-306 Explanation layer
+## TASK-306 Explanation layer — DONE
+
+**Status**  
+Complete. `describeProposal` / `renderProposalExplanation` / `toProposalSummary` and `describeImpact` / `renderImpactExplanation` in `packages/application/src/explanation.ts`, with contracts `proposalExplanationSchema` and `impactExplanationSchema`. The agent's proposal `summary` is now the rendered DESIGN.md §4 card; the model's prose is an optional narrative. 20 tests pin the golden cards exactly.
 
 Produce concise user-facing explanation from structured deterministic results.
 

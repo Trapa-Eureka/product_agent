@@ -96,6 +96,10 @@ A proposal contains:
 - production-state version;
 - human-readable explanation.
 
+The explanation is assembled from the deterministic results (operations,
+impacts, conflicts, and the production snapshot) in the DESIGN.md §4 form. A
+model may add prose on top; it cannot add an effect or an operation.
+
 ### FR-6 Approval
 
 Consequential writes require explicit human approval.
