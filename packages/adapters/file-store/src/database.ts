@@ -26,6 +26,7 @@ const idempotencyRecordSchema = z.strictObject({
   proposalId: entityIdSchema,
   proposalDigest: proposalDigestSchema,
   productionVersionAfter: productionVersionSchema,
+  affectedEntityIds: z.array(entityIdSchema),
 });
 
 /** Bumped only when the layout changes in a way an older file cannot satisfy. */

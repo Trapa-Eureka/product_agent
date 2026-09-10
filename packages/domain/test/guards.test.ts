@@ -259,6 +259,7 @@ describe("INV-8 idempotency", () => {
         proposalId: proposal.id,
         proposalDigest: proposal.digest,
         productionVersionAfter: 13,
+        affectedEntityIds: [],
       },
     });
 
@@ -277,6 +278,7 @@ describe("INV-8 idempotency", () => {
         proposalId: "P-999",
         proposalDigest: "d".repeat(64),
         productionVersionAfter: 13,
+        affectedEntityIds: [],
       },
     });
 
@@ -297,6 +299,7 @@ describe("INV-8 idempotency", () => {
         proposalId: proposal.id,
         proposalDigest: "e".repeat(64),
         productionVersionAfter: 13,
+        affectedEntityIds: [],
       },
     });
 

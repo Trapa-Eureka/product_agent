@@ -71,6 +71,12 @@ export const blockedDatesWithin = (
   to: LocalDate,
 ): LocalDate[] => eachDateBetween(from, to).filter((date) => isBlockedOn(windows, date));
 
+/** True when the existing windows already block every day of the range. */
+export const isRangeCovered = (windows: readonly DateRange[], range: DateRange): boolean =>
+  normalizeDateRanges(windows).some(
+    (window) => window.start <= range.start && range.end <= window.end,
+  );
+
 /** Merges overlapping or adjacent windows so availability data stays comparable. */
 export const normalizeDateRanges = (windows: readonly DateRange[]): DateRange[] => {
   const sorted = [...windows].sort((left, right) =>

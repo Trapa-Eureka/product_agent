@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requirementTypeSchema, taskRelatedEntityTypeSchema } from "./entities";
 import { conflictSchema, impactSchema } from "./impact";
 import {
+  dateRangeSchema,
   entityIdSchema,
   explanationSchema,
   isoDateTimeSchema,
@@ -45,12 +46,37 @@ export const markCallSheetStaleOperationSchema = z.strictObject({
   callSheetId: entityIdSchema,
 });
 
+/**
+ * Records the fact behind an availability change on the entity itself, so the
+ * production remembers it after the remedy is applied. Without this, "Sarah
+ * cannot shoot Friday" would move her scenes and then forget why.
+ */
+export const recordCastUnavailabilityOperationSchema = z.strictObject({
+  type: z.literal("RECORD_CAST_UNAVAILABILITY"),
+  castId: entityIdSchema,
+  unavailable: dateRangeSchema,
+});
+
+export const recordLocationUnavailabilityOperationSchema = z.strictObject({
+  type: z.literal("RECORD_LOCATION_UNAVAILABILITY"),
+  locationId: entityIdSchema,
+  unavailable: dateRangeSchema,
+});
+
 export const proposedOperationSchema = z.discriminatedUnion("type", [
+  recordCastUnavailabilityOperationSchema,
+  recordLocationUnavailabilityOperationSchema,
   moveScenesOperationSchema,
   addSceneRequirementOperationSchema,
   createPreparationTaskOperationSchema,
   markCallSheetStaleOperationSchema,
 ]);
+
+/** Operations that state a fact about the world rather than change the plan. */
+export const FACT_OPERATION_TYPES = [
+  "RECORD_CAST_UNAVAILABILITY",
+  "RECORD_LOCATION_UNAVAILABILITY",
+] as const;
 
 export const validationStatusSchema = z.enum(["VALID", "INVALID"]);
 
@@ -84,6 +110,12 @@ export const proposalSchema = z.strictObject({
   createdAt: isoDateTimeSchema,
 });
 
+export type RecordCastUnavailabilityOperation = z.infer<
+  typeof recordCastUnavailabilityOperationSchema
+>;
+export type RecordLocationUnavailabilityOperation = z.infer<
+  typeof recordLocationUnavailabilityOperationSchema
+>;
 export type MoveScenesOperation = z.infer<typeof moveScenesOperationSchema>;
 export type AddSceneRequirementOperation = z.infer<typeof addSceneRequirementOperationSchema>;
 export type CreatePreparationTaskOperation = z.infer<typeof createPreparationTaskOperationSchema>;

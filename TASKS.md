@@ -197,12 +197,15 @@ Implement proposal digest, approval binding, stale-version checks.
 **Status**  
 Complete. `createProposal` seals operations into a persisted proposal with its simulation verdict and digest (invalid ones become a `DRAFT` that shows why). `decideProposal` writes the approval record bound to digest and base version, re-simulating once more before approving; rejection is always allowed; a decision is final. Both audit. A test proves the record satisfies the domain's `checkWriteAllowed` gate. 18 tests.
 
-**Open decision surfaced**  
-No operation records a cast member's or location's unavailability on the entity itself; the window lives only on the change request. See `docs/WORK_PLAN.md` §6 before TASK-108.
+**Decision surfaced and settled in TASK-108**  
+Unavailability is now recorded on the entity by two dedicated operations; see `docs/WORK_PLAN.md` §6.
 
-## TASK-108 Apply proposal
+## TASK-108 Apply proposal — DONE
 
 Implement high-level approved proposal execution with idempotency and version increment.
+
+**Status**  
+Complete. `applyApprovedProposal` runs the fixed check order (idempotency, then the INV-5/INV-6 gate, then apply to a copy, then atomic commit, then bookkeeping) and writes only the records that changed. The operation allow-list gained `RECORD_CAST_UNAVAILABILITY` and `RECORD_LOCATION_UNAVAILABILITY` by the user's decision, so an applied availability change is remembered by the production. GOLDEN-1 and GOLDEN-3 run end to end through intake, proposal, approval, and apply.
 
 ## TASK-109 Verification
 

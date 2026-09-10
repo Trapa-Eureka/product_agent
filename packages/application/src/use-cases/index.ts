@@ -5,3 +5,4 @@ export * from "./simulate-proposal";
 export * from "./validate-proposal";
 export * from "./create-proposal";
 export * from "./decide-proposal";
+export * from "./apply-approved-proposal";

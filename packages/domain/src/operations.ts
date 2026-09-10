@@ -1,5 +1,6 @@
 import type { ProposedOperation } from "@pca/contracts";
 
+import { isRangeCovered } from "./dates";
 import { callSheetsFor, requirementsFor, tasksFor } from "./production-state";
 import type { ProductionIndex } from "./production-state";
 import { findEquivalentRequirement, normalizeRequirementName } from "./requirements";
@@ -18,6 +19,16 @@ export const isOperationAlreadyApplied = (
   operation: ProposedOperation,
 ): boolean => {
   switch (operation.type) {
+    case "RECORD_CAST_UNAVAILABILITY": {
+      const cast = index.castById.get(operation.castId);
+      return cast !== undefined && isRangeCovered(cast.unavailable, operation.unavailable);
+    }
+
+    case "RECORD_LOCATION_UNAVAILABILITY": {
+      const location = index.locationById.get(operation.locationId);
+      return location !== undefined && isRangeCovered(location.unavailable, operation.unavailable);
+    }
+
     case "MOVE_SCENES": {
       const target = index.shootDayById.get(operation.toShootDayId);
       if (target === undefined) {

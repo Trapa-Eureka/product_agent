@@ -192,6 +192,31 @@ export const describeRepositoryContract = (
         expect(after?.shootDays).toHaveLength(3);
       });
 
+      it("updates a cast member's and a location's availability", async () => {
+        const before = await repositories.productions.loadState(DEMO);
+        const sarah = before?.castMembers.find((cast) => cast.id === DEMO_MOVIE_IDS.cast.sarah);
+        const warehouse = before?.locations.find(
+          (location) => location.id === DEMO_MOVIE_IDS.locations.warehouse,
+        );
+
+        await repositories.productions.commit({
+          productionId: DEMO,
+          expectedVersion: 1,
+          castMembers: [{ ...sarah!, unavailable: [{ start: "2026-09-18", end: "2026-09-18" }] }],
+          locations: [{ ...warehouse!, unavailable: [{ start: "2026-09-25", end: "2026-09-25" }] }],
+        });
+
+        const after = await repositories.productions.loadState(DEMO);
+        expect(
+          after?.castMembers.find((cast) => cast.id === DEMO_MOVIE_IDS.cast.sarah)?.unavailable,
+        ).toEqual([{ start: "2026-09-18", end: "2026-09-18" }]);
+        expect(
+          after?.locations.find((location) => location.id === DEMO_MOVIE_IDS.locations.warehouse)
+            ?.unavailable,
+        ).toEqual([{ start: "2026-09-25", end: "2026-09-25" }]);
+        expect(after?.castMembers).toHaveLength(3);
+      });
+
       it("inserts a record that did not exist before", async () => {
         await repositories.productions.commit({
           productionId: DEMO,
@@ -372,6 +397,7 @@ export const describeRepositoryContract = (
         proposalId: "P-104",
         proposalDigest: "a".repeat(64),
         productionVersionAfter: 2,
+        affectedEntityIds: ["S07", "S12"],
       };
 
       it("returns null for a key it has not seen", async () => {

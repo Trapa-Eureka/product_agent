@@ -169,6 +169,8 @@ export class MemoryStore implements RepositorySet {
       );
     }
 
+    assertBelongsToProduction(mutation.productionId, "CAST_MEMBER", mutation.castMembers);
+    assertBelongsToProduction(mutation.productionId, "LOCATION", mutation.locations);
     assertBelongsToProduction(mutation.productionId, "SCENE", mutation.scenes);
     assertBelongsToProduction(mutation.productionId, "REQUIREMENT", mutation.requirements);
     assertBelongsToProduction(mutation.productionId, "SHOOT_DAY", mutation.shootDays);
@@ -191,8 +193,8 @@ export class MemoryStore implements RepositorySet {
         updatedAt: committedAt,
       },
       scenes: upsertById(current.scenes, mutation.scenes),
-      castMembers: [...current.castMembers],
-      locations: [...current.locations],
+      castMembers: upsertById(current.castMembers, mutation.castMembers),
+      locations: upsertById(current.locations, mutation.locations),
       requirements: upsertById(current.requirements, mutation.requirements),
       shootDays: upsertById(current.shootDays, mutation.shootDays),
       callSheets: upsertById(current.callSheets, mutation.callSheets),

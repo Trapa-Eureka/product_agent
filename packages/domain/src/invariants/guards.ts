@@ -233,6 +233,8 @@ export type IdempotencyRecord = {
   readonly proposalId: string;
   readonly proposalDigest: ProposalDigest;
   readonly productionVersionAfter: ProductionVersion;
+  /** What the first run touched, so a replay can answer without re-deriving it. */
+  readonly affectedEntityIds: readonly string[];
 };
 
 export type IdempotencyOutcome =
