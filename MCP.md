@@ -447,6 +447,14 @@ For `apply_approved_proposal`, additionally test:
 - successful application;
 - verification.
 
+A registry-wide suite in `apps/mcp-server/test` walks `MCP_TOOL_CONTRACTS`
+and holds every tool to the same contract against the exact handler set the
+entry point ships: advertised with a description and a strict schema, refuses
+an empty input, refuses an unknown field, refuses a production outside the
+allow-list before running, and leaves the production untouched unless it is the
+one write tool. A tool added to the registry without honouring these fails
+there before it fails in front of an agent.
+
 ## 11. Principle
 
 Give agents **capabilities**, not unrestricted access. A small high-level tool surface is easier to reason about, test, secure, and allow to run autonomously.

@@ -4,13 +4,7 @@ import { randomIdFactory, systemClock } from "@pca/application";
 import { createRepositoriesFromEnv } from "@pca/bootstrap";
 
 import { contextFromEnv } from "./context";
-import {
-  createAnalysisToolHandlers,
-  createProposalToolHandlers,
-  createReadToolHandlers,
-  createVerifyToolHandlers,
-  createWriteToolHandlers,
-} from "./handlers";
+import { createAllToolHandlers } from "./handlers";
 import { stderrJsonLogger } from "./logging";
 import { createProductionChangeServer } from "./server";
 
@@ -28,13 +22,7 @@ const main = async (): Promise<void> => {
 
   // Tool handlers are wired here as they land (analysis, proposal, write, verify follow).
   const { server, registeredTools } = createProductionChangeServer({
-    handlers: {
-      ...createReadToolHandlers({ repositories }),
-      ...createAnalysisToolHandlers({ repositories }),
-      ...createProposalToolHandlers({ repositories, clock: systemClock, ids: randomIdFactory }),
-      ...createWriteToolHandlers({ repositories, clock: systemClock, ids: randomIdFactory }),
-      ...createVerifyToolHandlers({ repositories, clock: systemClock, ids: randomIdFactory }),
-    },
+    handlers: createAllToolHandlers({ repositories, clock: systemClock, ids: randomIdFactory }),
     context,
     logger,
   });

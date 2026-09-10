@@ -242,6 +242,13 @@ At minimum:
 - arbitrary tool/operation name rejected;
 - prompt text cannot bypass authorization.
 
+These live in the registry-wide contract suite in `apps/mcp-server/test`,
+alongside the TASK-207 sweeps, so the security boundary is judged against the
+server that ships. "Prompt text cannot bypass authorization" is tested
+literally: an instruction-shaped query is just a search with no candidates, and
+an ID with a smuggled second production fails the ID pattern before any handler
+runs.
+
 ## 10. Static feedback
 
 Run:

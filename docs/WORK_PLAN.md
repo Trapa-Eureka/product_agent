@@ -63,7 +63,7 @@ for free. Only P7 infrastructure and live Bedrock/SQS connections are deferred.
 18. TASK-204 Proposal tools — **done**.
 19. TASK-205 `apply_approved_proposal` — **done**. No approve tool exists; every refusal proves nothing changed.
 20. TASK-206 `verify_applied_proposal` — **done**. All seventeen tools now wired.
-21. TASK-207 + TASK-603 contract and security suites (`MCP.md` §10, `TESTING.md` §9).
+21. TASK-207 + TASK-603 contract and security suites — **done**. Registry-wide sweeps against the shipped handler set; security boundary tested literally.
 
 ### Stage 4 — AI orchestration (P3), free scope
 
