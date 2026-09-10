@@ -159,6 +159,15 @@ Expected:
 
 These tests are the project's most important acceptance signal.
 
+They live in `packages/test-support` as `describeGoldenScenarios` and run
+unchanged against every repository adapter: the memory store in the unit suite
+and the file store in the integration suite. Each bullet above is one named
+test, in its own words, so a regression names the promise it broke. The
+pipeline runs once per scenario; the assertions read the artefacts of each
+stage rather than re-running it, so a failure in one bullet does not hide the
+others. Every scenario also checks that the audit trail reads submitted,
+proposed, approved, applied, verified, with no chain-of-thought in it.
+
 ## 5. Model mocking
 
 Normal automated tests must not call Bedrock.

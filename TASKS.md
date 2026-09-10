@@ -416,9 +416,12 @@ Structured action timeline without chain-of-thought.
 
 # P6 — Testing / CI
 
-## TASK-601 Golden scenario tests
+## TASK-601 Golden scenario tests — DONE
 
 Implement GOLDEN-1/2/3.
+
+**Status**  
+Complete, pulled forward from P6 as the regression baseline for everything after P1. `describeGoldenScenarios` in `packages/test-support` runs the full pipeline (intake, analysis, candidates, simulation, proposal, refused apply, approval, apply, replay, re-simulation, verification) once per scenario and asserts every TESTING.md §4 bullet by name, on both the memory store and the file store.
 
 ## TASK-602 Failure injection
 
