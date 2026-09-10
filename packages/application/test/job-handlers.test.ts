@@ -31,7 +31,7 @@ import {
 } from "../src";
 
 const DEMO = DEMO_MOVIE_IDS.production;
-const { cast } = DEMO_MOVIE_IDS;
+const { cast, shootDays } = DEMO_MOVIE_IDS;
 const { friday } = DEMO_MOVIE_DATES;
 const NOW = "2026-09-10T12:00:00.000Z";
 
@@ -127,6 +127,32 @@ describe("job handlers", () => {
       expect(run.proposalId).toMatch(/^P-/);
       expect(events).toEqual(run.history);
       expect((await queue.listJobs())[0]?.state).toBe("COMPLETED");
+
+      // TASK-504: the proposal card and the candidate comparison land on the run too.
+      expect(run.explanation?.headline).toBe(
+        "Move Scene 07 and Scene 12 from Fri Sep 18 → Tue Sep 22",
+      );
+      expect(run.explanation?.operations.length).toBeGreaterThan(0);
+      expect(
+        run.candidateComparison?.ranked.map((entry) => [entry.rank, entry.shootDayId]),
+      ).toEqual([
+        [1, shootDays.tuesday],
+        [2, shootDays.monday],
+      ]);
+      expect(run.candidateComparison?.rejected).toEqual([
+        {
+          shootDayId: shootDays.friday,
+          date: friday,
+          reasons: ["A moving scene is already scheduled on 2026-09-18."],
+        },
+      ]);
+    });
+
+    it("GOLDEN-3: a requirement change carries no candidate comparison (not a scheduling move)", async () => {
+      const run = await analyzeJob("Scene 18 now needs a red car.");
+      expect(run.stage).toBe("awaiting_approval");
+      expect(run.explanation?.headline).toContain("prop");
+      expect(run.candidateComparison).toBeUndefined();
     });
 
     it("waits at resolving with the question when the sentence is ambiguous, then continues once resolved", async () => {

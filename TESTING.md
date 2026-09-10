@@ -41,6 +41,17 @@ known) and adds `ImpactPanel`'s own spec: BLOCKING/AFFECTED/WHY in the
 server's exact group order, empty groups omitted, no BLOCKING section at all
 when nothing blocks, and a plain message when nothing is affected.
 
+TASK-504 adds `ProposalCard` (headline, `+`/`!` effects each with the right
+tone, operations, an optional narrative) and `CandidateComparisonPanel`
+(the ranked list with the top rank marked chosen, warnings on a candidate,
+a rejected day's reasons, the "Not considered" section omitted when nothing
+was rejected). Because `explanation`/`candidateComparison` ride on the
+`JobRun` rather than a fetch, their tests live at the job-handler and
+stage-machine level: GOLDEN-1 asserts the run carries the exact proposal
+headline and the ranked/rejected shoot days once it reaches
+`awaiting_approval`; GOLDEN-3 asserts a non-scheduling change carries no
+candidate comparison at all.
+
 ### Integration tests
 Test:
 - application use cases + Mongo test database/adaptor;

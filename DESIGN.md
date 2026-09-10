@@ -158,6 +158,18 @@ rendered form is the proposal's `summary`, so the UI, the REST API, and an MCP
 client all show the same account. The structured shape is the
 `proposalExplanationSchema` contract.
 
+Implementation (TASK-504): `runChangeAgent` already builds this structured
+card once, synchronously, when it creates the proposal. Rather than
+recomputing it later against production state that may have moved on, the
+ANALYZE_CHANGE job handler carries it — and, for a scheduling change, the
+ranked and rejected shoot days the candidate generator considered — onto the
+tracked `JobRun` (`explanation`, `candidateComparison`), the same mechanism
+`options` already uses for ambiguity (TASK-502). `ProposalCard` renders the
+headline, `+`/`!` effects, and operations with no logic of its own;
+`CandidateComparisonPanel` renders the ranked list (the chosen day marked)
+and, when something was refused, why. Neither exists for a change that
+never generated candidates.
+
 Use:
 - `Reject`
 - `Approve & Apply`

@@ -162,6 +162,53 @@ describe("jobRunSchema and job payloads", () => {
     ).toBe(false);
   });
 
+  it("carries the proposal card and candidate comparison once awaiting approval (TASK-504)", async () => {
+    const { jobRunSchema } = await import("../src/job");
+    const withProposal = {
+      id: "JOB-1",
+      productionId: "PROD-DEMO",
+      correlationId: "corr-1",
+      type: "ANALYZE_CHANGE",
+      stage: "awaiting_approval",
+      status: "STARTED",
+      proposalId: "P-1",
+      explanation: {
+        headline: "Move Scene 07 and Scene 12 from Fri Sep 18 → Tue Sep 22",
+        effects: [{ tone: "POSITIVE", text: "resolves Sarah conflict" }],
+        operations: ["record Sarah unavailable Fri Sep 18"],
+      },
+      candidateComparison: {
+        ranked: [
+          {
+            shootDayId: "SD-2026-09-22",
+            date: "2026-09-22",
+            sceneIds: ["S07", "S12"],
+            warnings: [],
+            rank: 1,
+            reason: "2026-09-22 has no warnings.",
+          },
+        ],
+        rejected: [
+          {
+            shootDayId: "SD-2026-09-18",
+            date: "2026-09-18",
+            reasons: ["Already scheduled there."],
+          },
+        ],
+      },
+      history: [],
+      createdAt: "2026-09-10T12:00:00.000Z",
+      updatedAt: "2026-09-10T12:00:00.000Z",
+    };
+    expect(jobRunSchema.parse(withProposal)).toEqual(withProposal);
+    expect(
+      jobRunSchema.safeParse({
+        ...withProposal,
+        candidateComparison: { ranked: [], rejected: [] },
+      }).success,
+    ).toBe(false);
+  });
+
   it("every payload names the run it advances", async () => {
     const {
       analyzeChangeJobPayloadSchema,

@@ -175,6 +175,42 @@ describe("events", () => {
     expect(run.createdAt).toBe(NOW);
   });
 
+  it("advancing into awaiting_approval carries the proposal card and candidate comparison (TASK-504)", () => {
+    const explanation = {
+      headline: "Move Scene 07 and Scene 12 from Fri Sep 18 → Tue Sep 22",
+      effects: [
+        { tone: "POSITIVE" as const, text: "resolves Sarah conflict on Scene 07 and Scene 12" },
+      ],
+      operations: ["record Sarah unavailable Fri Sep 18"],
+    };
+    const candidateComparison = {
+      ranked: [
+        {
+          shootDayId: "SD-2026-09-22",
+          date: "2026-09-22",
+          sceneIds: ["S07", "S12"],
+          warnings: [],
+          rank: 1,
+          reason: "2026-09-22 has no warnings.",
+        },
+      ],
+      rejected: [],
+    };
+    const run = walk(["resolving", "analyzing", "simulating", "validating"]);
+    const { run: advanced } = advanceJobRun(run, "awaiting_approval", LATER, {
+      explanation,
+      candidateComparison,
+    });
+    expect(advanced.explanation).toEqual(explanation);
+    expect(advanced.candidateComparison).toEqual(candidateComparison);
+    expect(jobRunSchema.parse(advanced)).toEqual(advanced);
+
+    // Like message/options, they are not cleared by a later transition that omits them.
+    const applied = advanceJobRun(advanced, "applying", LATER).run;
+    expect(applied.explanation).toEqual(explanation);
+    expect(applied.candidateComparison).toEqual(candidateComparison);
+  });
+
   it("failing publishes FAILED against the stage that was running", () => {
     const running = walk([
       "resolving",

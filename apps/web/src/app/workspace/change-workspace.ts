@@ -11,10 +11,12 @@ import type { JobStage } from "@pca/contracts";
 
 import { ProductionStore } from "../state/production.store";
 import { AmbiguityResolution } from "./ambiguity-resolution";
+import { CandidateComparisonPanel } from "./candidate-comparison";
 import { ChangeInput } from "./change-input";
 import { ChangeSubmissionService } from "./change-submission.service";
 import { DetectedChangeCard } from "./detected-change-card";
 import { ImpactPanel } from "./impact-panel";
+import { ProposalCard } from "./proposal-card";
 
 /** `awaiting_approval` → "Awaiting approval"; a plain word, not TASK-506's full timeline. */
 const humanizeStage = (stage: JobStage): string => {
@@ -26,9 +28,9 @@ const humanizeStage = (stage: JobStage): string => {
  * DESIGN.md §2 right column. Each panel is a stated question the UI answers
  * in order (DESIGN.md §1); the components that answer them land in
  * TASK-502 (input, ambiguity resolution, detected change), TASK-503
- * (impact — this task), TASK-504 (proposed plan and warnings), TASK-505
- * (approval), TASK-506 (the full progress timeline). Until a panel has its
- * component it says so, never a fake answer.
+ * (impact), TASK-504 (proposed plan and candidate comparison — this task),
+ * TASK-505 (approval), TASK-506 (the full progress timeline). Until a panel
+ * has its component it says so, never a fake answer.
  *
  * `ChangeSubmissionService` is provided here, one instance per workspace,
  * shared by `ChangeInput` and `AmbiguityResolution` through DI so both act
@@ -40,7 +42,14 @@ const humanizeStage = (stage: JobStage): string => {
   selector: "pca-change-workspace",
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [ChangeSubmissionService],
-  imports: [ChangeInput, AmbiguityResolution, DetectedChangeCard, ImpactPanel],
+  imports: [
+    ChangeInput,
+    AmbiguityResolution,
+    DetectedChangeCard,
+    ImpactPanel,
+    ProposalCard,
+    CandidateComparisonPanel,
+  ],
   template: `
     <section class="workspace" aria-labelledby="ws-title">
       <h1 id="ws-title">Change Workspace</h1>
@@ -79,7 +88,14 @@ const humanizeStage = (stage: JobStage): string => {
       </div>
       <div class="panel" data-panel="plan">
         <h2>What do you recommend?</h2>
-        <p class="pending">Proposal comparison arrives with TASK-504.</p>
+        @if (submission.job()?.explanation; as explanation) {
+          <pca-proposal-card [explanation]="explanation" />
+          @if (submission.job()?.candidateComparison; as comparison) {
+            <pca-candidate-comparison [comparison]="comparison" />
+          }
+        } @else {
+          <p class="pending">Submit a change above to see the recommended plan.</p>
+        }
       </div>
       <div class="panel" data-panel="progress">
         <h2>Progress</h2>
