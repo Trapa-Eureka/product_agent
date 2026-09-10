@@ -573,13 +573,33 @@ One command restores Demo Movie.
 **Status**  
 Complete. `pnpm run seed` (`scripts/seed.ts`) restores the Demo Movie fixture into the file store. `productions.save` (every adapter's ordinary seed/reset path) only ever touches a production's own entities, so a new `FileStore.resetProduction` (`packages/adapters/file-store`, file-store-only — the memory store is thrown away with the process, and Mongo is the portfolio target, not what this free-default command exists for) also clears every change request, proposal, approval, audit event, and idempotency record belonging to the production: a "restored" demo still carrying a previous run's stale proposals and audit trail would not be restored, just contaminated. `resetDemoMovie` (`@pca/bootstrap`) wires it to `PCA_STORAGE`/`PCA_DATA_FILE` and refuses loudly for any storage kind but `file`; it is exactly the function TASK-806's future `seed` CLI subcommand will call. 5 new tests (2 file-store integration, 3 bootstrap unit); `pnpm verify` passes.
 
-## TASK-802 Architecture diagram
+## TASK-802 Architecture diagram — DONE
 
 Create original diagram from `ARCHITECTURE.md`.
 
-## TASK-803 Demo script
+**Status**  
+Complete. `ARCHITECTURE.md` §4's component diagram and §8's change-engine
+pipeline are now Mermaid flowcharts (GitHub/Claude render Mermaid natively,
+so no separate image asset to keep in sync) instead of ASCII art, both
+original and both tied to the actual codebase rather than the aspirational
+target stack: §4 names every adapter each port can select and marks the
+free defaults, and §8 extends the pipeline through the approval diamond and
+`Write`/`Verify` to visualize CLAUDE.md's non-negotiable rule 8 (`READ →
+ANALYZE → SIMULATE → VALIDATE → PROPOSE → APPROVE → WRITE → VERIFY`).
+
+## TASK-803 Demo script — DONE
 
 2–4 minute demo based on `DESIGN.md`.
+
+**Status**  
+Complete. `docs/DEMO_SCRIPT.md` expands DESIGN.md §10's ten-step story into
+a timed, two-part script (GOLDEN-1 as the ~2-minute core, GOLDEN-3 as the
+~45-second quick replay DESIGN.md §10 step 10 calls for) with exact actions
+and talking points per DESIGN.md §1's four questions, an "if asked" appendix
+for interview Q&A, and a recording note that deliberately does not commit to
+a single target day for the reschedule (Monday vs. Tuesday), matching what
+`e2e/golden-1-sarah-unavailable.spec.ts` actually asserts — a demo script
+that contradicted the real system on a live rerun would be worse than none.
 
 ## TASK-804 Performance instrumentation — DONE
 
@@ -588,9 +608,25 @@ Add correlation IDs/timings for model, MCP, DB, and analysis.
 **Status**  
 Complete. Correlation IDs for HTTP/agent job/queue message/MCP call were already contract-enforced and threaded end to end before this task; a proposal and an approval deliberately carry none of their own, tracing back to their originating request through `changeRequestId`/`AuditEvent.correlationId` instead (ARCHITECTURE.md §16 now explains why a redundant field would not add anything), and an MCP call stays server-generated only (accepting a caller-supplied ID from a model is a trust boundary this product does not cross). The real gap — and this task's actual scope — was latency: HTTP and MCP tool call `durationMs` already existed; model calls, database operations, and dependency analysis had neither timing nor a logger to write it to. `Logger`/`LogFields` (`packages/application/src/ports/logging.ts`) is a new shared port, promoted out of `apps/api` and `apps/mcp-server`'s two previously-duplicated logger types (both now alias it). `guardPort`/`guardRepositories` log a `db_call` line per repository call across every adapter for free (they already wrap every method); `guardModelPort` logs `model_call`; `analyzeChangeImpact` logs `dependency_analysis` with the correlation ID it already has. Every real entry point (`apps/api/src/main.ts`, `apps/mcp-server/src/main.ts`, `apps/api/e2e/server.ts`) now passes its logger through, verified for real by grepping a live E2E run's output for all three new event types. One thing this surfaced: `apps/api/src/main.ts` already guarded its model twice (bootstrap, then again inside `createRunChangeAgent`); logging both would have doubled every line, so `main.ts` logs only at the layer actually used, leaving the pre-existing double-guard itself untouched. 16 new tests (13 application unit, 2 bootstrap unit, 1 MCP contract); `pnpm verify` passes.
 
-## TASK-805 README finalization
+## TASK-805 README finalization — DONE
 
 Screenshots, setup, architecture, trade-offs, limitations.
+
+**Status**  
+Complete. Five screenshots (`docs/screenshots/`) captured from a real run —
+`pnpm run seed`, the real API and `ng serve`, driven through GOLDEN-1 in an
+actual browser — show the workspace, impact/plan panels, approval
+confirmation, audit trail, and the post-approval schedule; not mockups.
+README gained a Screenshots section up top, an Architecture section
+summarizing `ARCHITECTURE.md` §4/§8 with a pointer to the new diagrams, a
+Trade-offs section (deterministic-engine-narrow-AI-surface, free-first
+defaults vs. the target stack, GitHub Actions vs. documentation-only GitLab
+CI, file store vs. an embedded database), and a Limitations section (no
+auth beyond the actor header/allow-list, fixed-phrasing model, simple
+candidate generator, no multi-writer concurrency, no OpenSearch/RAG, single
+local file store). Setup instructions were already current from earlier
+tasks and needed no changes. `docs/DEMO_SCRIPT.md` added to the reading
+order.
 
 ## TASK-806 npm publishing — single package, full functionality, zero cost
 

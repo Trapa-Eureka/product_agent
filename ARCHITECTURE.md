@@ -152,36 +152,37 @@ Decision record: `docs/decisions/0001-free-first-adapters.md`.
 
 ## 4. High-level architecture
 
-```text
-Angular Web App
-      │ REST / WebSocket
-      ▼
-Express API / Application Layer
-      │
-      ├──────────────► Change Analysis Domain
-      │                    │
-      │                    └── deterministic rules
-      │
-      ├──────────────► MongoDB repositories
-      │
-      ├──────────────► Job/Queue port ──► SQS adapter
-      │
-      └──────────────► Agent Orchestrator
-                              │
-                              ├── Model port ──► Bedrock adapter
-                              │
-                              └── MCP Client
-                                      │
-                                      ▼
-                                  MCP Server
-                                      │
-                              allow-listed tools
-                                      │
-                                      ▼
-                              Application services
+```mermaid
+flowchart TB
+    UI["Angular Web App"] -- "REST / WebSocket" --> API["Express API<br/>(delivery adapter)"]
+
+    API --> DOMAIN["Change Analysis Domain<br/>deterministic rules"]
+    API --> REPO["Repository port"]
+    API --> QUEUE["Job/Queue port"]
+    API --> AGENT["Agent Orchestrator<br/>(runChangeAgent)"]
+
+    REPO -.-> REPOIMPL["file store (default) / memory store /<br/>Mongo store (deferred, §9)"]
+    QUEUE -.-> QUEUEIMPL["in-process queue (default) /<br/>SQS (deferred, §10)"]
+
+    AGENT --> MODEL["Model port"]
+    MODEL -.-> MODELIMPL["rule-based adapter (default) /<br/>Ollama / Bedrock (deferred, §7)"]
+    AGENT --> MCPCLIENT["MCP Client"]
+
+    MCPCLIENT --> MCPSERVER["MCP Server"]
+    MCPSERVER --> TOOLS["allow-listed tools<br/>(read / analyze / simulate / propose / write)"]
+    TOOLS --> APPSVC["Application services<br/>(same use cases the API calls)"]
+    APPSVC --> REPO
+
+    classDef free fill:#e8f5e9,stroke:#2e7d32,color:#1b1b1b;
+    class REPOIMPL,QUEUEIMPL,MODELIMPL free;
 ```
 
-Important: MCP write tools call application services. They do not bypass domain rules by writing directly to MongoDB.
+Important: MCP write tools call application services, the same ones the REST
+API calls (§6 "REST API"). They do not bypass domain rules by writing
+directly to the store. Dashed boxes name every adapter each port can select;
+the free, no-account default is always listed first, and the paid/deferred
+options (a live Mongo replica set, SQS, Bedrock) are documented but never
+required to run the product (§2 "Free-first constraint").
 
 ## 5. Suggested repository
 
@@ -436,21 +437,27 @@ Bedrock all sit behind the same guard, and the guarantee is tested once.
 
 The change engine is deterministic.
 
-```text
-Typed Change
-   ↓
-Dependency Resolver
-   ↓
-Impact Graph
-   ↓
-Candidate Generator
-   ↓
-Simulator
-   ↓
-Constraint Validator
-   ↓
-Proposal
+```mermaid
+flowchart LR
+    A["Typed Change"] --> B["Dependency<br/>Resolver"]
+    B --> C["Impact<br/>Graph"]
+    C --> D["Candidate<br/>Generator"]
+    D --> E["Simulator"]
+    E --> F["Constraint<br/>Validator"]
+    F --> G(["Proposal"])
+    G -- "human decision" --> H{"Approved?"}
+    H -- "no" --> X(["Rejected"])
+    H -- "yes" --> I["Write"]
+    I --> J["Verify"]
+
+    style G fill:#fff8e1,stroke:#f57f17
+    style H fill:#fff8e1,stroke:#f57f17
 ```
+
+Everything left of the diamond is a read or a record; no production state
+changes until a human decides. This is CLAUDE.md's non-negotiable rule 8,
+`READ → ANALYZE → SIMULATE → VALIDATE → PROPOSE → APPROVE → WRITE → VERIFY`,
+with the boxes above covering `ANALYZE` through `PROPOSE`.
 
 The first MVP candidate generator can be simple and explicit rather than “smart”:
 
