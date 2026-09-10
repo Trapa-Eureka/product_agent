@@ -171,7 +171,24 @@ Input:
 }
 ```
 
-Returns candidate shoot days that pass the MVP availability rules.
+Output:
+```ts
+{
+  productionVersion: number;
+  candidates: { shootDayId: string; date: string; sceneIds: string[]; warnings: string[] }[];
+  rejected: { shootDayId: string; date: string; reasons: string[] }[];
+}
+```
+
+Returns the existing shoot days on which every listed scene could shoot: all
+required cast free and the location free, in date order. Days already holding
+a moving scene, excluded dates, and days that fail availability come back in
+`rejected` with every reason, so "why not Tuesday?" has a data-backed answer.
+Warnings on a candidate flag things that do not invalidate it, such as a cast
+member already booked that day or a published call sheet.
+
+The generator keeps the group together and only considers existing days. There
+is no scoring, capacity model, or splitting; those would be a scheduling solver.
 
 The AI may rank/explain results; it must not fabricate candidates.
 
