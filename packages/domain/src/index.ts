@@ -16,6 +16,7 @@ export * from "./requirements";
 export * from "./digest";
 export * from "./operations";
 export * from "./invariants";
+export * from "./impact";
 
 /** Re-exported so consumers can depend on the domain alone for entity types. */
 export type {

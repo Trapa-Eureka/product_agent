@@ -12,5 +12,9 @@
   "scripts": {},
   "dependencies": {
     "@pca/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@pca/fixtures": "workspace:*",
+    "@pca/test-support": "workspace:*"
   }
 }
