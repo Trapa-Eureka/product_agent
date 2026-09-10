@@ -57,7 +57,7 @@ for free. Only P7 infrastructure and live Bedrock/SQS connections are deferred.
 
 ### Stage 3 — MCP (P2)
 
-15. TASK-201 MCP server foundation (stdio transport, schema validation, context, logging).
+15. TASK-201 MCP server foundation — **done**. Registry-driven registration, strict validation in and out, server-side authorisation, stderr JSON logging; `packages/bootstrap` composition root added.
 16. TASK-202 Nine read tools.
 17. TASK-203 Four analysis tools.
 18. TASK-204 Proposal tools (create/get).

@@ -53,6 +53,32 @@ Write tools additionally require:
 - expected production version;
 - idempotency key.
 
+### Server foundation
+
+`apps/mcp-server` enforces the general requirements above once, for every tool:
+
+- **Registration is from the registry.** A tool is advertised only if
+  `MCP_TOOL_CONTRACTS` defines it and a handler is supplied for it. Its
+  advertised input and output JSON Schema are generated from the contract
+  schemas, so the model sees exactly what the server validates.
+- **Validation in and out.** Input is parsed by the strict contract schema
+  before any handler runs; an unknown field is `INVALID_INPUT`, not ignored.
+  Output is parsed by the contract's output schema before the client sees it; a
+  handler that returns the wrong shape is a server bug and is reported as
+  `INTERNAL_ERROR`, never forwarded.
+- **Server-side context.** The acting identity and the productions the server
+  may touch are fixed at start-up from the environment (`PCA_ACTOR_ID`,
+  `PCA_ALLOWED_PRODUCTIONS`). A call naming any other production is
+  `TOOL_UNAUTHORIZED` before the handler runs. Handlers receive the identity
+  and a per-call correlation ID; they never see the transport.
+- **Failures are structured.** A use-case failure is returned as its
+  `ToolError` with `isError` set. A handler that throws becomes
+  `INTERNAL_ERROR` carrying the correlation ID, with the cause logged and not
+  echoed to the client.
+- **Logging goes to stderr** as JSON lines, because stdout is the stdio
+  transport. Each call logs tool, correlation ID, duration, and outcome or
+  error code, and nothing else: no prompt text, no entity payloads.
+
 ## 4. Read tools
 
 ### `get_production`

@@ -1,0 +1,80 @@
+import type { RepositorySet } from "@pca/application";
+import { createFileStore, defaultDataFilePath } from "@pca/file-store";
+import { createMemoryStore } from "@pca/memory-store";
+import { connectMongoStore, defaultMongoUri } from "@pca/mongo-store";
+
+/**
+ * The composition root (ARCHITECTURE.md §9, "Storage adapters").
+ *
+ * This is the one place that knows more than one adapter exists. Everything
+ * below it depends on ports; everything above it (the MCP server, the API, the
+ * CLI) asks this module for a RepositorySet and never names a driver.
+ *
+ * The default is the JSON file store, because it needs no server, no native
+ * module, and no account, which is what lets the published package run with
+ * `npx` on a clean machine (ARCHITECTURE.md §2, "Free-first constraint").
+ */
+
+export type StorageKind = "file" | "memory" | "mongo";
+
+export type StorageSelection =
+  | { readonly kind: "file"; readonly filePath: string }
+  | { readonly kind: "memory" }
+  | { readonly kind: "mongo"; readonly uri: string; readonly databaseName: string | undefined };
+
+export type Environment = Readonly<Record<string, string | undefined>>;
+
+const STORAGE_KINDS: readonly StorageKind[] = ["file", "memory", "mongo"];
+
+/** Reads PCA_STORAGE and its companions; refuses an unknown value loudly. */
+export const selectStorage = (env: Environment): StorageSelection => {
+  const raw = env["PCA_STORAGE"] ?? "file";
+  if (!STORAGE_KINDS.includes(raw as StorageKind)) {
+    throw new Error(
+      `PCA_STORAGE="${raw}" is not one of ${STORAGE_KINDS.join(", ")}. Unset it for the default file store.`,
+    );
+  }
+  const kind = raw as StorageKind;
+  switch (kind) {
+    case "file":
+      return { kind, filePath: env["PCA_DATA_FILE"] ?? defaultDataFilePath() };
+    case "memory":
+      return { kind };
+    case "mongo":
+      return {
+        kind,
+        uri: env["PCA_MONGO_URI"] ?? defaultMongoUri(),
+        databaseName: env["PCA_MONGO_DB"],
+      };
+  }
+};
+
+export type Repositories = {
+  readonly repositories: RepositorySet;
+  readonly selection: StorageSelection;
+  /** Releases connections. A no-op for the file and memory stores. */
+  readonly close: () => Promise<void>;
+};
+
+export const createRepositories = async (selection: StorageSelection): Promise<Repositories> => {
+  switch (selection.kind) {
+    case "file":
+      return {
+        repositories: createFileStore({ filePath: selection.filePath }),
+        selection,
+        close: () => Promise.resolve(),
+      };
+    case "memory":
+      return { repositories: createMemoryStore(), selection, close: () => Promise.resolve() };
+    case "mongo": {
+      const store = await connectMongoStore({
+        uri: selection.uri,
+        ...(selection.databaseName === undefined ? {} : { databaseName: selection.databaseName }),
+      });
+      return { repositories: store, selection, close: () => store.close() };
+    }
+  }
+};
+
+export const createRepositoriesFromEnv = (env: Environment = process.env): Promise<Repositories> =>
+  createRepositories(selectStorage(env));
