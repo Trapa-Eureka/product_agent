@@ -99,10 +99,13 @@ The stack intentionally exercises technologies relevant to the target engineerin
 
 ## Local development
 
-Requires Node.js 22 or newer and pnpm. Nothing else: no AWS account, no MongoDB server, no API key.
+Requires Node.js 22 or newer and pnpm. No AWS account, no MongoDB server, no
+API key. The one local, one-time extra: `pnpm exec playwright install
+chromium`, for the E2E suite (not run by `pnpm install` itself).
 
 ```bash
 pnpm install
+pnpm exec playwright install chromium
 pnpm run verify
 ```
 
@@ -114,8 +117,8 @@ pnpm run verify
 | `pnpm run test` | Unit suite |
 | `pnpm run test:integration` | Integration suite (`*.integration.test.ts`) |
 | `pnpm run test:contract` | MCP contract suite (`*.contract.test.ts`) |
-pnpm run test:web` | MCP contract suite (`*.contract.test.ts`) |
-| `pnpm run test:e2e` | Playwright suite; reports `E2E_NOT_CONFIGURED` until TASK-604 |
+| `pnpm run test:web` | Angular specs (`apps/web/src/**/*.spec.ts`), via `ng test` |
+| `pnpm run test:e2e` | Playwright suite: three golden scenarios against a real browser (`e2e/`) |
 | `pnpm run verify` | Local completion gate: runs the whole pipeline in order |
 
 `verify` prints a per-step pass/fail summary and stops at the first failure with the command to re-run.

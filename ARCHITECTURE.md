@@ -315,7 +315,16 @@ coordinator can tell the plan they are reading is the plan the server has.
 The dev server proxies `/api` and `/ws` to the API. The app type-checks
 itself with the DOM lib (the root TypeScript project excludes it) and is
 built with AOT and strict templates in the verify gate; its specs run with
-vitest and jsdom through `ng test`.
+vitest and jsdom through `ng test`. Serving it (`ng serve`, TASK-604's E2E
+`webServer`) needed one fix: the dev server's Vite-based dependency
+pre-bundler resolves `@pca/contracts`/`@pca/realtime-client` as if they were
+ordinary `node_modules` packages, using a plain esbuild scan that does not
+resolve their extensionless relative imports (`export * from "./entities"`)
+the way the rest of the toolchain (`tsc`, vitest, the `ng build`/`ng test`
+builders) does — so `angular.json`'s `serve` options set `prebundle: false`.
+The two packages are still bundled into the app, just without that
+pre-scan; `ng build`/`ng test` were never affected, since prebundling is a
+dev-server-only step.
 
 The change workspace (TASK-502) adds a component-scoped
 `ChangeSubmissionService`, one instance per workspace, provided by
