@@ -1,0 +1,13 @@
+{
+  "name": "@pca/test-support",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Fakes, builders, and in-memory adapters for tests (TASK-004, TASK-101)",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {}
+}
