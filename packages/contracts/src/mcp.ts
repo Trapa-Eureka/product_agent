@@ -230,6 +230,9 @@ export const simulateProposalOutputSchema = z.strictObject({
   valid: z.boolean(),
   impacts: z.array(impactSchema),
   conflicts: z.array(conflictSchema),
+  /** Violations present before the operations that are gone afterwards ("resolves Sarah conflict"). */
+  resolvedConflicts: z.array(conflictSchema),
+  warnings: z.array(explanationSchema),
   postStateSummary: simulationSummarySchema,
 });
 

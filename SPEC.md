@@ -74,6 +74,10 @@ A proposal is invalid when it violates domain invariants, including:
 - conflicting schedule assignments defined by the MVP;
 - proposal generated from stale production state.
 
+Validity is judged on the whole would-be state, not on the change alone. A
+proposal that resolves one conflict but leaves another in place is invalid: an
+approved plan must be a valid plan, not merely a better one.
+
 ### FR-5 Proposal
 
 A proposal contains:

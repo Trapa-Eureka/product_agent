@@ -183,9 +183,12 @@ Do not build a general optimization solver.
 **Status**  
 Complete. `generateScheduleCandidates` in `packages/domain` returns existing shoot days on which every moving scene's cast and location are free, earliest first, with warnings, plus every refused day and its reasons. No scoring, capacity, splitting, or new days. The use case in `packages/application` wraps it as a read. Output contract gains `rejected` (MCP.md §5).
 
-## TASK-106 Proposal simulation/validation
+## TASK-106 Proposal simulation/validation — DONE
 
 Create side-effect-free simulation and proposal validation.
+
+**Status**  
+Complete. `applyOperations` in `packages/domain` applies operations atomically to a copy of the snapshot with an injected ID allocator, so simulation (placeholder IDs) and the coming apply path (real IDs) share one implementation. `simulateProposal` judges the copy by the state invariants and reports impacts, conflicts, resolved conflicts, warnings, and a summary. `validateProposal` in `packages/application` re-judges a stored proposal against the current production, detects stale versions and tampered digests, and writes the refreshed verdict back onto the proposal. Contract gains `resolvedConflicts` and `warnings` on `simulate_proposal`.
 
 ## TASK-107 Approval model
 

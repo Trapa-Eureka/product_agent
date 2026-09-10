@@ -48,7 +48,7 @@ for free. Only P7 infrastructure and live Bedrock/SQS connections are deferred.
 6. TASK-103 Change intake use case — **done**. Confirms IDs against the production, persists raw sentence plus typed change, audit event, correlation ID.
 7. TASK-104 Dependency impact engine — **done**. GOLDEN-1/2/3 impact sets asserted as exact arrays, WHY text pinned.
 8. TASK-105 Candidate shoot-day generator — **done**. Existing days where cast and location are free, with warnings and refusal reasons; no solver.
-9. TASK-106 Simulation / validation (side-effect free).
+9. TASK-106 Simulation / validation — **done**. One `applyOperations` shared by simulate and apply; whole-state validity; validate re-judges stored proposals.
 10. TASK-107 Approval model (digest, version binding, stale detection).
 11. TASK-108 Apply approved proposal (idempotency, version increment).
 12. TASK-109 Post-write verification.
