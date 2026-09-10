@@ -57,9 +57,24 @@ importers:
         specifier: workspace:*
         version: link:../contracts
 
-  packages/fixtures: {}
+  packages/fixtures:
+    dependencies:
+      '@pca/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+    devDependencies:
+      '@pca/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@pca/test-support':
+        specifier: workspace:*
+        version: link:../test-support
 
-  packages/test-support: {}
+  packages/test-support:
+    dependencies:
+      '@pca/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
 packages:
 

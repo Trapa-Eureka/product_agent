@@ -9,5 +9,12 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "scripts": {}
+  "scripts": {},
+  "dependencies": {
+    "@pca/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@pca/domain": "workspace:*",
+    "@pca/test-support": "workspace:*"
+  }
 }

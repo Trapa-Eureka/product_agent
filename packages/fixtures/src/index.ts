@@ -1,7 +1,9 @@
 /**
- * Deterministic Demo Movie fixture.
+ * Deterministic fixture data.
  *
- * Stable IDs and the golden-scenario preconditions from TESTING.md §3 arrive in
- * TASK-004.
+ * This package holds data and nothing else: no domain rules, no assertions, no
+ * test helpers. That keeps it usable from tests, the seed command, and the demo
+ * script without dragging any of those into the others.
  */
-export const PACKAGE_NAME = "@pca/fixtures";
+export * from "./ids";
+export * from "./demo-movie";
