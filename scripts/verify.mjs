@@ -16,6 +16,7 @@ const STEPS = [
   { name: "integration", args: ["run", "test:integration"] },
   { name: "contract", args: ["run", "test:contract"] },
   { name: "build", args: ["run", "build"] },
+  { name: "test:web", args: ["run", "test:web"] },
   { name: "e2e", args: ["run", "test:e2e"] },
 ];
 

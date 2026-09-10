@@ -39,6 +39,8 @@ export default tseslint.config(
     ignores: [
       "**/node_modules/**",
       "**/dist/**",
+      "**/.angular/**",
+      "**/out-tsc/**",
       "**/coverage/**",
       "**/playwright-report/**",
       "**/test-results/**",
@@ -71,6 +73,13 @@ export default tseslint.config(
   {
     files: ["packages/application/**/*.ts"],
     ...boundaryRule("packages/application"),
+  },
+  {
+    files: ["apps/web/**/*.ts"],
+    rules: {
+      // Angular components are classes with decorator-provided behaviour.
+      "@typescript-eslint/no-extraneous-class": "off",
+    },
   },
   {
     files: ["**/*.test.ts", "tests/**/*.ts", "scripts/**/*.mjs"],

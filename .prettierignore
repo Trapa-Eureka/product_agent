@@ -5,3 +5,8 @@ pnpm-lock.yaml
 playwright-report/
 test-results/
 *.md
+
+# Angular build cache and outputs
+apps/web/.angular/
+apps/web/dist/
+apps/web/out-tsc/

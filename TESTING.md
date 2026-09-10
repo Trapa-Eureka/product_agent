@@ -20,6 +20,11 @@ Fast tests for:
 - explanation cards (DESIGN.md §3 and §4), pinned exactly for the golden
   scenarios so a wording change is a deliberate act.
 
+Angular specs (`apps/web/src/**/*.spec.ts`) run through `ng test` (vitest 4,
+jsdom) as the verify step `test:web`, separate from the root vitest suites,
+which exclude them. They cover the shell's rendering, the REST client's
+error mapping, and the realtime service's signals with a fake socket.
+
 ### Integration tests
 Test:
 - application use cases + Mongo test database/adaptor;
@@ -319,6 +324,7 @@ npm run lint
 npm run test
 npm run test:integration
 npm run test:contract
+npm run test:web
 npm run test:e2e
 npm run verify
 ```
