@@ -195,6 +195,7 @@ product_agent/
 │   ├── domain/              # entities, invariants, change engine
 │   ├── application/         # use cases, and the ports they depend on
 │   ├── contracts/           # zod/types shared across boundaries
+│   ├── bootstrap/           # composition root: selects adapters from env
 │   ├── adapters/
 │   │   ├── file-store/      # JSON file repositories (default)
 │   │   ├── memory-store/    # in-memory repositories
@@ -380,9 +381,11 @@ every read still filters by `productionId`. Audit rows keep Mongo's own
 ObjectId, which increases with insertion order, so "newest first" stays correct
 when two events share a timestamp.
 
-Which adapter runs is decided in the composition root from `PCA_STORAGE`
-(`file`, `memory`, or `mongo`), wired in TASK-110. No package below the
-composition root knows more than one adapter exists.
+Which adapter runs is decided in the composition root, `packages/bootstrap`,
+from `PCA_STORAGE` (`file`, `memory`, or `mongo`) and its companions
+(`PCA_DATA_FILE`, `PCA_MONGO_URI`, `PCA_MONGO_DB`). It is the one package that
+depends on every adapter; the MCP server and the API ask it for a
+`RepositorySet` and never name a driver.
 
 ## 10. Queue/SQS
 

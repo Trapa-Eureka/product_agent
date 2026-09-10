@@ -245,9 +245,12 @@ API tests for each route including auth/context boundaries (`TESTING.md` §2 "AP
 
 # P2 — MCP
 
-## TASK-201 MCP server foundation
+## TASK-201 MCP server foundation — DONE
 
 Register server, schemas, context, logging.
+
+**Status**  
+Complete. `apps/mcp-server` registers tools from `MCP_TOOL_CONTRACTS` with JSON Schema generated from the contracts, validates input and output with the strict contract schemas, authorises every call against a server-side context from the environment, maps use-case failures and crashes to structured `ToolError` results, and logs JSON lines to stderr. The foundation is exercised through a real MCP client over an in-memory transport in the contract suite. `packages/bootstrap` was added as the composition root (`PCA_STORAGE` selection), which TASK-110 will reuse rather than duplicate.
 
 ## TASK-202 Read tools
 

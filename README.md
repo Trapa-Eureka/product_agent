@@ -119,6 +119,17 @@ pnpm run verify
 
 `verify` prints a per-step pass/fail summary and stops at the first failure with the command to re-run.
 
+### Runtime environment
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `PCA_STORAGE` | `file` | `file`, `memory`, or `mongo` |
+| `PCA_DATA_FILE` | `~/.production-change-agent/data.json` | JSON store location |
+| `PCA_MONGO_URI` | `mongodb://127.0.0.1:27017/?replicaSet=rs0` | Mongo connection; must be a replica set |
+| `PCA_MONGO_DB` | `production_change_agent` | Mongo database name |
+| `PCA_ALLOWED_PRODUCTIONS` | `*` | Comma-separated production IDs the MCP server may act on |
+| `PCA_ACTOR_ID` | `mcp-agent` | Identity recorded for agent actions |
+
 ## Documentation
 
 Read in this order:
