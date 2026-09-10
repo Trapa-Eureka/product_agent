@@ -13,5 +13,9 @@
     "@pca/contracts": "workspace:*",
     "@pca/domain": "workspace:*"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@pca/fixtures": "workspace:*",
+    "@pca/memory-store": "workspace:*",
+    "@pca/test-support": "workspace:*"
+  }
 }

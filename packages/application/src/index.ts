@@ -3,7 +3,8 @@
  *
  * This package coordinates the domain and storage. It imports no HTTP server,
  * database driver, cloud SDK, MCP transport, or model SDK, and an ESLint rule
- * enforces that. Use cases arrive in TASK-103 onwards; TASK-101 establishes the
- * ports they will be written against.
+ * enforces that.
  */
 export * from "./ports";
+export * from "./result";
+export * from "./use-cases";

@@ -94,6 +94,16 @@ importers:
       '@pca/domain':
         specifier: workspace:*
         version: link:../domain
+    devDependencies:
+      '@pca/fixtures':
+        specifier: workspace:*
+        version: link:../fixtures
+      '@pca/memory-store':
+        specifier: workspace:*
+        version: link:../adapters/memory-store
+      '@pca/test-support':
+        specifier: workspace:*
+        version: link:../test-support
 
   packages/contracts:
     dependencies:

@@ -44,6 +44,8 @@ The system accepts statements such as:
 
 The AI layer converts the statement into a typed change request. Entity resolution must be confirmed against real domain data.
 
+Intake is the first deterministic checkpoint after the AI layer. Whatever interpreted the sentence, every ID in the typed change is confirmed against the production's real data before anything is persisted: an unknown or misattributed entity is refused with `ENTITY_NOT_FOUND` and the name of the lookup tool to use. The raw sentence is stored verbatim beside the typed change, so the audit trail shows what the user said and not only what the system made of it.
+
 ### FR-2 Impact analysis
 
 For a resolved change, deterministic application logic identifies affected:

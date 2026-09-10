@@ -156,9 +156,12 @@ Implement MongoDB repositories and indexes.
 **Acceptance**
 Adapters satisfy repository contracts and production isolation.
 
-## TASK-103 Change intake use case
+## TASK-103 Change intake use case — DONE
 
 Persist raw/typed change request and correlation ID.
+
+**Status**  
+Complete. `submitChangeRequest` in `packages/application` validates the typed change, confirms every referenced ID against the production, persists the request with the raw sentence and a correlation ID, and appends one audit event. `Clock` and `IdFactory` ports make the written records exactly assertable. 15 unit tests.
 
 ## TASK-104 Dependency impact engine
 
