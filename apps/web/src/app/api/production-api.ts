@@ -3,11 +3,14 @@ import { Injectable, inject } from "@angular/core";
 import { firstValueFrom } from "rxjs";
 
 import type {
+  Approval,
+  ApprovalDecision,
   AuditEvent,
   ChangeRequest,
   ImpactExplanation,
   JobRun,
   McpToolOutput,
+  Proposal,
   RecoverySnapshot,
   ToolError,
   TypedChange,
@@ -96,5 +99,37 @@ export class ProductionApi {
 
   listAudit(productionId: string, limit = 50): Promise<{ events: AuditEvent[] }> {
     return this.request("GET", this.url(productionId, `/audit?limit=${limit}`));
+  }
+
+  /** `jobId`, when the decision came from a tracked job, completes it on rejection (TASK-505). */
+  decideProposal(
+    productionId: string,
+    proposalId: string,
+    decision: ApprovalDecision,
+    jobId?: string,
+  ): Promise<{ approval: Approval; proposal: Proposal; alreadyDecided: boolean }> {
+    return this.request(
+      "POST",
+      this.url(productionId, `/proposals/${encodeURIComponent(proposalId)}/decision`),
+      { decision, ...(jobId === undefined ? {} : { jobId }) },
+    );
+  }
+
+  /** Applies as a job continuing `jobId`'s timeline; the response echoes the run, still `awaiting_approval`. */
+  applyProposalAsJob(
+    productionId: string,
+    proposalId: string,
+    input: {
+      approvalId: string;
+      expectedProductionVersion: number;
+      idempotencyKey: string;
+      jobId: string;
+    },
+  ): Promise<{ job: JobRun }> {
+    return this.request(
+      "POST",
+      this.url(productionId, `/proposals/${encodeURIComponent(proposalId)}/apply`),
+      input,
+    );
   }
 }

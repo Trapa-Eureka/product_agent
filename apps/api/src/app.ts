@@ -15,6 +15,7 @@ import type {
   UseCaseResult,
 } from "@pca/application";
 import {
+  canAdvance,
   createAnalyzeChangeImpact,
   createApplyApprovedProposal,
   createDecideProposal,
@@ -119,6 +120,8 @@ const impactExplanationBodySchema = z.strictObject({ change: typedChangeSchema }
 
 const decisionBodySchema = z.strictObject({
   decision: approvalDecisionSchema,
+  /** A rejection completes the job it came from (SPEC.md §7); an approval leaves it for `.../apply`. */
+  jobId: entityIdSchema.optional(),
 });
 
 const applyBodySchema = z.strictObject({
@@ -387,6 +390,23 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
       decidedBy: call.actorId,
       correlationId: call.correlationId,
     });
+    if (result.ok && parsed.data.decision === "REJECT" && parsed.data.jobId !== undefined) {
+      // Best-effort bookkeeping: the decision itself already succeeded either way.
+      // Idempotent by construction — a replayed reject finds the job already completed
+      // and canAdvance refuses the edge, so this never double-completes it.
+      const run = await tracker.get(parsed.data.jobId);
+      if (run !== null && run.productionId === productionId && canAdvance(run.stage, "completed")) {
+        await tracker
+          .advance(parsed.data.jobId, "completed", { message: "Rejected; nothing will change." })
+          .catch((error: unknown) => {
+            logger.log("warn", "job_reject_advance_failed", {
+              jobId: parsed.data.jobId,
+              correlationId: call.correlationId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+      }
+    }
     respond(response, result, call.correlationId);
   });
 

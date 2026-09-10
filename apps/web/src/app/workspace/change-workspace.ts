@@ -4,6 +4,7 @@ import {
   computed,
   effect,
   inject,
+  signal,
   untracked,
 } from "@angular/core";
 
@@ -11,6 +12,7 @@ import type { JobStage } from "@pca/contracts";
 
 import { ProductionStore } from "../state/production.store";
 import { AmbiguityResolution } from "./ambiguity-resolution";
+import { ApprovalConfirmation } from "./approval-confirmation";
 import { CandidateComparisonPanel } from "./candidate-comparison";
 import { ChangeInput } from "./change-input";
 import { ChangeSubmissionService } from "./change-submission.service";
@@ -29,8 +31,8 @@ const humanizeStage = (stage: JobStage): string => {
  * in order (DESIGN.md §1); the components that answer them land in
  * TASK-502 (input, ambiguity resolution, detected change), TASK-503
  * (impact), TASK-504 (proposed plan and candidate comparison — this task),
- * TASK-505 (approval), TASK-506 (the full progress timeline). Until a panel
- * has its component it says so, never a fake answer.
+ * TASK-505 (approval — this task), TASK-506 (the full progress timeline).
+ * Until a panel has its component it says so, never a fake answer.
  *
  * `ChangeSubmissionService` is provided here, one instance per workspace,
  * shared by `ChangeInput` and `AmbiguityResolution` through DI so both act
@@ -49,6 +51,7 @@ const humanizeStage = (stage: JobStage): string => {
     ImpactPanel,
     ProposalCard,
     CandidateComparisonPanel,
+    ApprovalConfirmation,
   ],
   template: `
     <section class="workspace" aria-labelledby="ws-title">
@@ -111,10 +114,32 @@ const humanizeStage = (stage: JobStage): string => {
           <p class="pending">No job in progress. The realtime timeline arrives with TASK-506.</p>
         }
       </div>
-      <div class="actions">
-        <button type="button" disabled>Reject</button>
-        <button type="button" class="primary" disabled>Approve &amp; Apply</button>
-      </div>
+      @if (decidableProductionId(); as productionId) {
+        <div class="actions">
+          <button type="button" [disabled]="deciding()" (click)="reject(productionId)">
+            Reject
+          </button>
+          <button
+            type="button"
+            class="primary"
+            [disabled]="deciding()"
+            (click)="confirmingApproval.set(true)"
+          >
+            Approve &amp; Apply
+          </button>
+        </div>
+        @if (confirmingApproval()) {
+          <pca-approval-confirmation
+            [productionId]="productionId"
+            (closed)="confirmingApproval.set(false)"
+          />
+        }
+      } @else {
+        <div class="actions">
+          <button type="button" disabled>Reject</button>
+          <button type="button" class="primary" disabled>Approve &amp; Apply</button>
+        </div>
+      }
     </section>
   `,
   styles: `
@@ -195,6 +220,19 @@ export class ChangeWorkspace {
     return job.message === undefined ? label : `${label}: ${job.message}`;
   });
 
+  /** DESIGN.md §5: Reject and Approve & Apply act only on a job actually awaiting a decision. */
+  readonly decidableProductionId = computed(() => {
+    const job = this.submission.job();
+    const productionId = this.store.productionId();
+    return job !== null && job.stage === "awaiting_approval" && productionId !== null
+      ? productionId
+      : null;
+  });
+  readonly deciding = computed(() => this.submission.state() === "submitting");
+  readonly confirmingApproval = signal(false);
+  /** A `computed`, not the run itself: this must not re-fire on every update to the same job. */
+  private readonly trackedJobId = computed(() => this.submission.job()?.id ?? null);
+
   constructor() {
     // The router may reuse this component across productions; the tracked
     // job belongs to whichever production was open when it was submitted.
@@ -202,5 +240,14 @@ export class ChangeWorkspace {
       this.store.productionId();
       untracked(() => this.submission.reset());
     });
+    // A stale "confirming" flag must not reopen the dialog for a later, different job.
+    effect(() => {
+      this.trackedJobId();
+      untracked(() => this.confirmingApproval.set(false));
+    });
+  }
+
+  reject(productionId: string): void {
+    void this.submission.reject(productionId);
   }
 }

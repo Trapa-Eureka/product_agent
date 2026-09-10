@@ -26,6 +26,20 @@ const receivedJob: JobRun = {
   updatedAt: T0,
 };
 
+// No changeRequestId: submit()'s change-request/impact-explanation follow-up
+// fetches are exercised by the cascade test above; these tests are only
+// about the decision/apply calls, so nothing else should fire.
+const awaitingApprovalJob: JobRun = {
+  ...receivedJob,
+  stage: "awaiting_approval",
+  proposalId: "P-1",
+  explanation: {
+    headline: "Move Scene 07 and Scene 12 from Fri Sep 18 → Tue Sep 22",
+    effects: [],
+    operations: ["x"],
+  },
+};
+
 /** Waits for the microtask queue to drain so an async continuation past an HTTP flush runs. */
 const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -191,6 +205,92 @@ describe("ChangeSubmissionService", () => {
     });
     await settle();
     http.verify();
+  });
+
+  it("reject decides REJECT with the job ID, then re-reads the job so completion shows immediately", async () => {
+    const pending = service.submit(DEMO, "Sarah cannot shoot Friday.");
+    http.expectOne(`/api/productions/${DEMO}/changes`).flush({ job: awaitingApprovalJob });
+    await pending;
+
+    const rejected = service.reject(DEMO);
+    const decision = http.expectOne(`/api/productions/${DEMO}/proposals/P-1/decision`);
+    expect(decision.request.body).toEqual({ decision: "REJECT", jobId: "JOB-1" });
+    decision.flush({
+      approval: { id: "A-1", decision: "REJECT" },
+      proposal: { id: "P-1", status: "REJECTED" },
+      alreadyDecided: false,
+    });
+    await settle();
+
+    http.expectOne(`/api/productions/${DEMO}/jobs/JOB-1`).flush({
+      ...awaitingApprovalJob,
+      stage: "completed",
+      status: "COMPLETED",
+      message: "Rejected; nothing will change.",
+    });
+    await rejected;
+
+    expect(service.job()?.stage).toBe("completed");
+    expect(service.state()).toBe("idle");
+  });
+
+  it("does nothing when asked to reject or approve without a decidable job", async () => {
+    await service.reject(DEMO);
+    await service.approveAndApply(DEMO);
+    http.verify();
+    expect(service.job()).toBeNull();
+  });
+
+  it("approveAndApply approves, then applies as a job with the approved baseProductionVersion", async () => {
+    const pending = service.submit(DEMO, "Sarah cannot shoot Friday.");
+    http.expectOne(`/api/productions/${DEMO}/changes`).flush({ job: awaitingApprovalJob });
+    await pending;
+
+    const approved = service.approveAndApply(DEMO);
+    const decision = http.expectOne(`/api/productions/${DEMO}/proposals/P-1/decision`);
+    expect(decision.request.body).toEqual({ decision: "APPROVE" });
+    decision.flush({
+      approval: { id: "A-1", decision: "APPROVE" },
+      proposal: { id: "P-1", status: "APPROVED", baseProductionVersion: 1 },
+      alreadyDecided: false,
+    });
+    await settle();
+
+    const apply = http.expectOne(`/api/productions/${DEMO}/proposals/P-1/apply`);
+    expect(apply.request.body).toMatchObject({
+      approvalId: "A-1",
+      expectedProductionVersion: 1,
+      jobId: "JOB-1",
+    });
+    const idempotencyKey = (apply.request.body as { idempotencyKey: string }).idempotencyKey;
+    expect(idempotencyKey.length).toBeGreaterThanOrEqual(8);
+    apply.flush({ job: { ...awaitingApprovalJob, message: "Applying." } });
+    await approved;
+
+    expect(service.job()?.message).toBe("Applying.");
+    expect(service.state()).toBe("idle");
+  });
+
+  it("approveAndApply carries the server's error and leaves the job untouched", async () => {
+    const pending = service.submit(DEMO, "Sarah cannot shoot Friday.");
+    http.expectOne(`/api/productions/${DEMO}/changes`).flush({ job: awaitingApprovalJob });
+    await pending;
+
+    const approved = service.approveAndApply(DEMO);
+    http
+      .expectOne(`/api/productions/${DEMO}/proposals/P-1/decision`)
+      .flush(
+        { error: { code: "PRODUCTION_VERSION_MISMATCH", message: "The production moved on." } },
+        { status: 409, statusText: "Conflict" },
+      );
+    await approved;
+
+    expect(service.state()).toBe("error");
+    expect(service.error()).toEqual({
+      code: "PRODUCTION_VERSION_MISMATCH",
+      message: "The production moved on.",
+    });
+    expect(service.job()?.stage).toBe("awaiting_approval");
   });
 
   it("reset clears every field, ready for a fresh submission", async () => {
