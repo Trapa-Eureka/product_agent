@@ -16,6 +16,7 @@ import { sequentialIds } from "@pca/test-support";
 import {
   createProductionChangeServer,
   memoryLogger,
+  readToolError,
   type ServerContext,
   type ToolHandlers,
 } from "../src";
@@ -176,8 +177,9 @@ describe("MCP server foundation", () => {
       });
 
       expect(result.isError).toBe(true);
-      expect(result.structuredContent).toMatchObject({
-        error: { code: "INVALID_INPUT", correlationId: "corr-1" },
+      expect(readToolError(result)).toMatchObject({
+        code: "INVALID_INPUT",
+        correlationId: "corr-1",
       });
       expect(handlerRan).toBe(false);
     });
@@ -185,8 +187,9 @@ describe("MCP server foundation", () => {
     it("rejects a missing required field and names it", async () => {
       await connect(handlers());
       const result = await client.callTool({ name: "get_production", arguments: {} });
-      expect(result.structuredContent).toMatchObject({
-        error: { code: "INVALID_INPUT", actual: "productionId" },
+      expect(readToolError(result)).toMatchObject({
+        code: "INVALID_INPUT",
+        actual: "productionId",
       });
     });
   });
@@ -208,8 +211,9 @@ describe("MCP server foundation", () => {
       });
 
       expect(result.isError).toBe(true);
-      expect(result.structuredContent).toMatchObject({
-        error: { code: "TOOL_UNAUTHORIZED", actual: "PROD-OTHER" },
+      expect(readToolError(result)).toMatchObject({
+        code: "TOOL_UNAUTHORIZED",
+        actual: "PROD-OTHER",
       });
       expect(handlerRan).toBe(false);
       expect(logger.lines[0]?.fields).toMatchObject({
@@ -224,7 +228,7 @@ describe("MCP server foundation", () => {
         name: "get_production",
         arguments: { productionId: "PROD-GHOST" },
       });
-      expect(result.structuredContent).toMatchObject({ error: { code: "ENTITY_NOT_FOUND" } });
+      expect(readToolError(result)).toMatchObject({ code: "ENTITY_NOT_FOUND" });
     });
 
     it("refuses a tool that is not registered, listing what is", async () => {
@@ -233,8 +237,9 @@ describe("MCP server foundation", () => {
         name: "apply_approved_proposal",
         arguments: { productionId: DEMO },
       });
-      expect(result.structuredContent).toMatchObject({
-        error: { code: "TOOL_UNAUTHORIZED", nextStep: "Call one of: get_production." },
+      expect(readToolError(result)).toMatchObject({
+        code: "TOOL_UNAUTHORIZED",
+        nextStep: "Call one of: get_production.",
       });
     });
   });
@@ -250,13 +255,12 @@ describe("MCP server foundation", () => {
       });
 
       expect(result.isError).toBe(true);
-      expect(result.structuredContent).toEqual({
-        error: {
-          code: "ENTITY_NOT_FOUND",
-          message: "Production PROD-GHOST does not exist.",
-          correlationId: "corr-1",
-          nextStep: "Use a known production ID.",
-        },
+      expect(result.structuredContent).toBeUndefined();
+      expect(readToolError(result)).toEqual({
+        code: "ENTITY_NOT_FOUND",
+        message: "Production PROD-GHOST does not exist.",
+        correlationId: "corr-1",
+        nextStep: "Use a known production ID.",
       });
     });
 
@@ -273,10 +277,11 @@ describe("MCP server foundation", () => {
         arguments: { productionId: DEMO },
       });
 
-      expect(result.structuredContent).toMatchObject({
-        error: { code: "INTERNAL_ERROR", correlationId: "corr-1" },
+      expect(readToolError(result)).toMatchObject({
+        code: "INTERNAL_ERROR",
+        correlationId: "corr-1",
       });
-      expect(JSON.stringify(result.structuredContent)).not.toContain("database on fire");
+      expect(JSON.stringify(result.content)).not.toContain("database on fire");
       expect(logger.lines.find((line) => line.event === "tool_crash")?.fields["error"]).toBe(
         "database on fire",
       );
@@ -293,7 +298,7 @@ describe("MCP server foundation", () => {
         arguments: { productionId: DEMO },
       });
 
-      expect(result.structuredContent).toMatchObject({ error: { code: "INTERNAL_ERROR" } });
+      expect(readToolError(result)).toMatchObject({ code: "INTERNAL_ERROR" });
       expect(
         logger.lines.find((line) => line.event === "tool_output_invalid")?.fields,
       ).toMatchObject({
