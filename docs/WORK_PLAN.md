@@ -84,7 +84,7 @@ for free. Only P7 infrastructure and live Bedrock/SQS connections are deferred.
 
 ### Stage 6 — API + UI (P5)
 
-33. TASK-110 REST API routes in `apps/api` (production, change, proposal, approval, audit) with API tests. Added to `TASKS.md`; previously missing.
+33. TASK-110 REST API — **done**. Express 5 over the MCP tool handlers plus decision, intake, jobs, recovery, and audit routes; the WebSocket gateway on the same server; GOLDEN-1 driven through REST alone in the contract suite.
 34. TASK-501 Angular shell.
 35. TASK-502 Input / ambiguity resolution / detected-change card.
 36. TASK-503 Impact panel (BLOCKING / AFFECTED / WHY).

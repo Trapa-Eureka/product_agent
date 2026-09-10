@@ -9,7 +9,8 @@ import { z } from "zod";
 
 import type { IdFactory, UseCaseResult } from "@pca/application";
 import { InfrastructureError, describeFailure, randomIdFactory } from "@pca/application";
-import type { McpToolInput, McpToolName, McpToolOutput, ToolError } from "@pca/contracts";
+import type { CallContext, ToolHandlers } from "./handler-types";
+import type { McpToolName, ToolError } from "@pca/contracts";
 import { MCP_TOOL_CONTRACTS, MCP_TOOL_NAMES } from "@pca/contracts";
 
 import type { ServerContext } from "./context";
@@ -34,17 +35,7 @@ import { errorResult, internalError, successResult } from "./tool-result";
  * they never see the transport.
  */
 
-export type CallContext = {
-  readonly correlationId: string;
-  readonly actor: ServerContext["actor"];
-};
-
-export type ToolHandler<TName extends McpToolName> = (
-  input: McpToolInput<TName>,
-  call: CallContext,
-) => Promise<UseCaseResult<McpToolOutput<TName>>>;
-
-export type ToolHandlers = { readonly [TName in McpToolName]?: ToolHandler<TName> };
+export type { CallContext, ToolHandler, ToolHandlers } from "./handler-types";
 
 /**
  * Dispatch erases the per-tool generic on purpose. The registry's input schema
