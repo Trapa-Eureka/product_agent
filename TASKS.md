@@ -305,9 +305,12 @@ Implement `verify_applied_proposal`.
 **Status**  
 Complete. A thin handler over the verification use case, returning only `success` and the named `checks` as the contract specifies. With this, all seventeen tools in `MCP_TOOL_CONTRACTS` are wired into the server entry point. Contract tests cover the full pass after GOLDEN-1, the bookkeeping gap named as a single failed check, an un-applied proposal reported honestly, no production change, and the refusals.
 
-## TASK-207 MCP contract suite
+## TASK-207 MCP contract suite — DONE
 
 Test all success/error/security cases in `MCP.md`.
+
+**Status**  
+Complete. Per-tool suites (TASK-202 to TASK-206) pin each tool's answers; the registry-wide suite walks `MCP_TOOL_CONTRACTS` and holds every tool to the same contract against `createAllToolHandlers`, the exact handler set the entry point ships. TASK-603 is delivered in the same suite.
 
 ---
 
@@ -448,9 +451,12 @@ Complete, pulled forward from P6 as the regression baseline for everything after
 
 Implement stale version, provider failure, queue retry, partial failure cases.
 
-## TASK-603 Security tests
+## TASK-603 Security tests — DONE
 
 Implement approval/cross-production/schema/tool-boundary tests.
+
+**Status**  
+Complete, pulled forward from P6 into the registry-wide suite: arbitrary tool and operation names, a tampered digest on validate and apply, a stale approval, prompt-shaped input, and a wide-open allow-list that still never echoes another production's data. Every refusal proves nothing changed.
 
 ## TASK-604 Playwright E2E
 
