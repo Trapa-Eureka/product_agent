@@ -151,4 +151,34 @@ describe("ProductionApi", () => {
     request.flush({ job: { id: "JOB-1", stage: "awaiting_approval" } });
     expect((await pending).job.stage).toBe("awaiting_approval");
   });
+
+  it("reads the schedule from its route", async () => {
+    const pending = api.getSchedule("PROD-DEMO");
+    http
+      .expectOne("/api/productions/PROD-DEMO/schedule")
+      .flush({ productionVersion: 1, shootDays: [] });
+    expect((await pending).shootDays).toEqual([]);
+  });
+
+  it("reads one scene from its route", async () => {
+    const pending = api.getScene("PROD-DEMO", "SCENE-07");
+    const request = http.expectOne("/api/productions/PROD-DEMO/scenes/SCENE-07");
+    expect(request.request.method).toBe("GET");
+    request.flush({
+      scene: {
+        id: "SCENE-07",
+        productionId: "PROD-DEMO",
+        sceneNumber: "07",
+        locationId: "LOC-1",
+        requiredCastIds: [],
+        requirementIds: [],
+        estimatedMinutes: 60,
+      },
+      location: { id: "LOC-1", productionId: "PROD-DEMO", name: "Warehouse", unavailable: [] },
+      requiredCast: [],
+      requirements: [],
+      scheduledShootDayId: null,
+    });
+    expect((await pending).scene.sceneNumber).toBe("07");
+  });
 });

@@ -101,6 +101,14 @@ export class ProductionApi {
     return this.request("GET", this.url(productionId, `/audit?limit=${limit}`));
   }
 
+  getSchedule(productionId: string): Promise<McpToolOutput<"get_schedule">> {
+    return this.request("GET", this.url(productionId, "/schedule"));
+  }
+
+  getScene(productionId: string, sceneId: string): Promise<McpToolOutput<"get_scene">> {
+    return this.request("GET", this.url(productionId, `/scenes/${encodeURIComponent(sceneId)}`));
+  }
+
   /** `jobId`, when the decision came from a tracked job, completes it on rejection (TASK-505). */
   decideProposal(
     productionId: string,

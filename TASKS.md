@@ -476,13 +476,19 @@ Render job stages.
 **Status**  
 Complete. The workspace's "Progress" panel, previously a raw list of `ProductionStore.openJobs`, now renders DESIGN.md §6's compact ✓/●/○ timeline for the one job the workspace is tracking (`ChangeSubmissionService.job`, the same job every other panel reads). `buildJobProgress` (`apps/web/src/app/workspace/job-progress-format.ts`) is a pure function of the job's `history`: a stage is `done` once its own `COMPLETED` event exists, `active` while it is the run's current stage, `pending` otherwise — including a stage the run's actual path skipped (an already-resolved change never visits `resolving`; a `NOTHING_TO_DO`/rejection path never visits `applying`/`verifying`), which stays `pending` rather than `done`. A `failed` run returns only the failed stage and its message, not the full list. `JobProgressTimeline` renders the result with no logic of its own; each row carries a distinct icon plus bold text for the active row, so status is never color-only. 10 new Angular tests (6 for `buildJobProgress`, 3 for `JobProgressTimeline`'s render, 1 confirming `ChangeWorkspace` wires the tracked job through); `pnpm verify` passes.
 
-## TASK-507 Schedule view
+## TASK-507 Schedule view — DONE
 
 Show before/after state clearly.
 
-## TASK-508 Audit view
+**Status**  
+Complete. Neither this nor TASK-508 needed new backend surface — `get_schedule`/`get_scene` and the `/audit` route (TASK-110) already existed — so both were pure Angular polish on the two nav views TASK-501 had left as placeholders, done together as one WORK_PLAN step. The Schedule nav entry (`SchedulePage`) resolves every scene ID a shoot day names through `get_scene` (a scene ID is opaque, never assumed to encode anything) and renders `buildScheduleRows`'s result, one shoot day per section, earliest first, each scene labelled by number, title, location, and required cast. "Before/after" is simply always showing the schedule the server currently has: approve a change and come back here, and the "after" is whatever changed — no separate diff endpoint to keep in sync with production state that may have moved on again. The other five production-nav placeholders (Scenes, Cast, Locations, Call Sheets, Tasks) stay `SectionPage` stubs; no task ever scoped views for them.
+
+## TASK-508 Audit view — DONE
 
 Structured action timeline without chain-of-thought.
+
+**Status**  
+Complete, alongside TASK-507. `describeAuditEvent` (`apps/web`) turns every action the audit-writing use cases actually emit (`CHANGE_REQUEST_SUBMITTED` through `PROPOSAL_VERIFICATION_FAILED`) into one DESIGN.md §7 sentence, reading only `action` and structured `metadata` — never a model's own words, so nothing here can be chain-of-thought; an action outside that vocabulary still renders a humanized, non-blank line rather than nothing. `AuditPage` fetches through the existing `listAudit` route (newest first, the right order for "what just happened") and reverses it, because this view's job is the story in the order it happened. Each line's time is formatted in the production's own timezone. 27 new tests (2 `ProductionApi`, 6 `schedule-format`, 2 `SchedulePage`, 15 `audit-format`, 2 `AuditPage`); `pnpm verify` passes.
 
 ---
 

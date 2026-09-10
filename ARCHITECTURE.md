@@ -374,6 +374,20 @@ not `ProductionStore.openJobs` (which still exists, for the header's open-job
 count) — the timeline is always about the one change this workspace is
 following, not every job the production happens to have open.
 
+The Schedule and Audit nav views (TASK-507, TASK-508) needed no new backend
+surface at all — `get_schedule`/`get_scene` and the `/audit` route (TASK-110)
+already existed — so both are pure Angular polish on views the shell
+(TASK-501) had left as placeholders. `SchedulePage` resolves every scene ID
+a shoot day names through `get_scene` (a scene ID is opaque, never assumed
+to encode anything) and lays out `buildScheduleRows`'s result, one shoot day
+per section; "before/after" is simply always showing the schedule the server
+currently has, so approving a change and returning here is the comparison.
+`AuditPage` turns each `AuditEvent` into one DESIGN.md §7 sentence via
+`describeAuditEvent`, reading only its `action` and structured `metadata` —
+never a model's own words — and reverses the audit repository's newest-first
+order (TESTING.md: "that is what an operator asks for") because this view's
+job is the story in the order it happened, not a log.
+
 ## 7. AI architecture
 
 Use a provider interface:

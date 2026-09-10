@@ -77,6 +77,23 @@ checking the ✓/●/○ text and `data-status` attribute per row and the
 failure-only view; and one more assertion in `ChangeWorkspace`'s own spec
 that the tracked job reaches the panel.
 
+TASK-507 and TASK-508 add two more pure-formatter-plus-component pairs.
+`schedule-format` tests `buildScheduleRows`: shoot days sorted earliest
+first regardless of input order, a resolved scene labelled by number,
+title, location, and required cast, a scene with no title labelled by
+number alone, an unresolved scene shown honestly by its ID rather than
+dropped, and an empty day rendered as an empty list, not an error;
+`SchedulePage`'s own spec drives it through a fake `ProductionApi`,
+resolving two shoot days' scenes and rendering them earliest first, and
+a day with no scenes showing a plain message. `audit-format` tests
+`describeAuditEvent` against every action the codebase actually writes
+(`CHANGE_REQUEST_SUBMITTED` through `PROPOSAL_VERIFICATION_FAILED`, plus an
+unknown action falling back to a humanized line) and `formatAuditTime`
+against two timezones; `AuditPage`'s own spec asserts the newest-first API
+response renders oldest first, with each line's time converted to the
+production's timezone. `ProductionApi` gains matching request/response
+tests for `getSchedule` and `getScene`.
+
 ### Integration tests
 Test:
 - application use cases + Mongo test database/adaptor;
