@@ -58,7 +58,10 @@ Tooling smoke tests.
 **Done**
 Commands documented and green.
 
-## TASK-002 Shared contracts
+## TASK-002 Shared contracts — DONE
+
+**Status**  
+Complete. `packages/contracts` holds zod schemas and inferred types for primitives, entities, change requests, impacts, proposals, approvals, audit events, jobs, errors, and all seventeen MCP tools, with a `MCP_TOOL_CONTRACTS` registry. 94 unit tests cover valid and invalid cases.
 
 **Goal**  
 Implement typed/schema-validated external contracts.

@@ -192,7 +192,7 @@ Output:
   valid: boolean;
   impacts: Impact[];
   conflicts: Conflict[];
-  postStateSummary: unknown;
+  postStateSummary: SimulationSummary;
 }
 ```
 
@@ -286,6 +286,7 @@ Tools return stable codes such as:
 ```text
 ENTITY_NOT_FOUND
 ENTITY_AMBIGUOUS
+UNSUPPORTED_CHANGE
 PRODUCTION_VERSION_MISMATCH
 PROPOSAL_INVALID
 APPROVAL_REQUIRED
@@ -293,8 +294,18 @@ APPROVAL_MISMATCH
 CONSTRAINT_VIOLATION
 IDEMPOTENCY_CONFLICT
 TOOL_UNAUTHORIZED
+INVALID_INPUT
 INTERNAL_ERROR
 ```
+
+Schemas for every tool live in `packages/contracts`, registered in
+`MCP_TOOL_CONTRACTS`. The server registers tools from that registry and the
+contract suite iterates it, so a tool cannot exist without a schema or be tested
+against a stale copy of one.
+
+Tool inputs are strict objects: an unknown key is an error rather than something
+to ignore, because a tool that silently drops a misspelled field lets an agent
+believe it constrained a query that in fact ran unconstrained.
 
 Errors should tell an agent what safe next step is possible.
 

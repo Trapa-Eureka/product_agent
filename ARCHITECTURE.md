@@ -229,6 +229,17 @@ Owns:
 - proposal validation;
 - schedule compatibility rules used by MVP.
 
+### Where entity shapes live
+
+`packages/contracts` owns the schemas and is the single source of truth for
+entity shape. The domain consumes the inferred types rather than restating them,
+so a field cannot mean one thing in Mongo, another in an MCP response, and a
+third in the UI.
+
+This does not weaken the domain boundary. A schema library is not a framework:
+the domain still imports no HTTP server, database driver, cloud SDK, MCP
+transport, or model SDK, and the ESLint boundary rule enforces that.
+
 ### Application
 
 Coordinates use cases:
