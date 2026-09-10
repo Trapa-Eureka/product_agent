@@ -502,7 +502,7 @@ describe("job handlers", () => {
       const final = await tracker.get(run.id);
       expect(final?.history.map((event) => event.message)).toEqual([
         undefined,
-        "Retrying (attempt 2): store unreachable",
+        "Retrying (attempt 2): store unreachable (correlation corr-1)",
         expect.stringContaining("Gave up after 2 attempts") as string,
       ]);
       expect(final?.stage).toBe("failed");

@@ -5,7 +5,7 @@ import type {
   QueuePort,
   RepositorySet,
 } from "@pca/application";
-import { guardModelPort } from "@pca/application";
+import { guardModelPort, guardRepositories } from "@pca/application";
 import { createFileStore, defaultDataFilePath } from "@pca/file-store";
 import { createMemoryJobRunRepository, createMemoryQueue } from "@pca/memory-queue";
 import { createMemoryStore } from "@pca/memory-store";
@@ -65,22 +65,43 @@ export type Repositories = {
   readonly close: () => Promise<void>;
 };
 
+/** The six repositories of a store, without whatever else the adapter exposes (a `close`, a client). */
+const repositorySetOf = (store: RepositorySet): RepositorySet => ({
+  productions: store.productions,
+  changeRequests: store.changeRequests,
+  proposals: store.proposals,
+  approvals: store.approvals,
+  auditEvents: store.auditEvents,
+  idempotency: store.idempotency,
+});
+
 export const createRepositories = async (selection: StorageSelection): Promise<Repositories> => {
   switch (selection.kind) {
     case "file":
       return {
-        repositories: createFileStore({ filePath: selection.filePath }),
+        repositories: guardRepositories(
+          "file",
+          repositorySetOf(createFileStore({ filePath: selection.filePath })),
+        ),
         selection,
         close: () => Promise.resolve(),
       };
     case "memory":
-      return { repositories: createMemoryStore(), selection, close: () => Promise.resolve() };
+      return {
+        repositories: guardRepositories("memory", repositorySetOf(createMemoryStore())),
+        selection,
+        close: () => Promise.resolve(),
+      };
     case "mongo": {
       const store = await connectMongoStore({
         uri: selection.uri,
         ...(selection.databaseName === undefined ? {} : { databaseName: selection.databaseName }),
       });
-      return { repositories: store, selection, close: () => store.close() };
+      return {
+        repositories: guardRepositories("mongo", repositorySetOf(store)),
+        selection,
+        close: () => store.close(),
+      };
     }
   }
 };

@@ -7,6 +7,7 @@
  */
 export * from "./ports";
 export * from "./result";
+export * from "./infrastructure-error";
 export * from "./explanation";
 export * from "./jobs";
 export * from "./realtime";

@@ -404,6 +404,13 @@ implement them:
 | In-memory | `@pca/memory-store` | Unit tests and throwaway demo runs. |
 | MongoDB | `@pca/mongo-store` | The portfolio target. Requires a replica set so commits are transactional; refuses a standalone server. |
 
+Every store is wrapped by `guardRepositories` in bootstrap (TASK-602): a
+thrown driver error becomes an `InfrastructureError` that names the boundary
+as `<adapter>.<repository>.<method>` and keeps the cause. Use cases let it
+propagate; the queue retries it and records the boundary and correlation ID
+as the reason; the MCP server reports `INTERNAL_ERROR` naming the boundary
+without the driver's message.
+
 One contract test suite in `@pca/test-support` runs unchanged against each of
 them. An adapter that merely compiles against the ports has proved nothing;
 when two adapters disagree, the disagreement must fail in that suite rather
