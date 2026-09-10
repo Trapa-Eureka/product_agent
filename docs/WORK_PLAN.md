@@ -77,7 +77,7 @@ for free. Only P7 infrastructure and live Bedrock/SQS connections are deferred.
 ### Stage 5 — Async / realtime (P4)
 
 28. TASK-401 Queue port + in-memory queue — **done**. Idempotent enqueue, bounded retry through an injected scheduler, explicit failure and dead letters; the contract suite is shared with any future SQS adapter.
-29. TASK-403 Job state machine (`SPEC.md` §7 stages).
+29. TASK-403 Job state machine — **done**. Pure stage graph with no edge into `applying` except from `awaiting_approval`; tracker, queue handlers, and binder produce the `AgentJobEvent` timeline; a job run is the canonical record a reconnecting client reads.
 30. TASK-404 WebSocket gateway (`ws`).
 31. TASK-405 Reconnect: client recovers canonical state via REST.
 32. TASK-602 Failure injection (stale version, provider failure, queue retry, partial failure).

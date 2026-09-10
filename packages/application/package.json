@@ -11,10 +11,12 @@
   },
   "dependencies": {
     "@pca/contracts": "workspace:*",
-    "@pca/domain": "workspace:*"
+    "@pca/domain": "workspace:*",
+    "zod": "^4.6.1"
   },
   "devDependencies": {
     "@pca/fixtures": "workspace:*",
+    "@pca/memory-queue": "workspace:*",
     "@pca/memory-store": "workspace:*",
     "@pca/rule-model": "workspace:*",
     "@pca/test-support": "workspace:*"

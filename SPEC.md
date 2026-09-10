@@ -229,6 +229,12 @@ failed
 
 WebSocket is preferred for the portfolio implementation.
 
+A job may move between these stages only along documented edges: `applying`
+follows `awaiting_approval` and nothing else, and `completed` / `failed` are
+final. Analysis stops at `awaiting_approval`; a human decision starts the
+apply. A job waiting on the user's answer to an ambiguous request stays at
+`resolving`.
+
 ## 8. Non-functional requirements
 
 ### Reliability

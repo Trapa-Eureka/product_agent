@@ -92,3 +92,57 @@ describe("toolErrorSchema", () => {
     expect(toolErrorSchema.safeParse({ code: "INTERNAL_ERROR", message: "" }).success).toBe(false);
   });
 });
+
+describe("jobRunSchema and job payloads", () => {
+  it("accepts a run with its history and rejects an unknown stage", async () => {
+    const { jobRunSchema } = await import("../src/job");
+    const run = {
+      id: "JOB-1",
+      productionId: "PROD-DEMO",
+      correlationId: "corr-1",
+      type: "ANALYZE_CHANGE",
+      stage: "awaiting_approval",
+      status: "STARTED",
+      proposalId: "P-1",
+      history: [
+        {
+          jobId: "JOB-1",
+          productionId: "PROD-DEMO",
+          correlationId: "corr-1",
+          stage: "received",
+          status: "STARTED",
+          occurredAt: "2026-09-10T12:00:00.000Z",
+        },
+      ],
+      createdAt: "2026-09-10T12:00:00.000Z",
+      updatedAt: "2026-09-10T12:00:00.000Z",
+    };
+    expect(jobRunSchema.parse(run)).toEqual(run);
+    expect(jobRunSchema.safeParse({ ...run, stage: "auto_applying" }).success).toBe(false);
+  });
+
+  it("every payload names the run it advances", async () => {
+    const {
+      analyzeChangeJobPayloadSchema,
+      applyProposalJobPayloadSchema,
+      verifyProposalJobPayloadSchema,
+    } = await import("../src/job");
+    expect(analyzeChangeJobPayloadSchema.safeParse({ text: "x", requestedBy: "c" }).success).toBe(
+      false,
+    );
+    expect(
+      analyzeChangeJobPayloadSchema.safeParse({ jobId: "JOB-1", text: "x", requestedBy: "c" })
+        .success,
+    ).toBe(true);
+    expect(
+      applyProposalJobPayloadSchema.safeParse({
+        jobId: "JOB-1",
+        proposalId: "P-1",
+        approvalId: "A-1",
+        expectedProductionVersion: 1,
+        idempotencyKey: "idem-key-0001",
+      }).success,
+    ).toBe(true);
+    expect(verifyProposalJobPayloadSchema.safeParse({ jobId: "JOB-1" }).success).toBe(false);
+  });
+});

@@ -176,10 +176,16 @@ importers:
       '@pca/domain':
         specifier: workspace:*
         version: link:../domain
+      zod:
+        specifier: ^4.6.1
+        version: 4.6.1
     devDependencies:
       '@pca/fixtures':
         specifier: workspace:*
         version: link:../fixtures
+      '@pca/memory-queue':
+        specifier: workspace:*
+        version: link:../adapters/memory-queue
       '@pca/memory-store':
         specifier: workspace:*
         version: link:../adapters/memory-store

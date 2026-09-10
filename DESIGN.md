@@ -157,6 +157,13 @@ Show a compact progress timeline:
 
 For failures, show the failed stage and a useful recovery message.
 
+Implementation (TASK-403): the timeline is the `history` of a `JobRun`. A
+stage shows `✓` when its `COMPLETED` event exists, `●` when its latest event
+is `STARTED`, and the failure line is the `FAILED` event, which is published
+against the stage that was running (`applying`, not `failed`) with the
+recovery message. A run waiting on the user's answer stays at `resolving`
+with the question as its message.
+
 ## 7. Audit view
 
 The audit view should make the agent trustworthy.
