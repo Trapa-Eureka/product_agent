@@ -190,9 +190,15 @@ Create side-effect-free simulation and proposal validation.
 **Status**  
 Complete. `applyOperations` in `packages/domain` applies operations atomically to a copy of the snapshot with an injected ID allocator, so simulation (placeholder IDs) and the coming apply path (real IDs) share one implementation. `simulateProposal` judges the copy by the state invariants and reports impacts, conflicts, resolved conflicts, warnings, and a summary. `validateProposal` in `packages/application` re-judges a stored proposal against the current production, detects stale versions and tampered digests, and writes the refreshed verdict back onto the proposal. Contract gains `resolvedConflicts` and `warnings` on `simulate_proposal`.
 
-## TASK-107 Approval model
+## TASK-107 Approval model — DONE
 
 Implement proposal digest, approval binding, stale-version checks.
+
+**Status**  
+Complete. `createProposal` seals operations into a persisted proposal with its simulation verdict and digest (invalid ones become a `DRAFT` that shows why). `decideProposal` writes the approval record bound to digest and base version, re-simulating once more before approving; rejection is always allowed; a decision is final. Both audit. A test proves the record satisfies the domain's `checkWriteAllowed` gate. 18 tests.
+
+**Open decision surfaced**  
+No operation records a cast member's or location's unavailability on the entity itself; the window lives only on the change request. See `docs/WORK_PLAN.md` §6 before TASK-108.
 
 ## TASK-108 Apply proposal
 

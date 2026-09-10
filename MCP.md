@@ -254,6 +254,13 @@ Creates a persisted proposal from already simulated operations.
 
 It is not a business-state mutation, but it must be auditable.
 
+The server re-simulates the operations against the current production, records
+the verdict, and computes the digest an approval will bind to. A valid proposal
+is persisted as `AWAITING_APPROVAL`; an invalid one is persisted as a `DRAFT`
+with its conflicts, so the coordinator can see exactly why it cannot be
+approved. A base version that is no longer current returns
+`PRODUCTION_VERSION_MISMATCH`.
+
 ### `get_proposal`
 
 Returns proposal operations, impacts, validation state, digest, and status.
