@@ -364,6 +364,16 @@ UI's own gate before that call — `ApprovalConfirmation` — is what DESIGN.md
 §5 asks for: a summary, the operation count, warnings, the current version,
 and the fixed notice that approving changes the plan.
 
+The progress timeline (TASK-506) replaces the workspace's earlier raw
+job-list panel with DESIGN.md §6's ✓/●/○ list, derived by a pure function,
+`buildJobProgress`, from the tracked job's `history` — no fetch, no state of
+its own, same as `describeImpact`/`describeProposal` on the server side.
+`JobProgressTimeline` renders its result with no logic of its own. It reads
+`ChangeSubmissionService.job`, the same tracked job every other panel reads,
+not `ProductionStore.openJobs` (which still exists, for the header's open-job
+count) — the timeline is always about the one change this workspace is
+following, not every job the production happens to have open.
+
 ## 7. AI architecture
 
 Use a provider interface:

@@ -226,6 +226,23 @@ against the stage that was running (`applying`, not `failed`) with the
 recovery message. A run waiting on the user's answer stays at `resolving`
 with the question as its message.
 
+Implementation (TASK-506): `buildJobProgress` (`apps/web`) is that rule as a
+pure function of the tracked job — no fetch, no state of its own. A stage
+reads `done` once its own `COMPLETED` event is in `history`, `active` while
+it is the run's current stage, or `pending` otherwise, including a stage the
+run's actual path skipped (an already-resolved change never visits
+`resolving`; a `NOTHING_TO_DO` outcome jumps `analyzing` straight to
+`completed`) — a skipped stage stays `pending`, not `done`, because the
+timeline reports what happened, not what the fixed order implies should
+have. A run at `failed` returns only the stage that failed and its message,
+not the eight-row list, matching "show the failed stage and a useful
+recovery message" above. `JobProgressTimeline` renders the result with no
+logic of its own; each row carries its own icon (`✓`/`●`/`○`) plus, for the
+active row, bold text, so status is never color-only (§8). The panel reads
+the same tracked job every other panel in the workspace reads
+(`ChangeSubmissionService.job`), not the production's full open-job list, so
+it always shows the one change the operator is following.
+
 ## 7. Audit view
 
 The audit view should make the agent trustworthy.

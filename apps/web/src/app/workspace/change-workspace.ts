@@ -18,9 +18,14 @@ import { ChangeInput } from "./change-input";
 import { ChangeSubmissionService } from "./change-submission.service";
 import { DetectedChangeCard } from "./detected-change-card";
 import { ImpactPanel } from "./impact-panel";
+import { JobProgressTimeline } from "./job-progress-timeline";
 import { ProposalCard } from "./proposal-card";
 
-/** `awaiting_approval` → "Awaiting approval"; a plain word, not TASK-506's full timeline. */
+/**
+ * `awaiting_approval` → "Awaiting approval"; a plain one-line status next
+ * to the input, distinct from the full ✓/●/○ timeline in the Progress
+ * panel below (`JobProgressTimeline`, TASK-506).
+ */
 const humanizeStage = (stage: JobStage): string => {
   const spaced = stage.replace(/_/gu, " ");
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
@@ -30,9 +35,9 @@ const humanizeStage = (stage: JobStage): string => {
  * DESIGN.md §2 right column. Each panel is a stated question the UI answers
  * in order (DESIGN.md §1); the components that answer them land in
  * TASK-502 (input, ambiguity resolution, detected change), TASK-503
- * (impact), TASK-504 (proposed plan and candidate comparison — this task),
- * TASK-505 (approval — this task), TASK-506 (the full progress timeline).
- * Until a panel has its component it says so, never a fake answer.
+ * (impact), TASK-504 (proposed plan and candidate comparison), TASK-505
+ * (approval), TASK-506 (the progress timeline — this task). Until a panel
+ * has its component it says so, never a fake answer.
  *
  * `ChangeSubmissionService` is provided here, one instance per workspace,
  * shared by `ChangeInput` and `AmbiguityResolution` through DI so both act
@@ -52,6 +57,7 @@ const humanizeStage = (stage: JobStage): string => {
     ProposalCard,
     CandidateComparisonPanel,
     ApprovalConfirmation,
+    JobProgressTimeline,
   ],
   template: `
     <section class="workspace" aria-labelledby="ws-title">
@@ -102,17 +108,7 @@ const humanizeStage = (stage: JobStage): string => {
       </div>
       <div class="panel" data-panel="progress">
         <h2>Progress</h2>
-        @if (store.openJobs().length > 0) {
-          <ul>
-            @for (job of store.openJobs(); track job.id) {
-              <li>
-                <code>{{ job.id }}</code> {{ job.stage }} ({{ job.status }})
-              </li>
-            }
-          </ul>
-        } @else {
-          <p class="pending">No job in progress. The realtime timeline arrives with TASK-506.</p>
-        }
+        <pca-job-progress-timeline [job]="submission.job()" />
       </div>
       @if (decidableProductionId(); as productionId) {
         <div class="actions">
@@ -176,10 +172,6 @@ const humanizeStage = (stage: JobStage): string => {
     }
     .job-status.failed {
       color: var(--danger);
-    }
-    ul {
-      margin: 0;
-      padding-left: 18px;
     }
     .actions {
       display: flex;

@@ -148,6 +148,13 @@ describe("ChangeWorkspace approval actions (TASK-505)", () => {
     expect(fake.rejectCalls).toEqual([]);
   });
 
+  it("TASK-506: wires the tracked job into the progress timeline panel", () => {
+    const fixture = render(fakeSubmission(awaitingApprovalJob));
+    const root = fixture.nativeElement as HTMLElement;
+    const progress = root.querySelector('[data-panel="progress"]');
+    expect(progress?.textContent).toContain("Waiting for approval");
+  });
+
   it("resets a stale confirming flag for a different job, so it does not reopen unasked", async () => {
     const fake = fakeSubmission(awaitingApprovalJob);
     const fixture = render(fake);
