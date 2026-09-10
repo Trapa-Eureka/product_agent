@@ -193,11 +193,14 @@ product_agent/
 │   └── mcp-server/          # MCP transport/tool registration
 ├── packages/
 │   ├── domain/              # entities, invariants, change engine
-│   ├── application/         # use cases / commands / queries
+│   ├── application/         # use cases, and the ports they depend on
 │   ├── contracts/           # zod/types shared across boundaries
-│   ├── adapters/            # Mongo/AWS/model/search adapters
+│   ├── adapters/
+│   │   ├── file-store/      # JSON file repositories (default)
+│   │   ├── memory-store/    # in-memory repositories
+│   │   └── mongo-store/     # MongoDB repositories (TASK-102)
 │   ├── fixtures/            # deterministic Demo Movie
-│   └── test-support/        # fakes/mocks/builders
+│   └── test-support/        # fakes, builders, shared contract suites
 ├── infra/
 │   └── terraform/
 ├── docs/
@@ -349,6 +352,31 @@ Use indexes for common dependency queries, e.g.:
 - `auditEvents.productionId + createdAt`
 
 Do not over-denormalize initially. Prefer clear ownership and queryability for the prototype.
+
+### Storage adapters
+
+The application depends on repository ports, never on a driver. Three adapters
+implement them:
+
+| Adapter | Package | Role |
+|---|---|---|
+| JSON file | `@pca/file-store` | Runtime default. No server, no native module, no account. |
+| In-memory | `@pca/memory-store` | Unit tests and throwaway demo runs. |
+| MongoDB | `@pca/mongo-store` | The portfolio target (TASK-102). |
+
+One contract test suite in `@pca/test-support` runs unchanged against each of
+them. An adapter that merely compiles against the ports has proved nothing;
+when two adapters disagree, the disagreement must fail in that suite rather
+than inside a use case that assumed one of them.
+
+The file store is single-process: writes are serialised in-process, and two
+processes writing the same file can still lose an update. Multi-writer
+deployments select MongoDB. It reads through to the file on every call rather
+than caching, so a second instance sees the first one's writes.
+
+Which adapter runs is decided in the composition root from `PCA_STORAGE`
+(`file`, `memory`, or `mongo`), wired in TASK-110. No package below the
+composition root knows more than one adapter exists.
 
 ## 10. Queue/SQS
 

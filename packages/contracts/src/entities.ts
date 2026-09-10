@@ -139,3 +139,23 @@ export type Requirement = z.infer<typeof requirementSchema>;
 export type ShootDay = z.infer<typeof shootDaySchema>;
 export type CallSheet = z.infer<typeof callSheetSchema>;
 export type Task = z.infer<typeof taskSchema>;
+
+/**
+ * A complete production snapshot.
+ *
+ * This is what gets persisted, seeded, and handed to the deterministic engine.
+ * Composing it from the entity schemas means a stored snapshot is validated by
+ * exactly the rules a live request is.
+ */
+export const productionStateSchema = z.strictObject({
+  production: productionSchema,
+  scenes: z.array(sceneSchema),
+  castMembers: z.array(castMemberSchema),
+  locations: z.array(locationSchema),
+  requirements: z.array(requirementSchema),
+  shootDays: z.array(shootDaySchema),
+  callSheets: z.array(callSheetSchema),
+  tasks: z.array(taskSchema),
+});
+
+export type ProductionStateSnapshot = z.infer<typeof productionStateSchema>;

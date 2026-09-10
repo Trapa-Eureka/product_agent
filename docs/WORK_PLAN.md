@@ -44,7 +44,7 @@ for free. Only P7 infrastructure and live Bedrock/SQS connections are deferred.
 
 ### Stage 2 — Application core (P1), golden scenarios in-memory first
 
-5. TASK-101 Repository ports + in-memory implementation in `packages/test-support`. Built before Mongo so steps 6–12 need no database.
+5. TASK-101 Repository ports + free adapters — **done**. Ports in `packages/application`, with in-memory and JSON file adapters under `packages/adapters`. Built before Mongo so steps 6-12 need no database.
 6. TASK-103 Change intake use case (correlation ID).
 7. TASK-104 Dependency impact engine. GOLDEN-1/2/3 impact sets must match exactly.
 8. TASK-105 Candidate shoot-day generator (simple rules, no solver).
@@ -143,7 +143,7 @@ npx production-change-agent mcp     # stdio MCP server
 
 Impact on the ordered steps:
 
-- step 5 (TASK-101): add the JSON file adapter next to the in-memory one; contract tests run against memory, file, and Mongo.
+- step 5 (TASK-101): done. JSON file adapter sits beside the in-memory one; one contract suite runs against both, and Mongo joins it in TASK-102.
 - step 23 (TASK-302): add `RuleInterpreterAdapter` as the runtime default; `FakeModelAdapter` stays test-only.
 - step 34 (TASK-501): Angular build output must be servable as static files from `apps/api`.
 - step 45 adds TASK-806 with the acceptance test "clean machine + `npx` runs all three golden scenarios".
