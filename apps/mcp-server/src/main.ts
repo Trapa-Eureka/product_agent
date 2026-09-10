@@ -8,6 +8,7 @@ import {
   createAnalysisToolHandlers,
   createProposalToolHandlers,
   createReadToolHandlers,
+  createVerifyToolHandlers,
   createWriteToolHandlers,
 } from "./handlers";
 import { stderrJsonLogger } from "./logging";
@@ -32,6 +33,7 @@ const main = async (): Promise<void> => {
       ...createAnalysisToolHandlers({ repositories }),
       ...createProposalToolHandlers({ repositories, clock: systemClock, ids: randomIdFactory }),
       ...createWriteToolHandlers({ repositories, clock: systemClock, ids: randomIdFactory }),
+      ...createVerifyToolHandlers({ repositories, clock: systemClock, ids: randomIdFactory }),
     },
     context,
     logger,

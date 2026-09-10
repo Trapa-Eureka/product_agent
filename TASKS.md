@@ -298,9 +298,12 @@ No approval = no mutation.
 **Status**  
 Complete. A thin handler over the apply use case, recording the server context's acting identity as who performed the apply. There is no approve tool; the contract tests create approvals through the use case. Every refusal test proves the production did not change: no approval, a wrong approval, an invalid proposal, a stale expected version, an edited proposal, a reused idempotency key, a production outside the allow-list, a missing binding field, and smuggled operations.
 
-## TASK-206 Verification tool
+## TASK-206 Verification tool — DONE
 
 Implement `verify_applied_proposal`.
+
+**Status**  
+Complete. A thin handler over the verification use case, returning only `success` and the named `checks` as the contract specifies. With this, all seventeen tools in `MCP_TOOL_CONTRACTS` are wired into the server entry point. Contract tests cover the full pass after GOLDEN-1, the bookkeeping gap named as a single failed check, an un-applied proposal reported honestly, no production change, and the refusals.
 
 ## TASK-207 MCP contract suite
 
