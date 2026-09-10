@@ -138,17 +138,26 @@ type ChangeRequest = {
   productionId: string;
   type: ChangeType;
   rawText: string;
-  payload: unknown;
+  payload: TypedChange;
+  correlationId: string;
   createdBy: string;
   createdAt: string;
 };
 ```
 
+`payload` is the resolved `TypedChange`, not an untyped value, and `type` must
+agree with `payload.type`. A typed change carries resolved IDs only, never a
+name such as `Sarah` or a phrase such as `Friday`; entity resolution happens
+before intake so the deterministic layer can verify every reference.
+
+`correlationId` ties the request to its agent job, MCP calls, and proposal in
+logs (ARCHITECTURE.md §16).
+
 ### Impact
 
 ```ts
 type Impact = {
-  entityType: string;
+  entityType: EntityType;
   entityId: string;
   reasonCode: string;
   explanation: string;
@@ -166,12 +175,19 @@ type Proposal = {
   baseProductionVersion: number;
   operations: ProposedOperation[];
   impacts: Impact[];
+  conflicts: Conflict[];
   warnings: string[];
   validationStatus: "VALID" | "INVALID";
   status: "DRAFT" | "AWAITING_APPROVAL" | "APPROVED" | "REJECTED" | "APPLIED" | "FAILED";
+  digest: string;
+  summary: string;
   createdAt: string;
 };
 ```
+
+`digest` hashes the operations together with `baseProductionVersion`. An
+approval binds to it, so editing a proposal after approval invalidates that
+approval rather than silently widening it (INV-6).
 
 ### Approval
 
