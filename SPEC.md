@@ -137,7 +137,7 @@ Expected behavior:
 1. Resolve Sarah and Friday.
 2. Find Friday schedule entries containing Sarah.
 3. Find affected scenes and dependent call sheet/tasks.
-4. Mark the existing plan as conflicted.
+4. Mark the existing plan as conflicted, by recording Sarah's unavailability on her cast record as the first operation of the proposal.
 5. Generate one or more candidate responses, e.g. move affected scenes to a compatible shoot day.
 6. Simulate and validate.
 7. Show impact.

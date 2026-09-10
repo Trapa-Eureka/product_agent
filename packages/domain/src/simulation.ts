@@ -8,7 +8,9 @@ import type {
   Task,
   TypedChange,
 } from "@pca/contracts";
+import { FACT_OPERATION_TYPES } from "@pca/contracts";
 
+import { normalizeDateRanges } from "./dates";
 import { ImpactCollector, analyzeImpact } from "./impact";
 import { checkStateInvariants } from "./invariants/state";
 import { isOperationAlreadyApplied } from "./operations";
@@ -67,8 +69,11 @@ type Mutable = {
 const copyState = (state: ProductionState): Mutable => ({
   production: { ...state.production },
   scenes: state.scenes.map((scene) => ({ ...scene, requirementIds: [...scene.requirementIds] })),
-  castMembers: [...state.castMembers],
-  locations: [...state.locations],
+  castMembers: state.castMembers.map((cast) => ({ ...cast, unavailable: [...cast.unavailable] })),
+  locations: state.locations.map((location) => ({
+    ...location,
+    unavailable: [...location.unavailable],
+  })),
   requirements: [...state.requirements],
   shootDays: state.shootDays.map((day) => ({ ...day, sceneIds: [...day.sceneIds] })),
   callSheets: state.callSheets.map((sheet) => ({ ...sheet })),
@@ -112,6 +117,31 @@ export const applyOperations = (
     }
 
     switch (operation.type) {
+      case "RECORD_CAST_UNAVAILABILITY": {
+        const cast = draft.castMembers.find((candidate) => candidate.id === operation.castId);
+        if (cast === undefined) {
+          conflicts.push(unknown("CAST_MEMBER", operation.castId));
+          break;
+        }
+        cast.unavailable = normalizeDateRanges([...cast.unavailable, operation.unavailable]);
+        applied.push(operation);
+        break;
+      }
+
+      case "RECORD_LOCATION_UNAVAILABILITY": {
+        const location = draft.locations.find((candidate) => candidate.id === operation.locationId);
+        if (location === undefined) {
+          conflicts.push(unknown("LOCATION", operation.locationId));
+          break;
+        }
+        location.unavailable = normalizeDateRanges([
+          ...location.unavailable,
+          operation.unavailable,
+        ]);
+        applied.push(operation);
+        break;
+      }
+
       case "MOVE_SCENES": {
         const from = draft.shootDays.find((day) => day.id === operation.fromShootDayId);
         const to = draft.shootDays.find((day) => day.id === operation.toShootDayId);
@@ -225,6 +255,10 @@ export const applyOperations = (
 
 const alreadyAppliedReason = (index: ProductionIndex, operation: ProposedOperation): string => {
   switch (operation.type) {
+    case "RECORD_CAST_UNAVAILABILITY":
+      return `${index.castById.get(operation.castId)?.name ?? operation.castId} is already recorded as unavailable ${operation.unavailable.start} to ${operation.unavailable.end}; nothing to record.`;
+    case "RECORD_LOCATION_UNAVAILABILITY":
+      return `${index.locationById.get(operation.locationId)?.name ?? operation.locationId} is already recorded as unavailable ${operation.unavailable.start} to ${operation.unavailable.end}; nothing to record.`;
     case "MOVE_SCENES":
       return `Scenes ${operation.sceneIds.join(", ")} are already on ${index.shootDayById.get(operation.toShootDayId)?.date ?? operation.toShootDayId}; nothing to move.`;
     case "ADD_SCENE_REQUIREMENT":
@@ -239,6 +273,9 @@ const alreadyAppliedReason = (index: ProductionIndex, operation: ProposedOperati
 /** The change each operation amounts to, so the impact engine can describe it. */
 const changeFor = (operation: ProposedOperation): TypedChange | null => {
   switch (operation.type) {
+    case "RECORD_CAST_UNAVAILABILITY":
+    case "RECORD_LOCATION_UNAVAILABILITY":
+      return null;
     case "MOVE_SCENES":
       return {
         type: "SCHEDULE_CHANGED",
@@ -271,6 +308,41 @@ export type SimulationOutcome = {
   readonly skipped: SkippedOperation[];
 };
 
+const isFactOperation = (operation: ProposedOperation): boolean =>
+  (FACT_OPERATION_TYPES as readonly string[]).includes(operation.type);
+
+/** The one line a recorded fact contributes to the impact list. */
+const factImpact = (index: ProductionIndex, operation: ProposedOperation): Impact | null => {
+  switch (operation.type) {
+    case "RECORD_CAST_UNAVAILABILITY": {
+      const cast = index.castById.get(operation.castId);
+      return cast === undefined
+        ? null
+        : {
+            entityType: "CAST_MEMBER",
+            entityId: cast.id,
+            reasonCode: "AVAILABILITY_RECORDED",
+            explanation: `${cast.name} is recorded as unavailable ${operation.unavailable.start} to ${operation.unavailable.end}.`,
+            severity: "INFO",
+          };
+    }
+    case "RECORD_LOCATION_UNAVAILABILITY": {
+      const location = index.locationById.get(operation.locationId);
+      return location === undefined
+        ? null
+        : {
+            entityType: "LOCATION",
+            entityId: location.id,
+            reasonCode: "AVAILABILITY_RECORDED",
+            explanation: `${location.name} is recorded as unavailable ${operation.unavailable.start} to ${operation.unavailable.end}.`,
+            severity: "INFO",
+          };
+    }
+    default:
+      return null;
+  }
+};
+
 const conflictKey = (conflict: Conflict): string =>
   `${conflict.code}:${conflict.entityType}:${conflict.entityId}:${conflict.date ?? ""}`;
 
@@ -300,8 +372,17 @@ export const simulateProposal = (
   const application = applyOperations(index.state, operations, allocateId);
   const postIndex = indexProduction(application.state);
 
+  // "Resolved" is measured from the world with the proposal's facts recorded
+  // but its remedy not yet applied. Recording that Sarah is out on Friday is
+  // what creates her conflict; moving her scenes is what resolves it.
+  const facts = operations.filter(isFactOperation);
+  const baseline =
+    facts.length === 0
+      ? index
+      : indexProduction(applyOperations(index.state, facts, simulationIds()).state);
+
   const before = new Map(
-    checkStateInvariants(index).map((violation) => [
+    checkStateInvariants(baseline).map((violation) => [
       conflictKey(violation.conflict),
       violation.conflict,
     ]),
@@ -314,11 +395,15 @@ export const simulateProposal = (
 
   const collector = new ImpactCollector();
   for (const operation of application.applied) {
+    const fact = factImpact(index, operation);
+    if (fact !== null) {
+      collector.add(fact);
+    }
     const change = changeFor(operation);
     if (change === null) {
       continue;
     }
-    const analysis = analyzeImpact(index, change);
+    const analysis = analyzeImpact(baseline, change);
     for (const impact of analysis.impacts) {
       collector.add(impact);
     }

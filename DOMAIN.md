@@ -402,6 +402,21 @@ immutable production snapshot.
 Requirement identity is a domain rule, not a prompt: `Red Car`, `red  car`, and
 `red car` are the same requirement of the same type.
 
+### Operations
+
+Proposals are made of a closed set of operations. Two of them state a fact
+about the world (`RECORD_CAST_UNAVAILABILITY`, `RECORD_LOCATION_UNAVAILABILITY`);
+the rest change the plan (`MOVE_SCENES`, `ADD_SCENE_REQUIREMENT`,
+`CREATE_PREPARATION_TASK`, `MARK_CALL_SHEET_STALE`). An availability change is
+proposed as the fact followed by its remedy, so approving "Sarah cannot shoot
+Friday" both records that she is unavailable and moves her scenes. Recording
+the fact alone is a valid operation but an invalid proposal, because it leaves
+the plan conflicted.
+
+Simulation measures "resolved" from the world with the proposal's facts recorded
+but its remedy not yet applied. Recording the fact is what creates the conflict;
+the remedy is what resolves it.
+
 The proposal digest covers the production, the change request, the base version,
 and the ordered operations. It deliberately excludes impacts, warnings, and
 prose, so re-wording an explanation does not invalidate a valid approval while

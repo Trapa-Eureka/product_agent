@@ -2,7 +2,9 @@ import type {
   Approval,
   AuditEvent,
   CallSheet,
+  CastMember,
   ChangeRequest,
+  Location,
   EntityId,
   IdempotencyKey,
   Proposal,
@@ -43,6 +45,8 @@ export type ProductionMutation = {
   readonly productionId: EntityId;
   /** The version the caller simulated against. A mismatch aborts the commit (INV-6). */
   readonly expectedVersion: ProductionVersion;
+  readonly castMembers?: readonly CastMember[];
+  readonly locations?: readonly Location[];
   readonly scenes?: readonly Scene[];
   readonly requirements?: readonly Requirement[];
   readonly shootDays?: readonly ShootDay[];

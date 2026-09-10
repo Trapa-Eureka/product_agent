@@ -295,11 +295,26 @@ Server behavior:
 
 This is safer than exposing arbitrary `update_schedule`, `update_scene`, etc. directly to the model.
 
-Internal application commands may include:
-- `MoveScenes`
-- `AddSceneRequirement`
-- `CreatePreparationTask`
-- `MarkCallSheetStale`
+The operation allow-list, as of TASK-108:
+
+- `RECORD_CAST_UNAVAILABILITY` and `RECORD_LOCATION_UNAVAILABILITY` write the
+  fact behind an availability change onto the entity itself, so the production
+  remembers it after the remedy is applied. The orchestrator includes the
+  recording operation in every availability proposal.
+- `MOVE_SCENES`
+- `ADD_SCENE_REQUIREMENT`
+- `CREATE_PREPARATION_TASK`
+- `MARK_CALL_SHEET_STALE`
+
+The write applies the proposal's operations through the same function
+simulation used, now handed real IDs, so what the coordinator approved is what
+happens. A replayed idempotency key answers from its record and touches nothing;
+the same key for different work returns `IDEMPOTENCY_CONFLICT`.
+
+The commit and the bookkeeping that follows it (idempotency record, proposal
+status, audit) are not one transaction in the file and memory stores. A crash
+between them leaves the effects applied and the proposal still `APPROVED`;
+`verify_applied_proposal` exists to notice exactly that.
 
 ## 8. Verification tool
 
