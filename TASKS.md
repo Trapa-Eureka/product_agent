@@ -316,9 +316,12 @@ Complete. Per-tool suites (TASK-202 to TASK-206) pin each tool's answers; the re
 
 # P3 — AI Orchestration
 
-## TASK-301 Model port
+## TASK-301 Model port — DONE
 
 Define provider-independent model interface.
+
+**Status**  
+Complete. `ModelPort` in `packages/application` with three operations; input and output schemas in `packages/contracts/src/model.ts`; `guardModelPort` wraps any adapter to schema-validate and ground every answer (no invented IDs, rankings are permutations), wrap provider faults, and enforce a time budget, raising `ModelError` with a stable code. 24 guard tests and 7 schema tests.
 
 ## TASK-302 Fake model adapter + rule-based interpreter adapter
 
