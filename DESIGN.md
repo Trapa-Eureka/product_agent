@@ -152,6 +152,12 @@ Example:
 
 Do not expose chain-of-thought. Store and display actions, structured reasons, tool results, and user-visible explanations.
 
+The audit actions the agent loop writes, in order: `CHANGE_REQUEST_SUBMITTED`
+(user), `ANALYSIS_REQUESTED` (agent), `ANALYSIS_COMPLETED` (system, with the
+conflict count), `PROPOSAL_CREATED` (agent); then `PROPOSAL_APPROVED` or
+`PROPOSAL_REJECTED` (user), `PROPOSAL_APPLIED` and `PROPOSAL_VERIFIED`
+(system). All share the request's correlation ID.
+
 ## 8. Accessibility
 
 - keyboard-accessible actions;
