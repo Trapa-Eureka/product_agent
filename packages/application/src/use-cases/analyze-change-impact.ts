@@ -1,7 +1,15 @@
-import type { Conflict, EntityId, Impact, ProductionVersion, TypedChange } from "@pca/contracts";
+import type {
+  Conflict,
+  EntityId,
+  Impact,
+  ImpactExplanation,
+  ProductionVersion,
+  TypedChange,
+} from "@pca/contracts";
 import { typedChangeSchema } from "@pca/contracts";
 import { analyzeImpact, indexProduction } from "@pca/domain";
 
+import { describeImpact } from "../explanation";
 import type { RepositorySet } from "../ports";
 import { firstMissingReference } from "../references";
 import type { UseCaseResult } from "../result";
@@ -14,6 +22,14 @@ import { fail, succeed } from "../result";
  * and hands the deterministic engine the rest. The production version is
  * returned alongside so a later proposal can prove it was built against the
  * same world the analysis described.
+ *
+ * `explanation` is the DESIGN.md §3 impact panel (TASK-503), built by the
+ * same `describeImpact` the proposal explanation layer uses (TASK-306). The
+ * MCP tool's strict output schema has no room for it — an agent gets
+ * `impacts`/`conflicts`, the machine-readable form it reasons over — so the
+ * MCP handler narrows the result to the four original fields; the REST API
+ * has a dedicated route that returns `explanation` alone (TASK-110's
+ * documented REST-only exception, alongside decisions and change-as-jobs).
  */
 
 export type AnalyzeChangeImpactInput = {
@@ -27,6 +43,7 @@ export type ChangeImpactReport = {
   readonly impacts: Impact[];
   readonly conflicts: Conflict[];
   readonly affectedEntityIds: EntityId[];
+  readonly explanation: ImpactExplanation;
 };
 
 export type AnalyzeChangeImpact = (
@@ -77,6 +94,12 @@ export const createAnalyzeChangeImpact = (dependencies: {
     }
 
     const analysis = analyzeImpact(index, parsed.data);
-    return succeed({ productionVersion: state.production.version, ...analysis });
+    const explanation = describeImpact({
+      state,
+      impacts: analysis.impacts,
+      conflicts: analysis.conflicts,
+      change: parsed.data,
+    });
+    return succeed({ productionVersion: state.production.version, ...analysis, explanation });
   };
 };

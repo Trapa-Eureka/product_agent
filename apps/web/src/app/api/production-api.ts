@@ -5,6 +5,7 @@ import { firstValueFrom } from "rxjs";
 import type {
   AuditEvent,
   ChangeRequest,
+  ImpactExplanation,
   JobRun,
   McpToolOutput,
   RecoverySnapshot,
@@ -87,6 +88,10 @@ export class ProductionApi {
       "GET",
       this.url(productionId, `/change-requests/${encodeURIComponent(changeRequestId)}`),
     );
+  }
+
+  getImpactExplanation(productionId: string, change: TypedChange): Promise<ImpactExplanation> {
+    return this.request("POST", this.url(productionId, "/analysis/explanation"), { change });
   }
 
   listAudit(productionId: string, limit = 50): Promise<{ events: AuditEvent[] }> {

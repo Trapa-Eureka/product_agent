@@ -448,7 +448,10 @@ Complete. `apps/web/src/app/workspace/`: `ChangeInput` submits a sentence as a j
 
 Input, ambiguity resolution, detected-change card.
 
-## TASK-503 Impact view
+## TASK-503 Impact view — DONE
+
+**Status**  
+Complete. `analyzeChangeImpact` now computes the DESIGN.md §3 impact panel alongside the raw impacts/conflicts, via `describeImpact` (`explanation: ImpactExplanation`). The MCP `analyze_change_impact` tool narrows the result to the original four fields — the strict output schema has no room for it, matching the `validate_proposal` precedent — so the REST API exposes it on a dedicated route, `POST .../productions/:id/analysis/explanation`, one of TASK-110's documented REST-only exceptions. `apps/web/src/app/workspace/`: `ProductionApi.getImpactExplanation`; `ChangeSubmissionService` fetches it once the tracked job's change request is known (chained after `loadChangeRequestIfKnown`, guarded the same way); `ImpactPanel` is a pure presentational component rendering BLOCKING, the six AFFECTED groups in the server's exact order (empty ones omitted), and WHY. 9 new tests (1 application, 3 API contract, 5 Angular incl. an extended service cascade test) plus a regression guard added to an existing MCP contract test proving the field does not leak; `pnpm verify` passes.
 
 Grouped impacts with deterministic `why`.
 
