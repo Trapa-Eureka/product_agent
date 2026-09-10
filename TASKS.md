@@ -392,7 +392,10 @@ Produce concise user-facing explanation from structured deterministic results.
 
 # P4 — Async / Realtime
 
-## TASK-401 Queue port + fake queue
+## TASK-401 Queue port + fake queue — DONE
+
+**Status**  
+Complete. `QueuePort` (with `Scheduler`, `QueuePolicy`, `JobRecord`, `JobTransition`, `JobHandlerOutcome`) in `packages/application/src/ports/queue.ts`; `@pca/memory-queue` is the free runtime adapter and the test double in one. Idempotent enqueue (`DUPLICATE`), bounded retry with backoff through an injected scheduler, explicit `FAILED` plus a dead-letter list when attempts run out, thrown handler errors retried as transient, duplicate deliveries of finished jobs ignored. The queue contract suite in `@pca/test-support` (`describeQueueContract`) is what an SQS adapter would also run. Bootstrap reads `PCA_QUEUE` (`memory` default, `sqs` deferred).
 
 Deterministic local queue.
 

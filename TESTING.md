@@ -204,6 +204,12 @@ Test:
 
 AWS-specific adapter tests can be separate and optional in normal local verification.
 
+Implementation (TASK-401): `describeQueueContract` in `@pca/test-support` is
+the suite above, run today against `@pca/memory-queue`. Tests hold time still
+with `manualScheduler`, so a retry backoff is an assertion about a recorded
+delay rather than a sleep, and `drain()` delivers every runnable job, waiting
+retries included, for a deterministic end state.
+
 ## 6a. MongoDB in tests
 
 The Mongo adapter is exercised with `mongodb-memory-server` in replica-set

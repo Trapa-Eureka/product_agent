@@ -72,11 +72,11 @@ for free. Only P7 infrastructure and live Bedrock/SQS connections are deferred.
 24. TASK-304 Change interpreter — **done**. Context from the snapshot, guarded model call, IDs re-checked against the production.
 25. TASK-305 Orchestration — **done**. One loop, four outcomes, no write before approval on any path.
 26. TASK-306 Explanation layer — **done**. The DESIGN.md §3 and §4 cards built from data; the model's prose is optional and cannot add a claim.
-27. (Optional) Ollama adapter behind `ModelPort`, only if a live-LLM demo is wanted.
+27. (Optional) Ollama adapter behind `ModelPort`, only if a live-LLM demo is wanted — **skipped** on 2026-09-10; the rule adapter is the free default and nothing downstream needs a live model.
 
 ### Stage 5 — Async / realtime (P4)
 
-28. TASK-401 Queue port + in-memory queue (retry, duplicate, terminal failure).
+28. TASK-401 Queue port + in-memory queue — **done**. Idempotent enqueue, bounded retry through an injected scheduler, explicit failure and dead letters; the contract suite is shared with any future SQS adapter.
 29. TASK-403 Job state machine (`SPEC.md` §7 stages).
 30. TASK-404 WebSocket gateway (`ws`).
 31. TASK-405 Reconnect: client recovers canonical state via REST.

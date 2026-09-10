@@ -1,4 +1,4 @@
-import type { Clock, IdFactory } from "@pca/application";
+import type { Clock, IdFactory, Scheduler } from "@pca/application";
 import type { IsoDateTime } from "@pca/contracts";
 
 /**
@@ -32,6 +32,51 @@ export const sequentialIds = (): IdFactory => {
       const value = (counters.get(prefix) ?? 0) + 1;
       counters.set(prefix, value);
       return `${prefix}-${value}`;
+    },
+  };
+};
+
+/**
+ * A scheduler that holds time still. Tasks run only when the test says so,
+ * so a retry backoff is an assertion about a recorded delay, not a sleep.
+ */
+export type ManualScheduler = Scheduler & {
+  /** Delays requested so far, in order, cancelled ones included. */
+  readonly delays: number[];
+  /** Number of tasks waiting. */
+  pending(): number;
+  /** Runs the earliest-scheduled waiting task. Returns false when none is waiting. */
+  runNext(): boolean;
+  /** Runs waiting tasks until none is left, including ones scheduled meanwhile. */
+  runAll(): number;
+};
+
+export const manualScheduler = (): ManualScheduler => {
+  const queue: { id: number; task: () => void }[] = [];
+  const delays: number[] = [];
+  let sequence = 0;
+  return {
+    delays,
+    schedule(task, delayMs) {
+      const id = (sequence += 1);
+      delays.push(delayMs);
+      queue.push({ id, task });
+      return () => {
+        const index = queue.findIndex((entry) => entry.id === id);
+        if (index >= 0) queue.splice(index, 1);
+      };
+    },
+    pending: () => queue.length,
+    runNext() {
+      const next = queue.shift();
+      if (next === undefined) return false;
+      next.task();
+      return true;
+    },
+    runAll() {
+      let ran = 0;
+      while (this.runNext()) ran += 1;
+      return ran;
     },
   };
 };
