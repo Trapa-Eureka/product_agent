@@ -76,6 +76,7 @@ npm run lint
 npm run test
 npm run test:integration
 npm run test:contract
+npm run test:web
 npm run test:e2e
 npm run verify
 ```

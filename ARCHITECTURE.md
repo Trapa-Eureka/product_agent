@@ -300,6 +300,23 @@ allow-list, checked before any handler runs; the acting identity is the
 `X-Correlation-Id` is honoured and always echoed. The WebSocket gateway is
 attached to the same HTTP server on `/ws`.
 
+### Angular UI
+
+`apps/web` (TASK-501) is Angular 21, zoneless, signals, standalone
+components. The shell is DESIGN.md §2: a header with the production name,
+the connection status as a word, the version, and jobs in progress; the
+production nav; and a routed area holding the change workspace or a view of
+the production. Two services are the UI's only connection points:
+`ProductionApi`, a thin REST client typed by the shared contracts whose
+errors carry the server's `ToolError`, and `RealtimeService`, which wraps
+`@pca/realtime-client` in signals and recovers over REST. `ProductionStore`
+owns the open production and its version, which the header shows so a
+coordinator can tell the plan they are reading is the plan the server has.
+The dev server proxies `/api` and `/ws` to the API. The app type-checks
+itself with the DOM lib (the root TypeScript project excludes it) and is
+built with AOT and strict templates in the verify gate; its specs run with
+vitest and jsdom through `ng test`.
+
 ## 7. AI architecture
 
 Use a provider interface:

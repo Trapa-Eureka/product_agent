@@ -1,0 +1,30 @@
+{
+  "name": "@pca/web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Angular production console: navigation, change workspace, realtime status (TASK-501)",
+  "scripts": {
+    "start": "ng serve",
+    "build": "ng build --configuration production",
+    "test": "ng test"
+  },
+  "dependencies": {
+    "@angular/common": "^21.2.23",
+    "@angular/compiler": "^21.2.23",
+    "@angular/core": "^21.2.23",
+    "@angular/platform-browser": "^21.2.23",
+    "@angular/router": "^21.2.23",
+    "@pca/contracts": "workspace:*",
+    "@pca/realtime-client": "workspace:*",
+    "rxjs": "^7.8.2",
+    "tslib": "^2.8.1"
+  },
+  "devDependencies": {
+    "@angular/build": "^21.2.23",
+    "@angular/cli": "^21.2.23",
+    "@angular/compiler-cli": "^21.2.23",
+    "jsdom": "^29.1.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.8"
+  }
+}

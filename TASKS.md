@@ -434,7 +434,10 @@ Client can recover canonical state after socket loss.
 
 # P5 — Angular UI
 
-## TASK-501 Angular shell
+## TASK-501 Angular shell — DONE
+
+**Status**  
+Complete. `apps/web` (Angular 21, zoneless, signals, standalone components): the DESIGN.md §2 shell with the production header (name, connection status as a word, version, jobs in progress), the production nav (Change Workspace, Overview, Scenes, Cast, Locations, Schedule, Call Sheets, Tasks, Audit), and the routed area. The change workspace is a frame whose panels state which task fills them (502-506) rather than showing a fake answer. Overview and Audit read from REST. Connection points: `ProductionApi` (typed by the shared contracts, errors as `ApiError` carrying the server's `ToolError`) and `RealtimeService` (wraps `@pca/realtime-client` in signals; recovery goes through REST). `ProductionStore` owns the open production and its version. Dev server proxies `/api` and `/ws` to the API. `ng build` (AOT, strict templates) runs in the verify `build` step and the specs (vitest 4 + jsdom via `ng test`) in the new `test:web` step. The root TypeScript project excludes `apps/web`, which type-checks itself with the DOM lib. Angular 22 was not used because it requires TypeScript 6.
 
 Production navigation + change workspace.
 

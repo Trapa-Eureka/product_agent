@@ -114,6 +114,7 @@ pnpm run verify
 | `pnpm run test` | Unit suite |
 | `pnpm run test:integration` | Integration suite (`*.integration.test.ts`) |
 | `pnpm run test:contract` | MCP contract suite (`*.contract.test.ts`) |
+pnpm run test:web` | MCP contract suite (`*.contract.test.ts`) |
 | `pnpm run test:e2e` | Playwright suite; reports `E2E_NOT_CONFIGURED` until TASK-604 |
 | `pnpm run verify` | Local completion gate: runs the whole pipeline in order |
 
@@ -124,6 +125,13 @@ pnpm run verify
 ```bash
 PCA_STORAGE=memory PCA_API_PORT=3000 pnpm exec tsx apps/api/src/main.ts
 # REST under http://127.0.0.1:3000/api, WebSocket on ws://127.0.0.1:3000/ws
+```
+
+### Run the UI
+
+```bash
+pnpm --filter @pca/web start
+# Angular dev server on http://localhost:4200, proxying /api and /ws to the API above
 ```
 
 ### Runtime environment
