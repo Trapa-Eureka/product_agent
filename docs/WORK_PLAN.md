@@ -47,7 +47,7 @@ for free. Only P7 infrastructure and live Bedrock/SQS connections are deferred.
 5. TASK-101 Repository ports + free adapters — **done**. Ports in `packages/application`, with in-memory and JSON file adapters under `packages/adapters`. Built before Mongo so steps 6-12 need no database.
 6. TASK-103 Change intake use case — **done**. Confirms IDs against the production, persists raw sentence plus typed change, audit event, correlation ID.
 7. TASK-104 Dependency impact engine — **done**. GOLDEN-1/2/3 impact sets asserted as exact arrays, WHY text pinned.
-8. TASK-105 Candidate shoot-day generator (simple rules, no solver).
+8. TASK-105 Candidate shoot-day generator — **done**. Existing days where cast and location are free, with warnings and refusal reasons; no solver.
 9. TASK-106 Simulation / validation (side-effect free).
 10. TASK-107 Approval model (digest, version binding, stale detection).
 11. TASK-108 Apply approved proposal (idempotency, version increment).

@@ -173,12 +173,15 @@ Golden scenario impact sets are exact.
 **Status**  
 Complete. `analyzeImpact` in `packages/domain/src/impact` walks all four change types and returns impacts, conflicts, and affected IDs in canonical order. GOLDEN-1/2/3 are asserted as exact arrays against the Demo Movie, with the WHY text pinned. `analyzeChangeImpact` in `packages/application` wraps it as a read that returns the production version alongside. Reason codes are tabulated in `DOMAIN.md` §5.
 
-## TASK-105 Candidate schedule generator
+## TASK-105 Candidate schedule generator — DONE
 
 Implement simple valid-day candidate generation.
 
 **Non-goal**
 Do not build a general optimization solver.
+
+**Status**  
+Complete. `generateScheduleCandidates` in `packages/domain` returns existing shoot days on which every moving scene's cast and location are free, earliest first, with warnings, plus every refused day and its reasons. No scoring, capacity, splitting, or new days. The use case in `packages/application` wraps it as a read. Output contract gains `rejected` (MCP.md §5).
 
 ## TASK-106 Proposal simulation/validation
 

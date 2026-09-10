@@ -179,20 +179,31 @@ export const generateScheduleCandidatesInputSchema = z.strictObject({
   excludeDates: z.array(localDateSchema).optional(),
 });
 
+/** An existing shoot day on which every moving scene's cast and location are free. */
+export const scheduleCandidateSchema = z.strictObject({
+  shootDayId: entityIdSchema,
+  date: localDateSchema,
+  sceneIds: z.array(entityIdSchema).min(1),
+  /** Things worth knowing that do not invalidate the day, e.g. a cast member already booked. */
+  warnings: z.array(explanationSchema),
+});
+
+/** A shoot day that was considered and refused, with every reason it failed. */
+export const rejectedScheduleDaySchema = z.strictObject({
+  shootDayId: entityIdSchema,
+  date: localDateSchema,
+  reasons: z.array(explanationSchema).min(1),
+});
+
 /**
  * Candidates come from the deterministic engine. A model may reorder or explain
- * them; it must not add one (MCP.md §5).
+ * them; it must not add one (MCP.md §5). Rejected days are returned too, so
+ * "why not Tuesday?" has a data-backed answer.
  */
 export const generateScheduleCandidatesOutputSchema = z.strictObject({
   productionVersion: productionVersionSchema,
-  candidates: z.array(
-    z.strictObject({
-      shootDayId: entityIdSchema,
-      date: localDateSchema,
-      sceneIds: z.array(entityIdSchema).min(1),
-      warnings: z.array(explanationSchema),
-    }),
-  ),
+  candidates: z.array(scheduleCandidateSchema),
+  rejected: z.array(rejectedScheduleDaySchema),
 });
 
 /** What the production would look like afterwards, without writing anything. */
@@ -369,4 +380,6 @@ export type McpToolOutput<TName extends McpToolName> = z.infer<
 >;
 
 export type NormalizedScene = z.infer<typeof normalizedSceneSchema>;
+export type ScheduleCandidate = z.infer<typeof scheduleCandidateSchema>;
+export type RejectedScheduleDay = z.infer<typeof rejectedScheduleDaySchema>;
 export type SimulationSummary = z.infer<typeof simulationSummarySchema>;
