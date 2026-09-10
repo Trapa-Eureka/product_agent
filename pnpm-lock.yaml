@@ -167,6 +167,9 @@ importers:
       '@pca/memory-store':
         specifier: workspace:*
         version: link:../adapters/memory-store
+      '@pca/rule-model':
+        specifier: workspace:*
+        version: link:../adapters/rule-model
       '@pca/test-support':
         specifier: workspace:*
         version: link:../test-support
