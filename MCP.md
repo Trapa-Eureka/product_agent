@@ -336,6 +336,10 @@ Server behavior:
 
 This is safer than exposing arbitrary `update_schedule`, `update_scene`, etc. directly to the model.
 
+There is deliberately no approve tool. Approval is a human decision made in
+the product; an agent cannot grant itself permission (SPEC.md §6). The tool
+records the server's acting identity as who performed the apply.
+
 The operation allow-list, as of TASK-108:
 
 - `RECORD_CAST_UNAVAILABILITY` and `RECORD_LOCATION_UNAVAILABILITY` write the

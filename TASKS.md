@@ -288,12 +288,15 @@ Implement create/get proposal.
 **Status**  
 Complete. `create_proposal` records the server context's acting identity as the proposer; `get_proposal` is a plain read of the stored record. Both wired into the entry point with the system clock and random ID factory. Contract tests cover advertisement, refusals, sealing with the actor audited, an invalid draft, and round-tripping.
 
-## TASK-205 Safe write tool
+## TASK-205 Safe write tool — DONE
 
 Implement `apply_approved_proposal`.
 
 **Critical acceptance**
 No approval = no mutation.
+
+**Status**  
+Complete. A thin handler over the apply use case, recording the server context's acting identity as who performed the apply. There is no approve tool; the contract tests create approvals through the use case. Every refusal test proves the production did not change: no approval, a wrong approval, an invalid proposal, a stale expected version, an edited proposal, a reused idempotency key, a production outside the allow-list, a missing binding field, and smuggled operations.
 
 ## TASK-206 Verification tool
 
