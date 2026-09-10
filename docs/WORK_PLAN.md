@@ -102,7 +102,7 @@ for free. Only P7 infrastructure and live Bedrock/SQS connections are deferred.
 
 43. TASK-801 Seed/reset command — **done**. `pnpm run seed` restores Demo Movie into the file store, clearing a previous run's stale change requests/proposals/approvals/audit trail along with the state, not just the state.
 44. TASK-804 Correlation IDs + timing instrumentation — **done**. Correlation IDs were already threaded everywhere the spec asks; the real gap was latency for model calls, DB operations, and dependency analysis, now logged through a new shared `Logger` port, verified in a live E2E run's own output.
-45. TASK-802 Architecture diagram, TASK-803 demo script, TASK-805 README.
+45. TASK-802 Architecture diagram, TASK-803 demo script, TASK-805 README — **done**. `ARCHITECTURE.md` §4/§8 are now Mermaid diagrams; `docs/DEMO_SCRIPT.md` is a timed walkthrough of the golden scenarios; README gained real screenshots, an architecture summary, trade-offs, and limitations.
 
 ## 5. Deferred (paid or AWS account required)
 
