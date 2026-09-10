@@ -269,7 +269,10 @@ Implement:
 - get_call_sheet
 - get_tasks
 
-## TASK-203 Analysis tools
+## TASK-203 Analysis tools — DONE
+
+**Status**  
+Complete. Four thin handlers in `apps/mcp-server/src/handlers/analysis-tools.ts` over the existing use cases, wired into the entry point. `validate_proposal` strips the refreshed proposal from its answer because the output contract does not include it. Contract tests cover advertisement, refusals, the documented answers, and that none of them writes production state.
 
 Implement:
 
