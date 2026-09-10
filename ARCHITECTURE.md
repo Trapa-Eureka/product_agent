@@ -115,6 +115,31 @@ simulation, approval, application, and verification.
 OpenSearch is reserved for document retrieval and RAG.
 It must not replace deterministic production dependency queries.
 
+### Free-first constraint
+
+This is an independent, self-funded portfolio project built by a single
+developer. There is no budget for metered cloud services, so every
+component that would bill per use has a free, zero-install adapter that is
+the **runtime default**, while the target-stack adapter remains in the
+codebase to demonstrate the intended production shape.
+
+| Concern | Target adapter (portfolio) | Default adapter (free, runs anywhere)                         |
+| ------- | -------------------------- | ------------------------------------------------------------- |
+| Store   | MongoDB                    | JSON file store (`PCA_STORAGE=file`)                          |
+| Model   | AWS Bedrock                | Rule-based interpreter, Ollama if present (`PCA_MODEL=rules`) |
+| Queue   | AWS SQS                    | In-process queue                                              |
+| Search  | OpenSearch                 | none (optional feature, excluded from MVP)                    |
+
+Consequences:
+
+- domain and application packages never see which adapter is active;
+- the published npm package runs the full product on a clean machine with
+  `npx` and no credentials;
+- Bedrock, SQS, and Terraform `apply` are exercised only when a budget or
+  AWS account exists (see `TASKS.md` items marked DEFERRED).
+
+Decision record: `docs/decisions/0001-free-first-adapters.md`.
+
 ## 3. Goals
 
 - Strongly typed, agent-friendly codebase
