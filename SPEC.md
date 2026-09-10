@@ -44,6 +44,13 @@ The system accepts statements such as:
 
 The AI layer converts the statement into a typed change request. Entity resolution must be confirmed against real domain data.
 
+Interpretation shows the model only the production's names, scene numbers,
+shoot days, and today's date in the production's timezone: never availability,
+tasks, or history. A sentence comes back as a resolved typed change, a question
+with options when it could be read several ways, or a refusal with a reason.
+A model that misbehaves never yields a fabricated change; the coordinator sees
+a retry or rephrase hint instead.
+
 Intake is the first deterministic checkpoint after the AI layer. Whatever interpreted the sentence, every ID in the typed change is confirmed against the production's real data before anything is persisted: an unknown or misattributed entity is refused with `ENTITY_NOT_FOUND` and the name of the lookup tool to use. The raw sentence is stored verbatim beside the typed change, so the audit trail shows what the user said and not only what the system made of it.
 
 ### FR-2 Impact analysis

@@ -354,9 +354,12 @@ Code plus unit tests against a mocked Bedrock SDK client only. No live calls. `F
 **Acceptance**
 No Bedrock dependency leaks into domain/application packages.
 
-## TASK-304 Change interpreter
+## TASK-304 Change interpreter — DONE
 
 Natural language → schema-validated typed change candidate → entity resolution.
+
+**Status**  
+Complete. `interpretChange` in `packages/application` builds the interpretation context from the snapshot (names, scene numbers, shoot days, today in the production's timezone), calls the model behind the guard, and checks every returned ID against the production once more. Resolved changes, ambiguity as options, and unsupported sentences each have a documented outcome; a misbehaving model yields a retry or rephrase hint, never a fabricated change.
 
 ## TASK-305 Agent orchestration
 

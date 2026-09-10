@@ -7,3 +7,4 @@ export * from "./create-proposal";
 export * from "./decide-proposal";
 export * from "./apply-approved-proposal";
 export * from "./verify-applied-proposal";
+export * from "./interpret-change";
