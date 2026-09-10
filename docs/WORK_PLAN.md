@@ -59,7 +59,7 @@ for free. Only P7 infrastructure and live Bedrock/SQS connections are deferred.
 
 15. TASK-201 MCP server foundation — **done**. Registry-driven registration, strict validation in and out, server-side authorisation, stderr JSON logging; `packages/bootstrap` composition root added.
 16. TASK-202 Nine read tools — **done**.
-17. TASK-203 Four analysis tools.
+17. TASK-203 Four analysis tools — **done**.
 18. TASK-204 Proposal tools (create/get).
 19. TASK-205 `apply_approved_proposal`. Critical: no approval = no mutation.
 20. TASK-206 `verify_applied_proposal`.
