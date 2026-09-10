@@ -209,11 +209,24 @@ Output:
   valid: boolean;
   impacts: Impact[];
   conflicts: Conflict[];
+  resolvedConflicts: Conflict[]; // violations present now that the operations make go away
+  warnings: string[];
   postStateSummary: SimulationSummary;
 }
 ```
 
-No business mutation.
+No business mutation. Operations are applied in order to a copy of the
+snapshot, and the copy is judged by the same invariants that judge the live
+production. Each operation is atomic: it either takes full effect or
+contributes a conflict and leaves the copy untouched. An operation whose effect
+is already true of the world is skipped and reported as a warning (INV-8).
+
+`valid` means the would-be world satisfies every invariant and every operation
+could apply. A proposal that fixes one scene but leaves a second one conflicting
+is invalid: an approved plan must be a valid plan, not merely a better one.
+
+If `baseProductionVersion` is not the current version the tool returns
+`PRODUCTION_VERSION_MISMATCH` rather than simulating the wrong world.
 
 ### `validate_proposal`
 
@@ -223,6 +236,15 @@ Input:
 ```
 
 Returns validity, current version, warnings, and blocking conflicts.
+
+Re-judges the stored proposal against the production as it is now by
+re-running the simulation. A production version newer than the proposal's base
+adds a `STALE_PRODUCTION_VERSION` conflict. Operations that no longer hash to
+the stored digest return `PROPOSAL_INVALID`.
+
+The refreshed verdict is written back onto the proposal so `get_proposal` never
+reports a validity the world has since contradicted. That is a change to
+proposal metadata, not to production state; no business entity moves.
 
 ## 6. Proposal tools
 
