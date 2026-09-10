@@ -51,7 +51,7 @@ for free. Only P7 infrastructure and live Bedrock/SQS connections are deferred.
 9. TASK-106 Simulation / validation — **done**. One `applyOperations` shared by simulate and apply; whole-state validity; validate re-judges stored proposals.
 10. TASK-107 Approval model — **done**. `createProposal` seals with digest and verdict; `decideProposal` records the bound approval; decisions are final.
 11. TASK-108 Apply approved proposal — **done**. Same `applyOperations` as simulation with real IDs; fixed check order; only changed records committed.
-12. TASK-109 Post-write verification.
+12. TASK-109 Post-write verification — **done**. Named checks per operation plus availability, invariants, and bookkeeping; outcome audited.
 13. TASK-601 Golden scenario tests, pulled forward to application level. Regression baseline for every later step.
 14. TASK-102 Mongo adapters via `mongodb-memory-server`. Run the same repository contract tests against in-memory and Mongo.
 
