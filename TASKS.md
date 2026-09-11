@@ -821,31 +821,18 @@ Tests: `contextFromEnv` unit — unset/blank/comma-only/`*` refused outside demo
 
 Docs: `README.md` env table (`PCA_ALLOWED_PRODUCTIONS` no longer defaults to `*`; `PCA_DEMO_MODE` described as the one demo flag); `MCP.md` §3; `ARCHITECTURE.md` §15; the MCP entry point's usage comment.
 
-## TASK-916 WebSocket upgrade authentication and Origin validation — TODO
+## TASK-916 WebSocket upgrade authentication and Origin validation — DONE
 
-**Goal**  
-The `/ws` upgrade verifies the principal (TASK-914 token) and an exact Origin allow-list, rejecting with 401/403 before `handleUpgrade`.
+SEC-003 (High) / AUD-007 (High). Browsers open WebSockets cross-origin with no preflight, so a hostile page could point one at a developer's loopback API. TASK-914 already made the upgrade demand a token; this closes the other half — a page that holds a token (the developer's own browser) must also come from somewhere the server trusts.
 
-**Context**  
-SEC-003 (High) / AUD-007 (High). A hostile web page can open a socket to a loopback API and subscribe to any allowed production.
+**Status**  
+Complete. `apps/api/src/origins.ts` owns the policy: `parseOrigins` accepts only exact origins (scheme, host, port — `new URL(x).origin === x`), `allowedOriginsFromEnv` reads `PCA_ALLOWED_ORIGINS` and defaults to the Angular dev server's two origins in demo mode and to nothing in a deployment, and `originAllowed` accepts an origin that is on that list or whose host is the server's own `Host` (same-origin, compared on host only because the scheme may differ at a TLS-terminating proxy). The API server's `authenticate` hook checks it before the token: an `Origin` that is neither is refused with 403 and a reason; a connection whose token rides the query string — the browser path — with no `Origin` at all is refused with 403 too, since only a client that can set `Authorization` (never a browser) has a reason to omit it. All of it happens before `handleUpgrade`, so no socket exists for a foreign page. The gateway needed no change: the hook TASK-914 added is where the policy runs. `main.ts` passes the parsed list and logs it (`(same-origin only)` when empty); the E2E server allows the dev UI. The web client needed no change — a browser always sends its Origin.
 
-**Dependencies**  
-TASK-914.
+Tests: `apps/api/test/origins.test.ts` (exact-origin parsing and its refusals, defaults per mode, same-host and listed origins accepted, foreign/`null`/other-port/no-host refused); API contract — foreign and `null` Origin → 403 with either token transport, the server's own and a listed origin → 101, a query-string token without an Origin → 403 while a header token may omit it, and a missing or forged token still → 401 once the Origin is acceptable; the existing socket tests now send a same-origin `Origin` like a browser. `pnpm run verify` passes (9/9).
 
-**Allowed scope**  
-`apps/api/src/server.ts`, `packages/adapters/ws-gateway`, web client connect code, docs.
+Docs: `README.md` env table (`PCA_ALLOWED_ORIGINS`); `ARCHITECTURE.md` §6; `TESTING.md` API tests.
 
-**Acceptance criteria**
-
-- missing/invalid token → 401; foreign or missing Origin from a browser → 403;
-- subscriptions authorized against the principal's productions;
-- `PCA_ALLOWED_ORIGINS` documented, demo default is the served UI origin.
-
-**Tests**  
-ws-gateway tests: foreign Origin, missing Origin, missing token, valid token subscribes.
-
-**Definition of Done**  
-Acceptance met, verify green.
+Not done here: `Host`/forwarded-host validation against a trusted-proxy topology (AUD-016/TASK-930 territory), and the per-connection and rate limits of TASK-917.
 
 ## TASK-917 Resource limits: payload, rate, connection, and cardinality caps — TODO
 

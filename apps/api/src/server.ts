@@ -10,6 +10,7 @@ import {
 } from "@pca/ws-gateway";
 
 import { type ApiDependencies, bearerTokenOf, createApiApp, unauthenticated } from "./app";
+import { originAllowed } from "./origins";
 
 /**
  * The HTTP server: the REST app plus the WebSocket gateway on `/ws`, one
@@ -22,6 +23,13 @@ import { type ApiDependencies, bearerTokenOf, createApiApp, unauthenticated } fr
  * the `access_token` query parameter for browsers, which cannot set headers
  * on a WebSocket. A subscription then needs the production to be both on the
  * server's allow-list and in the principal's grant.
+ *
+ * Before the token, the Origin (TASK-916): a browser names where the page
+ * came from, and only the server's own host or an origin in
+ * `allowedOrigins` may open a socket; a query-string token without an
+ * Origin is refused too, because only a non-browser client, which can set
+ * the header instead, has a reason to omit it. Refusals are 403 and happen
+ * before `handleUpgrade`, so no socket ever exists for a foreign page.
  */
 
 /** The bearer token of an upgrade request: `Authorization` first, then `?access_token=`. */
@@ -38,6 +46,8 @@ export const websocketTokenOf = (request: {
 export type ApiServerOptions = ApiDependencies & {
   readonly hub: NotificationHub;
   readonly websocketPath?: string;
+  /** Exact browser origins allowed to open the socket, besides the server's own host. Default: none. */
+  readonly allowedOrigins?: readonly string[];
 };
 
 export type ApiServer = {
@@ -55,6 +65,30 @@ export const createApiServer = (options: ApiServerOptions): ApiServer => {
     hub: options.hub,
     clock: options.clock,
     authenticate: async (request): Promise<AuthenticateOutcome<Principal>> => {
+      const origin = request.headers.origin;
+      const headerToken = bearerTokenOf(request.headers.authorization);
+      if (origin !== undefined) {
+        if (
+          !originAllowed({
+            origin,
+            host: request.headers.host,
+            allowed: options.allowedOrigins ?? [],
+          })
+        ) {
+          return {
+            ok: false,
+            status: 403,
+            reason: `Origin ${origin} may not open a WebSocket to this server. Serve the console from this host, or list the origin in PCA_ALLOWED_ORIGINS.`,
+          };
+        }
+      } else if (headerToken === null && websocketTokenOf(request) !== null) {
+        return {
+          ok: false,
+          status: 403,
+          reason:
+            "A connection that carries its token in the query string must send an Origin header; a non-browser client sends the token as Authorization: Bearer instead.",
+        };
+      }
       const token = websocketTokenOf(request);
       if (token === null) {
         return { ok: false, status: 401, reason: unauthenticated("MISSING").message };

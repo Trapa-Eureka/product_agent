@@ -315,7 +315,13 @@ request proceeds. `PCA_ACTOR_ID` (the MCP server's own identity) is held to
 the same rule at startup. The WebSocket gateway is attached to the same HTTP
 server on `/ws`; its upgrade is authenticated the same way (the token from
 `Authorization`, or `?access_token=` for browsers, which cannot set headers
-on a socket) and refused with 401 before any socket exists.
+on a socket) and refused with 401 before any socket exists. Before the
+token, the browser's Origin (TASK-916): only the API's own host or an origin
+listed exactly in `PCA_ALLOWED_ORIGINS` (the Angular dev server's origins by
+default in demo mode) may open the socket, and a query-string token without
+an Origin is refused as well, so a hostile page cannot drive a developer's
+loopback API even with a token in hand; refusals are 403, again before
+`handleUpgrade`.
 
 ### Angular UI
 

@@ -148,6 +148,7 @@ describe("REST API", () => {
       // The flows below have one coordinator submit and approve; the
       // maker-checker case has its own test.
       makerChecker: false,
+      allowedOrigins: ["http://localhost:4200"],
     });
     const bound = await server.listen(0);
     base = bound.url;
@@ -783,7 +784,10 @@ describe("REST API", () => {
       const error = await new Promise<Error>((resolve) => refused.once("error", resolve));
       expect(error.message).toContain("401");
 
-      const wrong = new WebSocket(`${websocketUrl}?access_token=pca1.forged.forged`);
+      // A browser-style connection sends its Origin (TASK-916); the token is still what fails here.
+      const wrong = new WebSocket(`${websocketUrl}?access_token=pca1.forged.forged`, {
+        headers: { origin: base },
+      });
       expect(
         (await new Promise<Error>((resolve) => wrong.once("error", resolve))).message,
       ).toContain("401");
@@ -803,6 +807,55 @@ describe("REST API", () => {
         expect.objectContaining({ type: "error", code: "PRODUCTION_UNAUTHORIZED" }),
       ]);
       socket.close();
+    });
+  });
+
+  describe("origin policy (TASK-916, SEC-003 / AUD-007)", () => {
+    const upgrade = (query: string, headers: Record<string, string>) =>
+      new Promise<{ status: number | null; error: string | null }>((resolve) => {
+        const socket = new WebSocket(`${websocketUrl}${query}`, { headers });
+        socket.once("unexpected-response", (_request, response) => {
+          resolve({ status: response.statusCode ?? null, error: null });
+          socket.terminate();
+        });
+        socket.once("error", (error) => resolve({ status: null, error: error.message }));
+        socket.once("open", () => {
+          resolve({ status: 101, error: null });
+          socket.close();
+        });
+      });
+
+    it("refuses a foreign Origin with 403 before any socket exists, whatever the token", async () => {
+      const foreign = await upgrade(`?access_token=${JINHO_TOKEN}`, {
+        origin: "http://evil.example",
+      });
+      expect(foreign.status).toBe(403);
+      const foreignHeader = await upgrade("", {
+        origin: "http://evil.example",
+        authorization: `Bearer ${JINHO_TOKEN}`,
+      });
+      expect(foreignHeader.status).toBe(403);
+      const nullOrigin = await upgrade(`?access_token=${JINHO_TOKEN}`, { origin: "null" });
+      expect(nullOrigin.status).toBe(403);
+    });
+
+    it("accepts the server's own origin and a listed origin", async () => {
+      expect((await upgrade(`?access_token=${JINHO_TOKEN}`, { origin: base })).status).toBe(101);
+      expect(
+        (await upgrade(`?access_token=${JINHO_TOKEN}`, { origin: "http://localhost:4200" })).status,
+      ).toBe(101);
+    });
+
+    it("requires an Origin when the token rides the query string, not when it is a header", async () => {
+      expect((await upgrade(`?access_token=${JINHO_TOKEN}`, {})).status).toBe(403);
+      expect((await upgrade("", { authorization: `Bearer ${JINHO_TOKEN}` })).status).toBe(101);
+    });
+
+    it("still answers a missing or bad token with 401 once the Origin is acceptable", async () => {
+      expect((await upgrade("", { origin: base })).status).toBe(401);
+      expect((await upgrade("?access_token=pca1.forged.forged", { origin: base })).status).toBe(
+        401,
+      );
     });
   });
 
@@ -839,7 +892,9 @@ describe("REST API", () => {
       });
       expect(read.status).toBe(200);
 
-      const socket = new WebSocket(`${bound.websocketUrl}?access_token=${token}`);
+      const socket = new WebSocket(`${bound.websocketUrl}?access_token=${token}`, {
+        headers: { origin: bound.url },
+      });
       const first = await new Promise<unknown>((resolve) =>
         socket.once("message", (raw) => resolve(JSON.parse(rawDataToText(raw)))),
       );
@@ -850,7 +905,9 @@ describe("REST API", () => {
 
   describe("websocket on the same server", () => {
     it("greets on /ws and delivers a job event for a subscribed production", async () => {
-      const socket = new WebSocket(`${websocketUrl}?access_token=${JINHO_TOKEN}`);
+      const socket = new WebSocket(`${websocketUrl}?access_token=${JINHO_TOKEN}`, {
+        headers: { origin: base },
+      });
       const messages: unknown[] = [];
       const waiters: ((message: unknown) => void)[] = [];
       socket.on("message", (raw) => {

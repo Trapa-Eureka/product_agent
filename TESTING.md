@@ -144,7 +144,10 @@ cross-production smuggling), identity (TASK-914: 401 without or with a
 forged/expired token, a caller-supplied `X-Actor-Id` ignored, a token whose
 grant lacks the production, viewer/requester/approver role gates, maker-
 checker, the demo-session route present only in demo mode, the WebSocket
-upgrade refused without a token), reads, GOLDEN-1 driven through REST alone,
+upgrade refused without a token; TASK-916: a foreign or `null` Origin
+refused with 403 before any socket, the server's own and a listed origin
+accepted, a query-string token without an Origin refused while a header
+token may omit it), reads, GOLDEN-1 driven through REST alone,
 the stable error codes, changes as jobs with recovery, ambiguity resumed on
 the same job, and the WebSocket gateway on the same server.
 
