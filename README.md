@@ -273,6 +273,14 @@ security baseline a deployment must meet, most of it enforced by the server
 at startup (no demo mode, a signed-token secret, an explicit production
 allow-list, an encrypted and authenticated Mongo URI).
 
+## Planned
+
+Publish as one npm package with a `seed` / `serve` / `mcp` CLI (`TASKS.md`
+TASK-806); after that release, in order of value: an optional Ollama adapter
+for sentences outside the rule patterns, the free scope of the deferred
+Bedrock (mocked SDK) and Terraform (`validate` only) tasks, the Angular
+initial-bundle budget, and small documentation touch-ups.
+
 ## Documentation
 
 Read in this order:
