@@ -1,6 +1,6 @@
 import type { RepositorySet, UseCaseResult } from "@pca/application";
 import { fail, succeed } from "@pca/application";
-import type { EntityId } from "@pca/contracts";
+import type { EntityId, McpToolOutput, Scene } from "@pca/contracts";
 import type { ProductionIndex, ProductionState } from "@pca/domain";
 import {
   blockedDatesWithin,
@@ -57,6 +57,29 @@ const notFound = <T>(
     nextStep: `Resolve the ${kind} with ${lookupTool} and use the ID it returns.`,
   });
 
+type NormalizedScene = McpToolOutput<"get_scene">;
+
+/**
+ * A scene with what it depends on, read from one index. `null` when the
+ * scene's location does not exist, which INV-3 forbids; the caller decides
+ * whether that is an error (`get_scene`) or a scene to leave unresolved
+ * (`get_schedule` with `includeScenes`, where one corrupt scene must not
+ * hide the rest of the schedule).
+ */
+const normalizeScene = (index: ProductionIndex, scene: Scene): NormalizedScene | null => {
+  const location = index.locationById.get(scene.locationId);
+  if (location === undefined) return null;
+  return {
+    scene,
+    location,
+    requiredCast: scene.requiredCastIds
+      .map((castId) => index.castById.get(castId))
+      .filter((cast): cast is NonNullable<typeof cast> => cast !== undefined),
+    requirements: [...requirementsFor(index, scene.id)],
+    scheduledShootDayId: scheduledShootDay(index, scene.id)?.id ?? null,
+  };
+};
+
 /** Case-insensitive, whitespace-tolerant containment; the whole of entity resolution. */
 const matches = (haystack: string | undefined, query: string): boolean =>
   haystack !== undefined && haystack.toLowerCase().includes(query.trim().toLowerCase());
@@ -88,8 +111,8 @@ export const createReadToolHandlers = (dependencies: {
         return notFound("scene", asked, input.productionId, call, "get_schedule");
       }
 
-      const location = index.locationById.get(scene.locationId);
-      if (location === undefined) {
+      const normalized = normalizeScene(index, scene);
+      if (normalized === null) {
         return fail(
           "INTERNAL_ERROR",
           `Scene ${scene.sceneNumber} references location ${scene.locationId}, which does not exist.`,
@@ -99,16 +122,7 @@ export const createReadToolHandlers = (dependencies: {
           },
         );
       }
-
-      return succeed({
-        scene,
-        location,
-        requiredCast: scene.requiredCastIds
-          .map((castId) => index.castById.get(castId))
-          .filter((cast): cast is NonNullable<typeof cast> => cast !== undefined),
-        requirements: [...requirementsFor(index, scene.id)],
-        scheduledShootDayId: scheduledShootDay(index, scene.id)?.id ?? null,
-      });
+      return succeed(normalized);
     },
 
     find_cast: async (input, call) => {
@@ -183,7 +197,26 @@ export const createReadToolHandlers = (dependencies: {
       }
       shootDays.sort((left, right) => left.date.localeCompare(right.date));
 
-      return succeed({ productionVersion: state.production.version, shootDays });
+      if (input.includeScenes !== true) {
+        return succeed({ productionVersion: state.production.version, shootDays });
+      }
+      // TASK-913 (code review #16): the console used to follow this call with
+      // one get_scene per scene, each loading the whole production again.
+      // Resolve them here, from the index already in hand, distinct and in
+      // day order; a scene ID the production cannot resolve is left out and
+      // the caller shows it by ID.
+      const scenes: NormalizedScene[] = [];
+      const seen = new Set<EntityId>();
+      for (const day of shootDays) {
+        for (const sceneId of day.sceneIds) {
+          if (seen.has(sceneId)) continue;
+          seen.add(sceneId);
+          const scene = index.sceneById.get(sceneId);
+          const normalized = scene === undefined ? null : normalizeScene(index, scene);
+          if (normalized !== null) scenes.push(normalized);
+        }
+      }
+      return succeed({ productionVersion: state.production.version, shootDays, scenes });
     },
 
     get_call_sheet: async (input, call) => {

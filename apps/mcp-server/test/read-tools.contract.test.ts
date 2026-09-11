@@ -20,6 +20,8 @@ const { friday, monday, tuesday } = DEMO_MOVIE_DATES;
 
 let client: Client;
 let cleanup: () => Promise<void>;
+/** How many times the handlers loaded the production snapshot (TASK-913: one per call, not one per scene). */
+let snapshotLoads = 0;
 
 /** Structured output on success; the ToolError under `error` on failure. */
 const call = async (
@@ -37,8 +39,17 @@ const errorCode = async (name: string, args: Record<string, unknown>): Promise<u
 beforeAll(async () => {
   const store = createMemoryStore();
   await store.productions.save(withCastUnavailable(createDemoMovie(), cast.sarah, onDay(monday)));
+  const productions = new Proxy(store.productions, {
+    get(target, property, receiver) {
+      if (property !== "loadState") return Reflect.get(target, property, receiver) as unknown;
+      return (productionId: string) => {
+        snapshotLoads += 1;
+        return target.loadState(productionId);
+      };
+    },
+  });
   const { server } = createProductionChangeServer({
-    handlers: createReadToolHandlers({ repositories: store }),
+    handlers: createReadToolHandlers({ repositories: { ...store, productions } }),
     context: { actor: { type: "AGENT", id: "test-agent" }, allowedProductionIds: "*" },
     ids: sequentialIds(),
   });
@@ -261,6 +272,30 @@ describe("get_schedule", () => {
     expect(await errorCode("get_schedule", { productionId: DEMO, sceneId: "S99" })).toBe(
       "ENTITY_NOT_FOUND",
     );
+  });
+
+  it("TASK-913: with includeScenes, carries every scheduled scene normalized, from one production read", async () => {
+    snapshotLoads = 0;
+    const result = await call("get_schedule", { productionId: DEMO, includeScenes: true });
+    const carried = result["scenes"] as {
+      scene: { id: string };
+      location: { name: string };
+      scheduledShootDayId: string;
+    }[];
+    expect(carried.map((entry) => entry.scene.id)).toEqual([
+      scenes.s07,
+      scenes.s12,
+      scenes.s22,
+      scenes.s18,
+    ]);
+    expect(carried[0]).toMatchObject({
+      location: { name: "Warehouse" },
+      scheduledShootDayId: shootDays.friday,
+    });
+    expect(snapshotLoads).toBe(1);
+
+    const plain = await call("get_schedule", { productionId: DEMO });
+    expect("scenes" in plain).toBe(false);
   });
 });
 

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import type { AuditEvent } from "@pca/contracts";
 
-import { ProductionApi } from "../api/production-api";
+import { ApiError, ProductionApi } from "../api/production-api";
 import { ProductionStore } from "../state/production.store";
 import { AuditPage } from "./audit-page";
 
@@ -64,6 +64,54 @@ describe("AuditPage", () => {
     );
     expect(rows[1]?.textContent).toContain("13:05");
     expect(rows[1]?.textContent).toContain("jinho@example.test approved P-104.");
+  });
+
+  it("TASK-913: shows the server's error with a retry, and ignores a stale answer", async () => {
+    const pending = new Map<
+      string,
+      { resolve: (v: { events: AuditEvent[] }) => void; reject: (e: unknown) => void }
+    >();
+    const listAudit = (productionId: string) =>
+      new Promise<{ events: AuditEvent[] }>((resolve, reject) =>
+        pending.set(productionId, { resolve, reject }),
+      );
+    const productionId = signal<string | null>("PROD-OLD");
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        { provide: ProductionApi, useValue: { listAudit } },
+        { provide: ProductionStore, useValue: { productionId, production: signal(null) } },
+      ],
+    });
+    const fixture = TestBed.createComponent(AuditPage);
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+
+    productionId.set("PROD-DEMO");
+    fixture.detectChanges();
+    await settle();
+    pending
+      .get("PROD-DEMO")
+      ?.reject(new ApiError(500, { code: "INTERNAL_ERROR", message: "audit store down" }));
+    await settle();
+    fixture.detectChanges();
+    expect(element.querySelector("[role=alert]")?.textContent).toContain("audit store down");
+
+    // The old production's answer arrives late: it must not replace the error, nor render.
+    pending.get("PROD-OLD")?.resolve({ events });
+    await settle();
+    fixture.detectChanges();
+    expect(element.querySelectorAll("li")).toHaveLength(0);
+    expect(element.querySelector("[role=alert]")).not.toBeNull();
+
+    pending.delete("PROD-DEMO");
+    (element.querySelector("button") as HTMLButtonElement).click();
+    await settle();
+    pending.get("PROD-DEMO")?.resolve({ events });
+    await settle();
+    fixture.detectChanges();
+    expect(element.querySelectorAll("li")).toHaveLength(2);
+    expect(element.querySelector("[role=alert]")).toBeNull();
   });
 
   it("shows a plain message with no events", async () => {

@@ -147,8 +147,17 @@ Input:
 
 Input:
 ```ts
-{ productionId: string; date?: string; sceneId?: string }
+{ productionId: string; date?: string; sceneId?: string; includeScenes?: boolean }
 ```
+
+Returns the production version and the matching shoot days, earliest first.
+With `includeScenes`, the output also carries `scenes`: every distinct scene
+the returned days schedule, in day order, in the same normalized shape as
+`get_scene` (scene, location, required cast, requirements, scheduled day),
+resolved from the one snapshot this call already loaded (TASK-913). A client
+rendering a schedule therefore makes one read rather than one per scene. A
+scene ID a day names that the production cannot resolve is omitted from
+`scenes` rather than failing the call; the invariant checks report it.
 
 ### `get_call_sheet`
 

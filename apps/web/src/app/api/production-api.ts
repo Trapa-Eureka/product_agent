@@ -38,6 +38,15 @@ export class ApiError extends Error {
 const isErrorBody = (body: unknown): body is { error: ToolError } =>
   typeof body === "object" && body !== null && "error" in body;
 
+/** Whatever a request threw, as the `ToolError` a page shows: the server's own, or a synthetic one. */
+export const toToolError = (error: unknown): ToolError =>
+  error instanceof ApiError
+    ? error.error
+    : {
+        code: "INTERNAL_ERROR",
+        message: error instanceof Error ? error.message : String(error),
+      };
+
 @Injectable({ providedIn: "root" })
 export class ProductionApi {
   private readonly http = inject(HttpClient);
@@ -101,8 +110,18 @@ export class ProductionApi {
     return this.request("GET", this.url(productionId, `/audit?limit=${limit}`));
   }
 
-  getSchedule(productionId: string): Promise<McpToolOutput<"get_schedule">> {
-    return this.request("GET", this.url(productionId, "/schedule"));
+  /** With `includeScenes`, the response also carries every scheduled scene, resolved in one read (TASK-913). */
+  getSchedule(
+    productionId: string,
+    options: { includeScenes?: boolean } = {},
+  ): Promise<McpToolOutput<"get_schedule">> {
+    return this.request(
+      "GET",
+      this.url(
+        productionId,
+        options.includeScenes === true ? "/schedule?includeScenes=true" : "/schedule",
+      ),
+    );
   }
 
   getScene(productionId: string, sceneId: string): Promise<McpToolOutput<"get_scene">> {

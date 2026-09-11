@@ -131,11 +131,19 @@ export const getScheduleInputSchema = z.strictObject({
   productionId: entityIdSchema,
   date: localDateSchema.optional(),
   sceneId: entityIdSchema.optional(),
+  /** Also return every scene the listed days name, resolved from the same snapshot (TASK-913). */
+  includeScenes: z.boolean().optional(),
 });
 
 export const getScheduleOutputSchema = z.strictObject({
   productionVersion: productionVersionSchema,
   shootDays: z.array(shootDaySchema),
+  /**
+   * Present only when `includeScenes` was asked for: each distinct scene the
+   * returned days schedule, in day order, normalized like `get_scene`. One
+   * read of the production instead of one per scene.
+   */
+  scenes: z.array(normalizedSceneSchema).optional(),
 });
 
 export const getCallSheetInputSchema = z.strictObject({

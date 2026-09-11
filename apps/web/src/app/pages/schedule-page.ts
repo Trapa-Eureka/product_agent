@@ -1,23 +1,44 @@
-import { ChangeDetectionStrategy, Component, effect, inject, signal } from "@angular/core";
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  signal,
+} from "@angular/core";
 
 import type { EntityId } from "@pca/contracts";
 
-import { ProductionApi } from "../api/production-api";
+import { ProductionApi, toToolError } from "../api/production-api";
 import { ProductionStore } from "../state/production.store";
+import { LOADING, type PageLoad, latestOnly } from "./page-load";
 import { buildScheduleRows, type NormalizedScene, type ScheduleDayRow } from "./schedule-format";
 
 /**
- * DESIGN.md §2 Schedule nav entry (TASK-507). Fetches the current schedule,
- * resolves every scene it names (`get_schedule` only carries scene IDs),
- * and renders one section per shoot day, earliest first, through
- * `buildScheduleRows` — no layout logic of its own.
+ * DESIGN.md §2 Schedule nav entry (TASK-507). Fetches the current schedule
+ * with its scenes resolved in the same read (`includeScenes`, TASK-913: one
+ * request, not one per scene) and renders one section per shoot day,
+ * earliest first, through `buildScheduleRows` — no layout logic of its own.
+ *
+ * The request is guarded (code review #15): only the newest one may write,
+ * so switching productions while a slow answer is in flight cannot show the
+ * old production's days under the new header; and a failure is shown as the
+ * server's `ToolError` with a retry, never left as an endless "Loading…".
  */
 @Component({
   selector: "pca-schedule-page",
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <h1>Schedule</h1>
-    @if (rows(); as rows) {
+    @if (state().kind === "error") {
+      <p class="error" role="alert">
+        <strong>{{ error()?.code }}</strong> {{ error()?.message }}
+        @if (error()?.nextStep; as next) {
+          <span class="next">{{ next }}</span>
+        }
+        <button type="button" (click)="reload()">Retry</button>
+      </p>
+    } @else if (rows(); as rows) {
       @if (rows.length === 0) {
         <p class="pending">No shoot days yet.</p>
       } @else {
@@ -99,12 +120,31 @@ import { buildScheduleRows, type NormalizedScene, type ScheduleDayRow } from "./
     .pending {
       color: var(--muted);
     }
+    .error {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 8px;
+      color: var(--danger);
+    }
+    .next {
+      color: var(--muted);
+    }
   `,
 })
 export class SchedulePage {
   private readonly api = inject(ProductionApi);
   private readonly store = inject(ProductionStore);
-  readonly rows = signal<ScheduleDayRow[] | null>(null);
+  private readonly begin = latestOnly();
+  readonly state = signal<PageLoad<ScheduleDayRow[]>>(LOADING);
+  readonly rows = computed(() => {
+    const state = this.state();
+    return state.kind === "ready" ? state.value : null;
+  });
+  readonly error = computed(() => {
+    const state = this.state();
+    return state.kind === "error" ? state.error : null;
+  });
 
   constructor() {
     effect(() => {
@@ -114,14 +154,24 @@ export class SchedulePage {
     });
   }
 
+  reload(): void {
+    const productionId = this.store.productionId();
+    if (productionId !== null) void this.load(productionId);
+  }
+
   private async load(productionId: string): Promise<void> {
-    this.rows.set(null);
-    const schedule = await this.api.getSchedule(productionId);
-    const sceneIds = [...new Set(schedule.shootDays.flatMap((day) => day.sceneIds))];
-    const scenes = await Promise.all(
-      sceneIds.map((sceneId) => this.api.getScene(productionId, sceneId)),
-    );
-    const byId = new Map<EntityId, NormalizedScene>(scenes.map((scene) => [scene.scene.id, scene]));
-    this.rows.set(buildScheduleRows(schedule.shootDays, byId));
+    const isCurrent = this.begin();
+    this.state.set(LOADING);
+    try {
+      const schedule = await this.api.getSchedule(productionId, { includeScenes: true });
+      if (!isCurrent()) return;
+      const byId = new Map<EntityId, NormalizedScene>(
+        (schedule.scenes ?? []).map((scene) => [scene.scene.id, scene]),
+      );
+      this.state.set({ kind: "ready", value: buildScheduleRows(schedule.shootDays, byId) });
+    } catch (error) {
+      if (!isCurrent()) return;
+      this.state.set({ kind: "error", error: toToolError(error) });
+    }
   }
 }
