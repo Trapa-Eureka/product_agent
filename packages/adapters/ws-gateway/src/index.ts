@@ -32,6 +32,12 @@ import { REALTIME_PROTOCOL_VERSION, realtimeClientMessageSchema } from "@pca/con
  * The three client messages are a few dozen bytes each and a client sends a
  * handful per session, so the defaults are generous for any real client and
  * tight for an abusive one.
+ *
+ * Messages are handled one at a time per connection (TASK-918): each is
+ * chained behind the previous one, so a burst of subscribes cannot all read
+ * the subscription count below the cap, all suspend at `authorize`, and all
+ * add a production once it resolves. The rate check runs before a message
+ * joins the chain, so a flood is dropped rather than queued.
  */
 
 export type GatewayLogFields = Readonly<
@@ -97,6 +103,8 @@ type ClientState<TSession> = {
   /** Token bucket for the message rate: refilled from wall-clock time, one token per message. */
   tokens: number;
   refilledAt: number;
+  /** The connection's message chain: the next message runs only when this settles. */
+  pending: Promise<void>;
 };
 
 const STATUS_TEXT: Readonly<Record<401 | 403 | 429, string>> = {
@@ -196,14 +204,6 @@ export const createRealtimeGateway = <TSession = undefined>(
   };
 
   const handleMessage = async (client: ClientState<TSession>, raw: RawData): Promise<void> => {
-    if (!withinRate(client)) {
-      logger.log("warn", "realtime_connection_dropped", { reason: "message rate" });
-      client.socket.close(
-        1008,
-        `Too many messages: at most ${messagesPerSecond} per second. Reconnect and slow down.`,
-      );
-      return;
-    }
     const parsed = parseClientMessage(raw);
     if (!parsed.ok) {
       fail(client, "MALFORMED_MESSAGE", parsed.message);
@@ -256,6 +256,7 @@ export const createRealtimeGateway = <TSession = undefined>(
       alive: true,
       tokens: messagesPerSecond,
       refilledAt: Date.now(),
+      pending: Promise.resolve(),
     };
     sessions.delete(request);
     clients.add(client);
@@ -267,7 +268,22 @@ export const createRealtimeGateway = <TSession = undefined>(
       canonicalSource: "rest",
     });
     socket.on("message", (raw: RawData) => {
-      void handleMessage(client, raw);
+      if (!withinRate(client)) {
+        logger.log("warn", "realtime_connection_dropped", { reason: "message rate" });
+        socket.close(
+          1008,
+          `Too many messages: at most ${messagesPerSecond} per second. Reconnect and slow down.`,
+        );
+        return;
+      }
+      // Serialised per connection (TASK-918); a handler that throws must not break the chain.
+      client.pending = client.pending.then(() =>
+        handleMessage(client, raw).catch((error: unknown) => {
+          logger.log("error", "realtime_message_failed", {
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }),
+      );
     });
     socket.on("pong", () => {
       client.alive = true;

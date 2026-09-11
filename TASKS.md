@@ -847,28 +847,16 @@ Docs: `MCP.md` §3 (maxima table); `README.md` env table; `ARCHITECTURE.md` §6 
 
 Not done here: charging model calls to quotas at the provider (TASK-929 adds cancellation), a trusted-proxy address (TASK-930), and the WS subscription-cap race (TASK-918, next).
 
-## TASK-918 WebSocket subscription cap cannot be raced — TODO
+## TASK-918 WebSocket subscription cap cannot be raced — DONE
 
-**Goal**  
-Concurrent subscribe messages cannot exceed the per-connection subscription limit.
+SEC-013 (Medium) / AUD-022. `handleMessage` read `subscriptions.size`, then awaited `authorize`, then added the production — and every socket message started its own `handleMessage`, so a burst of subscribes could all pass the size check, all suspend at the await, and all add a production once authorization resolved. The advertised cap was a resource and data-minimisation guard a client could step over.
 
-**Context**  
-SEC-013 (Medium) / AUD-022. `handleMessage` awaits `authorize` after reading `subscriptions.size`.
+**Status**  
+Complete. Each connection now has a message chain (`ClientState.pending`): a message is handled only when the previous one has settled, so the size check, the await, and the add are one uninterrupted step per connection, and the cap holds under any burst however slow `authorize` is. A handler that throws (an authorizer that explodes, say) is logged as `realtime_message_failed` and does not break the chain. The message-rate check (TASK-917) moved in front of the chain, so a flood is dropped at receipt rather than queued behind a slow authorization. Replies are, as a consequence, in the order messages were sent.
 
-**Dependencies**  
-None.
+Tests: ws-gateway — five subscribes sent without waiting for an acknowledgement against a `maxSubscriptionsPerClient` of 2 and an `authorize` that takes 30 ms leave exactly two subscriptions, the other three answered `SUBSCRIPTION_LIMIT`, and authorization is observed to never run concurrently for one connection; a throwing authorizer does not stop the next message from being answered. `pnpm run verify` passes (9/9).
 
-**Allowed scope**  
-`packages/adapters/ws-gateway/src/index.ts` and its tests.
-
-**Acceptance criteria**  
-Messages processed serially per connection (or a slot reserved before the await and released on failure); the cap holds under a burst with delayed authorization.
-
-**Tests**  
-Burst of limit+N subscribes with a deliberately slow `authorize` leaves exactly `limit` subscriptions.
-
-**Definition of Done**  
-Acceptance met, verify green.
+Docs: `ARCHITECTURE.md` §11.
 
 ## TASK-919 Bind jobs to their proposal and requester — TODO
 

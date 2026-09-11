@@ -472,3 +472,74 @@ describe("resource caps (TASK-917)", () => {
     expect(outcome.reason).toContain("at most 3 per second");
   });
 });
+
+describe("subscription cap under a burst (TASK-918)", () => {
+  let gateway: RealtimeGateway;
+
+  afterEach(async () => {
+    await gateway.close();
+  });
+
+  it("holds the cap when subscribes arrive faster than authorize answers", async () => {
+    let inFlight = 0;
+    let peak = 0;
+    gateway = createRealtimeGateway({
+      hub: createNotificationHub(),
+      clock: fixedClock(NOW),
+      heartbeatIntervalMs: 0,
+      maxSubscriptionsPerClient: 2,
+      authorize: async () => {
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        inFlight -= 1;
+        return true;
+      },
+    });
+    const { url } = await gateway.listen(0);
+    const connection = await connect(url);
+    await connection.next();
+
+    // Five subscribes without waiting for a single acknowledgement.
+    for (const productionId of ["PROD-1", "PROD-2", "PROD-3", "PROD-4", "PROD-5"]) {
+      sendJson(connection.socket, { type: "subscribe", productionId });
+    }
+    const replies: RealtimeServerMessage[] = [];
+    for (let index = 0; index < 5; index += 1) replies.push(await connection.next());
+
+    expect(replies.slice(0, 2)).toEqual([
+      { type: "subscribed", productionId: "PROD-1" },
+      { type: "subscribed", productionId: "PROD-2" },
+    ]);
+    expect(replies.slice(2).map((reply) => reply.type)).toEqual(["error", "error", "error"]);
+    expect(
+      replies.slice(2).every((reply) => "code" in reply && reply.code === "SUBSCRIPTION_LIMIT"),
+    ).toBe(true);
+    expect(gateway.subscriberCount("PROD-3")).toBe(0);
+    expect([1, 2, 3, 4, 5].filter((n) => gateway.subscriberCount(`PROD-${n}`) === 1)).toEqual([
+      1, 2,
+    ]);
+    // Authorization never ran concurrently for one connection.
+    expect(peak).toBe(1);
+    await connection.close();
+  });
+
+  it("keeps handling messages after one handler throws", async () => {
+    gateway = createRealtimeGateway({
+      hub: createNotificationHub(),
+      clock: fixedClock(NOW),
+      heartbeatIntervalMs: 0,
+      authorize: (productionId) => {
+        if (productionId === "PROD-BOOM") throw new Error("authorizer exploded");
+        return true;
+      },
+    });
+    const { url } = await gateway.listen(0);
+    const connection = await connect(url);
+    await connection.next();
+    sendJson(connection.socket, { type: "subscribe", productionId: "PROD-BOOM" });
+    sendJson(connection.socket, { type: "ping" });
+    expect((await connection.next()).type).toBe("pong");
+    await connection.close();
+  });
+});
