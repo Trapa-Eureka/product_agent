@@ -527,6 +527,13 @@ only — it never runs here — and spells the same pipeline out as separate
 staged jobs (the suggested list above, plus `web` for the Angular specs,
 which has no home in it otherwise), for anyone comparing the two systems.
 
+Dependency advisories (TASK-925): CI runs `pnpm audit --audit-level=moderate`
+after install, so a known advisory at moderate or above in the resolved
+graph fails the build. It is not part of `verify`, which must work without
+network access. The toolchain is on Vitest 4.1.11 or later across the
+workspace (root, `@pca/test-support`, `apps/web`), which closes the
+`@vitest/mocker` arbitrary-file-read advisory (GHSA-82fw-gwwq-j7x9).
+
 ## 13. Definition of done
 
 A feature is done only when:

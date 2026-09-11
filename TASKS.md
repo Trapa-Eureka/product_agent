@@ -924,28 +924,16 @@ Tests: application — `describeFailureForUser` never contains the boundary, hos
 
 Docs: `ARCHITECTURE.md` §10.
 
-## TASK-925 Upgrade the test toolchain past the mocker advisory — TODO
+## TASK-925 Upgrade the test toolchain past the mocker advisory — DONE
 
-**Goal**  
-Root `vitest` ≥ 4.1.11, lockfile regenerated, `pnpm audit` clean.
+SEC-012 (Medium) / AUD-018. The root and `@pca/test-support` resolved `vitest@3.2.x` with `@vitest/mocker` in the range GHSA-82fw-gwwq-j7x9 / CVE-2026-84373 covers (reachable mocker configurations can register a redirect outside the project root and read local files); `apps/web` was already on the 4.x line but below the fixed release.
 
-**Context**  
-SEC-012 (Medium) / AUD-018. GHSA-82fw-gwwq-j7x9 in `@vitest/mocker`.
+**Status**  
+Complete. Every `vitest` dependency in the workspace — root, `@pca/test-support`, `apps/web` — is `^4.1.11`, the lockfile resolves a single `vitest@4.1.11`, and `pnpm audit` reports no known vulnerabilities. The only change the major needed was in `vitest.shared.ts`: the config type is `ViteUserConfig` now that `UserConfig` is no longer exported from `vitest/config`; the suites already used separate config files rather than the removed `workspace` option, and no removed API. CI gains an `Audit dependencies` step (`pnpm audit --audit-level=moderate`) right after install, so a future advisory at moderate or above fails the build; it is deliberately not part of `verify`, which must work offline.
 
-**Dependencies**  
-None.
+Tests: the whole gate on the new major — `pnpm run verify` passes (9/9).
 
-**Allowed scope**  
-`package.json`, `pnpm-lock.yaml`, vitest configs, test fixes required by the major upgrade, CI audit step.
-
-**Acceptance criteria**  
-All suites pass on the new major; `pnpm audit` reports zero known vulnerabilities; CI runs `pnpm audit --audit-level=moderate`.
-
-**Tests**  
-Full verify.
-
-**Definition of Done**  
-Acceptance met, verify green.
+Docs: `TESTING.md` §12.
 
 ## TASK-926 Mongo validates workflow documents on read and write — TODO
 

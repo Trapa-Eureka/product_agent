@@ -1,9 +1,9 @@
-import type { UserConfig } from "vitest/config";
+import type { ViteUserConfig } from "vitest/config";
 
 /** Test-file suffixes that belong to a dedicated suite, not the unit suite. */
 export const SPECIALISED_SUITES = ["integration", "contract", "e2e"] as const;
 
-export const sharedTestConfig: UserConfig = {
+export const sharedTestConfig: ViteUserConfig = {
   test: {
     environment: "node",
     globals: false,
