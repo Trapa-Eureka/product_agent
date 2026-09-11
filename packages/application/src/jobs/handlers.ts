@@ -14,7 +14,7 @@ import {
   verifyProposalJobPayloadSchema,
 } from "@pca/contracts";
 
-import type { JobHandler, JobHandlerOutcome, QueuePort } from "../ports";
+import type { JobHandler, JobHandlerOutcome, Logger, QueuePort } from "../ports";
 import type { ApplyApprovedProposal } from "../use-cases/apply-approved-proposal";
 import type { RunChangeAgent } from "../use-cases/run-change-agent";
 import type { VerifyAppliedProposal } from "../use-cases/verify-applied-proposal";
@@ -318,8 +318,18 @@ const jobIdPayloadSchema = z.looseObject({ jobId: z.string().min(1) });
  * run's current stage, and a queue-level failure (attempts exhausted, no
  * handler, a handler verdict the handler did not record itself) fails the
  * run. Returns the unsubscribe function.
+ *
+ * TASK-924 (AUD-011): the run gets the transition's `userReason` — the
+ * fixed sentence when the cause was an infrastructure fault — and the raw
+ * `reason`, which names drivers, hosts, and boundaries, is logged once here
+ * with the job and correlation IDs, so an operator can find it and a
+ * coordinator never reads it.
  */
-export const bindQueueToJobTracker = (queue: QueuePort, tracker: JobTracker): (() => void) =>
+export const bindQueueToJobTracker = (
+  queue: QueuePort,
+  tracker: JobTracker,
+  options: { readonly logger?: Logger } = {},
+): (() => void) =>
   queue.onTransition((transition) => {
     if (transition.to !== "QUEUED" && transition.to !== "FAILED") return;
     if (transition.from !== "RUNNING") return;
@@ -329,13 +339,25 @@ export const bindQueueToJobTracker = (queue: QueuePort, tracker: JobTracker): ((
       if (!payload.success) return;
       const run = await tracker.get(payload.data.jobId);
       if (run === null || isTerminalStage(run.stage)) return;
+      if (transition.reason !== undefined && transition.userReason !== transition.reason) {
+        options.logger?.log("error", "job_infrastructure_failure", {
+          jobId: run.id,
+          queueJobId: transition.jobId,
+          productionId: transition.productionId,
+          correlationId: transition.correlationId,
+          attempt: transition.attempt,
+          outcome: transition.to,
+          reason: transition.reason,
+        });
+      }
+      const shown = transition.userReason ?? transition.reason;
       if (transition.to === "QUEUED") {
         await tracker.note(
           run.id,
-          `Retrying (attempt ${transition.attempt}): ${transition.reason ?? "transient failure"}`,
+          `Retrying (attempt ${transition.attempt}): ${shown ?? "transient failure"}`,
         );
       } else {
-        await tracker.fail(run.id, transition.reason ?? "The job could not be delivered.");
+        await tracker.fail(run.id, shown ?? "The job could not be delivered.");
       }
     })();
   });

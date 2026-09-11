@@ -621,11 +621,16 @@ describe("job handlers", () => {
       await queue.drain();
       await settle();
       const final = await tracker.get(run.id);
+      // TASK-924: a thrown error is an infrastructure fault; the run never carries its text.
       expect(final?.history.map((event) => event.message)).toEqual([
         undefined,
-        "Retrying (attempt 2): store unreachable (correlation corr-1)",
+        "Retrying (attempt 2): A storage or service fault interrupted this step (correlation corr-1). Retry; if it happens again, give the correlation ID to an operator.",
         expect.stringContaining("Gave up after 2 attempts") as string,
       ]);
+      expect(JSON.stringify(final)).not.toContain("store unreachable");
+      expect((await queue.getJob((await queue.listJobs())[0]?.job.id ?? ""))?.lastError).toContain(
+        "store unreachable",
+      );
       expect(final?.stage).toBe("failed");
       expect((await queue.listDeadLetters()).map((entry) => entry.job.attempt)).toEqual([2]);
     });

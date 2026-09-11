@@ -66,7 +66,7 @@ const main = async (): Promise<void> => {
   // with a reason rather than left "in progress" forever; runs waiting on a
   // human (resolving, awaiting_approval) are kept.
   await reconcileInterruptedRuns({ tracker, repository: jobRuns, logger });
-  bindQueueToJobTracker(queue, tracker);
+  bindQueueToJobTracker(queue, tracker, { logger });
   // No logger here: createRunChangeAgent re-guards this model with its own
   // guardModelPort call (belt-and-suspenders safety on the one path that
   // matters), and that is where the logger goes — passing it here too would

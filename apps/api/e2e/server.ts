@@ -84,7 +84,7 @@ const main = async (): Promise<void> => {
   const queue = createMemoryQueue({ clock, ids });
   const tracker = createJobTracker({ repository: createMemoryJobRunRepository(), clock, ids });
   forwardJobEvents(tracker, hub);
-  bindQueueToJobTracker(queue, tracker);
+  bindQueueToJobTracker(queue, tracker, { logger });
   const model = createRuleModelAdapter();
 
   queue.register(

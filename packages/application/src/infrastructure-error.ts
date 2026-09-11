@@ -56,6 +56,20 @@ export const describeFailure = (error: unknown, correlationId?: string): string 
   return `${messageOf(error)}${correlationId === undefined ? "" : ` (correlation ${correlationId})`}`;
 };
 
+/**
+ * What a person may be shown about a thrown error (TASK-924, AUD-011). A
+ * thrown error is an infrastructure fault by convention (a use case returns
+ * its expected failures as values), and its text names drivers, hosts,
+ * paths, and boundaries that belong in the operator's log, not in a job run
+ * a coordinator reads. So the run gets one fixed sentence and the
+ * correlation ID, which is the handle an operator needs to find the raw
+ * line `describeFailure` produced.
+ */
+export const describeFailureForUser = (_error: unknown, correlationId?: string): string =>
+  `A storage or service fault interrupted this step${
+    correlationId === undefined ? "" : ` (correlation ${correlationId})`
+  }. Retry; if it happens again, give the correlation ID to an operator.`;
+
 type AnyPort = object;
 
 export type PortGuardOptions = {

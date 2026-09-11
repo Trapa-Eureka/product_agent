@@ -43,14 +43,17 @@ export type JobTransition = {
   readonly from: JobState | null;
   readonly to: JobState;
   readonly attempt: number;
+  /** For operators: names the boundary and the cause. */
   readonly reason?: string;
+  /** For people: what a job run may show (TASK-924). Equal to `reason` unless the reason is an infrastructure fault. */
+  readonly userReason?: string;
   readonly occurredAt: IsoDateTime;
 };
 
 export type JobHandlerOutcome =
   | { readonly kind: "COMPLETED" }
-  /** Transient trouble; deliver again if attempts remain. */
-  | { readonly kind: "RETRY"; readonly reason: string }
+  /** Transient trouble; deliver again if attempts remain. `userReason` when `reason` must not reach a run. */
+  | { readonly kind: "RETRY"; readonly reason: string; readonly userReason?: string }
   /** The job itself is wrong; do not deliver again. */
   | { readonly kind: "FAILED"; readonly reason: string };
 

@@ -913,28 +913,16 @@ Tests: `describeJobRunContract` (`@pca/test-support`) — round-trip with copies
 
 Docs: `ARCHITECTURE.md` §10; `README.md` env table.
 
-## TASK-924 Infrastructure errors are not copied into user-visible job state — TODO
+## TASK-924 Infrastructure errors are not copied into user-visible job state — DONE
 
-**Goal**  
-JobRun messages and API errors carry stable codes and safe text; raw driver/filesystem messages go only to structured operator logs with the correlation ID.
+AUD-011 (Medium). When a handler threw, the queue's retry reason — `describeFailure`'s line naming the boundary and the driver's own message (`memory.applyProposalTransaction failed: socket hang up`, an `ECONNREFUSED host:port`, a file path) — was written verbatim into the job run's history and message, which the console shows every coordinator, and the "gave up" message repeated it.
 
-**Context**  
-AUD-011 (Medium). `handlers.ts` writes `${error.code}: ${error.message}` into runs.
+**Status**  
+Complete. `describeFailureForUser` (`packages/application/src/infrastructure-error.ts`) gives one fixed sentence for any thrown error — "A storage or service fault interrupted this step (correlation …). Retry; if it happens again, give the correlation ID to an operator." — with nothing of the cause in it. A queue transition now carries both texts: `reason` (raw, for operators; still the record's `lastError`) and `userReason` (the fixed sentence for an infrastructure fault, equal to `reason` for a handler's own verdict); the `RETRY` outcome gained an optional `userReason` and the memory queue sets it in its catch, and the "gave up" transition composes its user text from it. `bindQueueToJobTracker` writes `userReason` into the run and, when the two differ, logs the raw reason once as `job_infrastructure_failure` with the job, queue-job, production, and correlation IDs and the attempt; both entry points pass their logger. Domain and validation text is unchanged: a use case's `ToolError` and a handler's `FAILED` reason are for the coordinator and still reach the run as they are; the use cases' own `INTERNAL_ERROR` messages were already generic.
 
-**Dependencies**  
-None.
+Tests: application — `describeFailureForUser` never contains the boundary, host, or path; the failure-injection queue retry shows the fixed sentence with the correlation ID, the run's JSON contains neither "socket hang up" nor the boundary, and the binder logged exactly one `job_infrastructure_failure` with the raw reason; the handler suite's exhausted-retries case shows the fixed sentence on the retry, "Gave up" on the failure, none of "store unreachable" on the run, and the raw text on the queue record's `lastError`. `pnpm run verify` passes (9/9).
 
-**Allowed scope**  
-`packages/application/src/jobs`, API error mapping, logger, docs.
-
-**Acceptance criteria**  
-Infrastructure-class errors map to a fixed user message plus code; the original message is logged once with correlation ID; domain/validation errors keep their actionable text.
-
-**Tests**  
-Unit: a `STORE_CORRUPT` with a path in its message yields a run message without the path; log receives it.
-
-**Definition of Done**  
-Acceptance met, verify green.
+Docs: `ARCHITECTURE.md` §10.
 
 ## TASK-925 Upgrade the test toolchain past the mocker advisory — TODO
 
