@@ -37,6 +37,7 @@ export class RealtimeService {
   readonly status = signal<ClientStatus>("idle");
   readonly reconnectAttempts = signal(0);
   readonly view = signal<ProductionView | null>(null);
+  /** Message of the most recent failed recovery read; cleared once a snapshot lands (TASK-910). */
   readonly lastRecoveryError = signal<string | null>(null);
 
   /** Test seam: a fake socket factory and URL instead of the browser's. */
@@ -47,7 +48,12 @@ export class RealtimeService {
       createSocket: options.createSocket ?? browserSocket,
       recover: (productionId) => this.api.getRecovery(productionId),
       onChange: (view) => {
-        if (view.productionId === this.followedId) this.view.set(view);
+        if (view.productionId !== this.followedId) return;
+        // A fresh snapshot supersedes whatever the last failed read reported.
+        const recovered =
+          view.recoveredAt !== null && view.recoveredAt !== this.view()?.recoveredAt;
+        this.view.set(view);
+        if (recovered) this.lastRecoveryError.set(null);
       },
       onStatus: (status, attempt) => {
         this.status.set(status);

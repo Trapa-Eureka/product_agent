@@ -7,7 +7,7 @@ import type {
   RealtimeServerMessage,
   RecoverySnapshot,
 } from "@pca/contracts";
-import { realtimeServerMessageSchema } from "@pca/contracts";
+import { OPEN_PROPOSAL_STATUSES, realtimeServerMessageSchema } from "@pca/contracts";
 
 /**
  * Reconnecting realtime client (TASK-405, ARCHITECTURE.md §11).
@@ -23,6 +23,19 @@ import { realtimeServerMessageSchema } from "@pca/contracts";
  * snapshot. A notification about a job or proposal the
  * view does not know triggers another recovery rather than a guess, and a
  * notification the record already reflects is ignored.
+ *
+ * Two rules added by TASK-910 (code review #11, #12). A proposal that
+ * reaches a terminal status (`APPLIED`, `REJECTED`, `FAILED`) leaves
+ * `openProposals`, because that array's contract is what a coordinator still
+ * has to act on; and `APPLIED` also triggers a recovery, because the write
+ * moved the production version (INV-7) and only the record says to what. And
+ * a recovery read that fails does not give up: the held notifications stay
+ * held, the view stays `recovering` so what arrives next is held too, and
+ * the read is retried with the same bounded backoff as reconnection until it
+ * succeeds or the socket drops (whereupon reconnection recovers from
+ * scratch). Applying a live notification without a baseline would be a
+ * guess, and never trying again would leave the view stale for as long as
+ * the socket stayed quiet.
  *
  * Framework-independent: the socket constructor, the timer, and the
  * recovery fetch are injected, so the same code runs in a browser, under
@@ -64,11 +77,19 @@ export type RealtimeClientOptions = {
   readonly recover: (productionId: string) => Promise<RecoverySnapshot>;
   /** Runs `task` after `delayMs`; returns a cancel. Defaults to `setTimeout`. */
   readonly schedule?: (task: () => void, delayMs: number) => () => void;
-  /** Delay before reconnect attempt `attempt` (1-based). Default: 500 ms doubling, capped at 30 s. */
+  /**
+   * Delay before reconnect attempt `attempt` (1-based), and before recovery
+   * retry `attempt` after that many consecutive failed reads. Default: 500 ms
+   * doubling, capped at 30 s.
+   */
   readonly backoffMs?: (attempt: number) => number;
   readonly onChange?: (view: ProductionView) => void;
   readonly onStatus?: (status: ClientStatus, attempt: number) => void;
-  /** Called when a recovery read fails; the client retries it on the next reconnect or notification. */
+  /**
+   * Called each time a recovery read fails. The client keeps holding
+   * notifications and retries the read with backoff while the socket stays
+   * up; a reconnect starts recovery over.
+   */
   readonly onRecoveryError?: (productionId: string, error: unknown) => void;
 };
 
@@ -136,12 +157,20 @@ export const applyProposalNotification = (
   };
 };
 
+/** Whether a proposal in this status still belongs in `openProposals`. */
+export const isOpenProposalStatus = (status: Proposal["status"]): boolean =>
+  (OPEN_PROPOSAL_STATUSES as readonly string[]).includes(status);
+
 type FollowedProduction = {
   view: ProductionView;
-  /** Notifications received while a recovery was in flight. */
+  /** Notifications received while a recovery was in flight or awaiting retry. */
   held: RealtimeServerMessage[];
   /** A notification asked for another recovery while one was running. */
   dirty: boolean;
+  /** Consecutive failed recovery reads; drives the retry backoff. Reset by a successful read. */
+  recoveryFailures: number;
+  /** Cancels the retry scheduled after a failed read, when one is pending (no read in flight). */
+  cancelRetry: (() => void) | null;
 };
 
 export const createRealtimeClient = (options: RealtimeClientOptions): RealtimeClient => {
@@ -178,25 +207,64 @@ export const createRealtimeClient = (options: RealtimeClientOptions): RealtimeCl
     if (socket !== null && socket.readyState === SOCKET_OPEN) socket.send(JSON.stringify(message));
   };
 
+  /** Forgets a pending retry. Returns whether there was one. */
+  const cancelRetry = (entry: FollowedProduction): boolean => {
+    if (entry.cancelRetry === null) return false;
+    entry.cancelRetry();
+    entry.cancelRetry = null;
+    return true;
+  };
+
+  /**
+   * Abandons an unfinished recovery: what was held is dropped and the view
+   * stops holding, so the next `subscribed` starts recovery from scratch.
+   * Only for a recovery that is awaiting retry or whose socket is gone; a
+   * read still in flight keeps its own bookkeeping.
+   */
+  const abandonRecovery = (entry: FollowedProduction): void => {
+    entry.held = [];
+    entry.dirty = false;
+    if (cancelRetry(entry)) update(entry, { ...entry.view, recovering: false });
+  };
+
   const recoverProduction = async (productionId: string): Promise<void> => {
     const entry = followed.get(productionId);
     if (entry === undefined) return;
-    if (entry.view.recovering) {
+    if (cancelRetry(entry)) {
+      // A retry was waiting; this request is that retry, run now.
+    } else if (entry.view.recovering) {
       entry.dirty = true;
       return;
     }
-    update(entry, { ...entry.view, recovering: true });
+    await readSnapshot(entry);
+  };
+
+  const readSnapshot = async (entry: FollowedProduction): Promise<void> => {
+    const { productionId } = entry.view;
+    if (!entry.view.recovering) update(entry, { ...entry.view, recovering: true });
     let snapshot: RecoverySnapshot;
     try {
       snapshot = await options.recover(productionId);
     } catch (error) {
       if (followed.get(productionId) !== entry) return;
-      entry.held = [];
-      update(entry, { ...entry.view, recovering: false });
+      entry.recoveryFailures += 1;
       options.onRecoveryError?.(productionId, error);
+      if (closedByUser) {
+        abandonRecovery(entry);
+        update(entry, { ...entry.view, recovering: false });
+        return;
+      }
+      // Nothing held can be applied without a baseline, so it stays held and
+      // the view keeps holding. Try the read again after a bounded delay; a
+      // socket that drops meanwhile cancels this and recovers on reconnect.
+      entry.cancelRetry = schedule(() => {
+        entry.cancelRetry = null;
+        void readSnapshot(entry);
+      }, backoff(entry.recoveryFailures));
       return;
     }
     if (followed.get(productionId) !== entry) return;
+    entry.recoveryFailures = 0;
     update(entry, {
       productionId,
       productionVersion: snapshot.productionVersion,
@@ -244,8 +312,17 @@ export const createRealtimeClient = (options: RealtimeClientOptions): RealtimeCl
       const merged = applyProposalNotification(known, message.proposal);
       if (merged === null) return;
       const openProposals = [...entry.view.openProposals];
-      openProposals[index] = merged;
+      if (isOpenProposalStatus(merged.status)) {
+        openProposals[index] = merged;
+      } else {
+        openProposals.splice(index, 1); // Closed: nothing left for a coordinator to do with it.
+      }
       update(entry, { ...entry.view, openProposals });
+      if (merged.status === "APPLIED") {
+        // The write moved the production version (INV-7). The notification
+        // does not say to what; the record does.
+        void recoverProduction(entry.view.productionId);
+      }
     }
   };
 
@@ -306,9 +383,7 @@ export const createRealtimeClient = (options: RealtimeClientOptions): RealtimeCl
     next.onclose = () => {
       if (socket !== next) return;
       socket = null;
-      for (const entry of followed.values()) {
-        entry.held = [];
-      }
+      for (const entry of followed.values()) abandonRecovery(entry);
       if (closedByUser) {
         setStatus("closed");
         return;
@@ -325,13 +400,22 @@ export const createRealtimeClient = (options: RealtimeClientOptions): RealtimeCl
     },
     follow: (productionId) => {
       if (followed.has(productionId)) return;
-      const entry: FollowedProduction = { view: emptyView(productionId), held: [], dirty: false };
+      const entry: FollowedProduction = {
+        view: emptyView(productionId),
+        held: [],
+        dirty: false,
+        recoveryFailures: 0,
+        cancelRetry: null,
+      };
       followed.set(productionId, entry);
       options.onChange?.(entry.view);
       if (status === "open") send({ type: "subscribe", productionId });
     },
     unfollow: (productionId) => {
-      if (!followed.delete(productionId)) return;
+      const entry = followed.get(productionId);
+      if (entry === undefined) return;
+      followed.delete(productionId);
+      cancelRetry(entry);
       send({ type: "unsubscribe", productionId });
     },
     recover: recoverProduction,
@@ -342,6 +426,7 @@ export const createRealtimeClient = (options: RealtimeClientOptions): RealtimeCl
       closedByUser = true;
       cancelReconnect?.();
       cancelReconnect = null;
+      for (const entry of followed.values()) abandonRecovery(entry);
       const current = socket;
       if (current === null) {
         setStatus("closed");
