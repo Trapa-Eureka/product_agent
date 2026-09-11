@@ -1,5 +1,13 @@
 {
   "extends": "./tsconfig.json",
-  "compilerOptions": { "outDir": "./out-tsc/spec", "types": ["vitest/globals"] },
-  "include": ["src/**/*.spec.ts", "src/**/*.d.ts"]
+  "compilerOptions": {
+    "outDir": "./out-tsc/spec",
+    "types": ["vitest/globals"]
+  },
+  "include": [
+    "src/**/*.spec.ts",
+    "src/**/*.d.ts",
+    "../../packages/contracts/src/**/*.ts",
+    "../../packages/realtime-client/src/**/*.ts"
+  ]
 }

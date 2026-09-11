@@ -540,6 +540,11 @@ commit SHA with its tag in a trailing comment, and `.github/dependabot.yml`
 proposes SHA and npm updates weekly as pull requests, so an update to what
 CI executes is reviewed like any other change.
 
+Compilation coverage (TASK-933): the build step of `verify` fails when the
+Angular build reports a bundled file "not found in TypeScript compilation" —
+a workspace source that escaped the app's type checking — so the gap cannot
+be normalised as a warning.
+
 Dependency advisories (TASK-925): CI runs `pnpm audit --audit-level=moderate`
 after install, so a known advisory at moderate or above in the resolved
 graph fails the build. It is not part of `verify`, which must work without
