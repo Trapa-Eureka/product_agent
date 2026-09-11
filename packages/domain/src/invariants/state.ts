@@ -1,4 +1,4 @@
-import type { Conflict, EntityId, LocalDate } from "@pca/contracts";
+import type { Conflict, EntityId, LocalDate, Task } from "@pca/contracts";
 
 import { isBlockedOn } from "../dates";
 import type { ProductionIndex } from "../production-state";
@@ -214,7 +214,42 @@ export const checkSceneIntegrity = (index: ProductionIndex): InvariantViolation[
     }
   }
 
+  // TASK-909 (code review #10): a task links into the production too, so an
+  // orphan task is a corruption INV-3 must report on the stored state itself,
+  // not only refuse at the operation that would have created it.
+  for (const task of index.state.tasks) {
+    if (!taskTargetExists(index, task.relatedEntityType, task.relatedEntityId)) {
+      violations.push(
+        violation(
+          "INV-3",
+          unknownReference(
+            "TASK",
+            task.id,
+            `Task "${task.title}" references ${task.relatedEntityType} ${task.relatedEntityId}, which does not exist in this production.`,
+          ),
+        ),
+      );
+    }
+  }
+
   return violations;
+};
+
+const taskTargetExists = (
+  index: ProductionIndex,
+  type: Task["relatedEntityType"],
+  id: EntityId,
+): boolean => {
+  switch (type) {
+    case "SCENE":
+      return index.sceneById.has(id);
+    case "SHOOT_DAY":
+      return index.shootDayById.has(id);
+    case "CALL_SHEET":
+      return index.callSheetById.has(id);
+    case "REQUIREMENT":
+      return index.requirementById.has(id);
+  }
 };
 
 /**
