@@ -42,6 +42,7 @@ import { createAllToolHandlers } from "@pca/mcp-server/handlers";
 
 import { HTTP_STATUS_BY_CODE, invalidInput, sendError } from "./errors";
 import { invokeTool } from "./invoke";
+import { clientAddressOf, createRateLimiter, rateLimit } from "./rate-limit";
 import type { ApiLogger } from "./logging";
 import { silentApiLogger } from "./logging";
 
@@ -90,12 +91,24 @@ export type ApiDependencies = {
   readonly demoSession?: () => string;
   /** Refuse a decision by the principal who submitted the change. Default: on. */
   readonly makerChecker?: boolean;
+  /**
+   * Request quotas (TASK-917): every request per client address, and writes
+   * under a production per verified principal. Defaults: 600 and 60 per minute.
+   */
+  readonly limits?: {
+    readonly requestsPerMinute?: number;
+    readonly writesPerMinute?: number;
+  };
   readonly logger?: ApiLogger;
   /** Tool handlers to run; defaults to the full MCP set over the same repositories. */
   readonly handlers?: ToolHandlers;
 };
 
 export const API_PREFIX = "/api";
+
+export const DEFAULT_REQUESTS_PER_MINUTE = 600;
+export const DEFAULT_WRITES_PER_MINUTE = 60;
+const MINUTE_MS = 60_000;
 
 const CORRELATION_HEADER = "x-correlation-id";
 
@@ -246,6 +259,31 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
 
   const router = express.Router();
 
+  // Quotas (TASK-917): every request by client address, before anything else
+  // spends work on it; writes under a production by principal, once known.
+  const requestRule = {
+    limit: dependencies.limits?.requestsPerMinute ?? DEFAULT_REQUESTS_PER_MINUTE,
+    windowMs: MINUTE_MS,
+  };
+  const writeRule = {
+    limit: dependencies.limits?.writesPerMinute ?? DEFAULT_WRITES_PER_MINUTE,
+    windowMs: MINUTE_MS,
+  };
+  router.use(
+    rateLimit(
+      createRateLimiter(requestRule),
+      requestRule,
+      clientAddressOf,
+      "requests from this client",
+    ),
+  );
+  const writeLimit = rateLimit(
+    createRateLimiter(writeRule),
+    writeRule,
+    (_request, response) => (response.locals["call"] as Call).principal.subject,
+    "writes by this principal",
+  );
+
   router.get("/health", (_request, response) => {
     response.json({ status: "ok", time: clock.now() });
   });
@@ -352,6 +390,13 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
 
   const scoped = express.Router({ mergeParams: true });
   router.use("/productions/:productionId", scoped);
+  scoped.use((request, response, next) => {
+    if (request.method === "GET") {
+      next();
+      return;
+    }
+    writeLimit(request, response, next);
+  });
 
   const tool =
     <TName extends Parameters<typeof invokeTool>[1]>(

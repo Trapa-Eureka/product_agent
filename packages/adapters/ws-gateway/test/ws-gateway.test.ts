@@ -395,3 +395,80 @@ describe("upgrade authentication (TASK-914)", () => {
     expect(await refusal(url)).toContain("401");
   });
 });
+
+describe("resource caps (TASK-917)", () => {
+  let hub: NotificationHub;
+  let gateway: RealtimeGateway;
+  let url: string;
+
+  afterEach(async () => {
+    await gateway.close();
+  });
+
+  const closedWith = (socket: WebSocket): Promise<{ code: number; reason: string }> =>
+    new Promise((resolve) => {
+      socket.once("close", (code, reason) => resolve({ code, reason: reason.toString("utf8") }));
+    });
+
+  it("closes a connection that sends a frame larger than maxPayloadBytes (1009)", async () => {
+    hub = createNotificationHub();
+    gateway = createRealtimeGateway({
+      hub,
+      clock: fixedClock(NOW),
+      heartbeatIntervalMs: 0,
+      maxPayloadBytes: 64,
+    });
+    ({ url } = await gateway.listen(0));
+    const connection = await connect(url);
+    await connection.next();
+    connection.socket.on("error", () => undefined);
+    const closed = closedWith(connection.socket);
+    sendJson(connection.socket, { type: "subscribe", productionId: "P".repeat(100) });
+    expect((await closed).code).toBe(1009);
+    await settle();
+    expect(gateway.clientCount()).toBe(0);
+  });
+
+  it("refuses the upgrade past maxConnectionsPerAddress with 429, and frees the slot on close", async () => {
+    hub = createNotificationHub();
+    gateway = createRealtimeGateway({
+      hub,
+      clock: fixedClock(NOW),
+      heartbeatIntervalMs: 0,
+      maxConnectionsPerAddress: 2,
+    });
+    ({ url } = await gateway.listen(0));
+    const first = await connect(url);
+    const second = await connect(url);
+    const refused = await new Promise<string>((resolve) => {
+      const socket = new WebSocket(url);
+      socket.once("error", (error) => resolve(error.message));
+    });
+    expect(refused).toContain("429");
+    expect(gateway.clientCount()).toBe(2);
+    await first.close();
+    await settle();
+    const third = await connect(url);
+    expect((await third.next()).type).toBe("welcome");
+    await second.close();
+    await third.close();
+  });
+
+  it("closes a connection that exceeds maxMessagesPerSecond (1008)", async () => {
+    hub = createNotificationHub();
+    gateway = createRealtimeGateway({
+      hub,
+      clock: fixedClock(NOW),
+      heartbeatIntervalMs: 0,
+      maxMessagesPerSecond: 3,
+    });
+    ({ url } = await gateway.listen(0));
+    const connection = await connect(url);
+    await connection.next();
+    const closed = closedWith(connection.socket);
+    for (let index = 0; index < 5; index += 1) sendJson(connection.socket, { type: "ping" });
+    const outcome = await closed;
+    expect(outcome.code).toBe(1008);
+    expect(outcome.reason).toContain("at most 3 per second");
+  });
+});

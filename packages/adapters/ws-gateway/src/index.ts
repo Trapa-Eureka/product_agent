@@ -24,6 +24,14 @@ import { REALTIME_PROTOCOL_VERSION, realtimeClientMessageSchema } from "@pca/con
  * refused connection gets an HTTP 401/403 and no WebSocket at all, so an
  * unauthenticated socket never exists to subscribe with. Whatever the hook
  * returns as the session is handed to `authorize` for every subscription.
+ *
+ * Resource caps (TASK-917): frames larger than `maxPayloadBytes` close the
+ * socket (1009) before they are parsed; one address may hold at most
+ * `maxConnectionsPerAddress` sockets, the next upgrade is answered 429; and
+ * a connection that sends more than `maxMessagesPerSecond` is closed (1008).
+ * The three client messages are a few dozen bytes each and a client sends a
+ * handful per session, so the defaults are generous for any real client and
+ * tight for an abusive one.
  */
 
 export type GatewayLogFields = Readonly<
@@ -60,6 +68,12 @@ export type RealtimeGatewayOptions<TSession = undefined> = {
   ) => boolean | Promise<boolean>;
   /** Productions one connection may follow at once. */
   readonly maxSubscriptionsPerClient?: number;
+  /** Largest frame accepted; bigger ones close the socket with 1009. */
+  readonly maxPayloadBytes?: number;
+  /** Open sockets one remote address may hold; the next upgrade gets 429. */
+  readonly maxConnectionsPerAddress?: number;
+  /** Sustained message rate one connection may send; over it the socket is closed with 1008. */
+  readonly maxMessagesPerSecond?: number;
   /** Liveness ping period; a client that misses one is dropped. `0` disables it. */
   readonly heartbeatIntervalMs?: number;
 };
@@ -80,16 +94,25 @@ type ClientState<TSession> = {
   readonly session: TSession;
   readonly subscriptions: Set<string>;
   alive: boolean;
+  /** Token bucket for the message rate: refilled from wall-clock time, one token per message. */
+  tokens: number;
+  refilledAt: number;
 };
 
-const STATUS_TEXT: Readonly<Record<401 | 403, string>> = {
+const STATUS_TEXT: Readonly<Record<401 | 403 | 429, string>> = {
   401: "Unauthorized",
   403: "Forbidden",
+  429: "Too Many Requests",
 };
 
 const DEFAULT_PATH = "/ws";
 const DEFAULT_MAX_SUBSCRIPTIONS = 16;
 const DEFAULT_HEARTBEAT_MS = 30_000;
+export const DEFAULT_MAX_PAYLOAD_BYTES = 4096;
+export const DEFAULT_MAX_CONNECTIONS_PER_ADDRESS = 8;
+export const DEFAULT_MAX_MESSAGES_PER_SECOND = 20;
+
+const addressOf = (request: IncomingMessage): string => request.socket.remoteAddress ?? "unknown";
 
 const productionOf = (notification: RealtimeNotification): string =>
   notification.type === "job"
@@ -132,9 +155,14 @@ export const createRealtimeGateway = <TSession = undefined>(
   const authorize = options.authorize ?? (() => true);
   const maxSubscriptions = options.maxSubscriptionsPerClient ?? DEFAULT_MAX_SUBSCRIPTIONS;
   const heartbeatMs = options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_MS;
+  const maxPayload = options.maxPayloadBytes ?? DEFAULT_MAX_PAYLOAD_BYTES;
+  const maxPerAddress = options.maxConnectionsPerAddress ?? DEFAULT_MAX_CONNECTIONS_PER_ADDRESS;
+  const messagesPerSecond = options.maxMessagesPerSecond ?? DEFAULT_MAX_MESSAGES_PER_SECOND;
 
-  const server = new WebSocketServer({ noServer: true });
+  const server = new WebSocketServer({ noServer: true, maxPayload });
   const clients = new Set<ClientState<TSession>>();
+  /** Open sockets per remote address, counted from accepted upgrade to socket close. */
+  const connectionsByAddress = new Map<string, number>();
   /** The session `authenticate` produced for an accepted upgrade, until its connection opens. */
   const sessions = new WeakMap<IncomingMessage, TSession>();
   let ownHttpServer: HttpServer | null = null;
@@ -154,7 +182,28 @@ export const createRealtimeGateway = <TSession = undefined>(
     send(client, { type: "error", code, message });
   };
 
+  /** One token per message; a client that runs dry is closed rather than throttled. */
+  const withinRate = (client: ClientState<TSession>): boolean => {
+    const at = Date.now();
+    client.tokens = Math.min(
+      messagesPerSecond,
+      client.tokens + ((at - client.refilledAt) / 1000) * messagesPerSecond,
+    );
+    client.refilledAt = at;
+    if (client.tokens < 1) return false;
+    client.tokens -= 1;
+    return true;
+  };
+
   const handleMessage = async (client: ClientState<TSession>, raw: RawData): Promise<void> => {
+    if (!withinRate(client)) {
+      logger.log("warn", "realtime_connection_dropped", { reason: "message rate" });
+      client.socket.close(
+        1008,
+        `Too many messages: at most ${messagesPerSecond} per second. Reconnect and slow down.`,
+      );
+      return;
+    }
     const parsed = parseClientMessage(raw);
     if (!parsed.ok) {
       fail(client, "MALFORMED_MESSAGE", parsed.message);
@@ -205,6 +254,8 @@ export const createRealtimeGateway = <TSession = undefined>(
       session: sessions.get(request) as TSession,
       subscriptions: new Set(),
       alive: true,
+      tokens: messagesPerSecond,
+      refilledAt: Date.now(),
     };
     sessions.delete(request);
     clients.add(client);
@@ -281,6 +332,30 @@ export const createRealtimeGateway = <TSession = undefined>(
             socket.end(body);
             return;
           }
+          const address = addressOf(request);
+          const held = connectionsByAddress.get(address) ?? 0;
+          if (held >= maxPerAddress) {
+            logger.log("warn", "realtime_upgrade_refused", { status: 429 });
+            const body = Buffer.from(
+              `Too many connections from this address: at most ${maxPerAddress}. Close one and retry.`,
+              "utf8",
+            );
+            socket.write(
+              `HTTP/1.1 429 ${STATUS_TEXT[429]}\r\n` +
+                "Connection: close\r\n" +
+                "Retry-After: 1\r\n" +
+                "Content-Type: text/plain; charset=utf-8\r\n" +
+                `Content-Length: ${body.length}\r\n\r\n`,
+            );
+            socket.end(body);
+            return;
+          }
+          connectionsByAddress.set(address, held + 1);
+          socket.once("close", () => {
+            const remaining = (connectionsByAddress.get(address) ?? 1) - 1;
+            if (remaining <= 0) connectionsByAddress.delete(address);
+            else connectionsByAddress.set(address, remaining);
+          });
           sessions.set(request, outcome.session);
           server.handleUpgrade(request, socket, head, (ws) => {
             server.emit("connection", ws, request);

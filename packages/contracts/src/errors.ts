@@ -23,6 +23,8 @@ export const toolErrorCodeSchema = z.enum([
   "TOOL_UNAUTHORIZED",
   /** No verified identity on the call (TASK-914). HTTP 401; never returned by an MCP tool. */
   "UNAUTHENTICATED",
+  /** The caller exceeded a request quota (TASK-917). HTTP 429 with Retry-After; never returned by an MCP tool. */
+  "RATE_LIMITED",
   "INVALID_INPUT",
   "INTERNAL_ERROR",
 ]);

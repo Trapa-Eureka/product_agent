@@ -40,7 +40,15 @@ export type MemoryQueueOptions = {
   readonly clock?: Clock;
   readonly ids?: IdFactory;
   readonly scheduler?: Scheduler;
+  /**
+   * Finished jobs kept in memory (TASK-917). Past this many records, the
+   * oldest COMPLETED/FAILED ones are forgotten — with their idempotency
+   * keys, so a very old key may enqueue again. Default 1000.
+   */
+  readonly maxRetainedJobs?: number;
 };
+
+export const DEFAULT_MAX_RETAINED_JOBS = 1000;
 
 export type MemoryQueue = QueuePort & {
   /**
@@ -78,11 +86,27 @@ export const createMemoryQueue = (options: MemoryQueueOptions = {}): MemoryQueue
   const ids = options.ids ?? randomIdFactory;
   const scheduler = options.scheduler ?? timerScheduler;
 
+  const maxRetained = options.maxRetainedJobs ?? DEFAULT_MAX_RETAINED_JOBS;
   const records = new Map<EntityId, MutableRecord>();
   const jobIdByKey = new Map<string, EntityId>();
   const handlers = new Map<JobType, JobHandler>();
   const listeners = new Set<(transition: JobTransition) => void>();
   const deadLetters: EntityId[] = [];
+
+  /** Forgets the oldest finished jobs once more than `maxRetained` records are held. */
+  const prune = (): void => {
+    if (records.size <= maxRetained) return;
+    for (const [jobId, record] of records) {
+      if (records.size <= maxRetained) return;
+      if (record.state !== "COMPLETED" && record.state !== "FAILED") continue;
+      records.delete(jobId);
+      if (jobIdByKey.get(record.job.idempotencyKey) === jobId) {
+        jobIdByKey.delete(record.job.idempotencyKey);
+      }
+      const dead = deadLetters.indexOf(jobId);
+      if (dead !== -1) deadLetters.splice(dead, 1);
+    }
+  };
 
   /** Jobs ready to deliver, in order. */
   const ready: EntityId[] = [];
@@ -100,6 +124,7 @@ export const createMemoryQueue = (options: MemoryQueueOptions = {}): MemoryQueue
     record.state = to;
     record.updatedAt = clock.now();
     if (reason !== undefined) record.lastError = reason;
+    if (to === "COMPLETED" || to === "FAILED") prune();
     const event: JobTransition = {
       jobId: record.job.id,
       type: record.job.type,
@@ -296,12 +321,37 @@ export const createMemoryQueue = (options: MemoryQueueOptions = {}): MemoryQueue
  * Job runs for the in-process queue (TASK-403). They live and die with the
  * process, as its jobs do. Newest first when listed.
  */
-export const createMemoryJobRunRepository = (): JobRunRepository => {
+export const DEFAULT_MAX_RUNS_PER_PRODUCTION = 500;
+
+export type MemoryJobRunOptions = {
+  /**
+   * Finished runs kept per production (TASK-917). Past this many, the oldest
+   * completed/failed runs are forgotten; a run still in progress never is.
+   */
+  readonly maxRunsPerProduction?: number;
+};
+
+export const createMemoryJobRunRepository = (
+  options: MemoryJobRunOptions = {},
+): JobRunRepository => {
   const runs = new Map<EntityId, JobRun>();
+  const maxPerProduction = options.maxRunsPerProduction ?? DEFAULT_MAX_RUNS_PER_PRODUCTION;
+  const isFinished = (run: JobRun): boolean => run.stage === "completed" || run.stage === "failed";
+
+  const prune = (productionId: EntityId): void => {
+    const finished = [...runs.values()]
+      .filter((run) => run.productionId === productionId && isFinished(run))
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+    for (const run of finished.slice(0, Math.max(0, finished.length - maxPerProduction))) {
+      runs.delete(run.id);
+    }
+  };
+
   return {
     // eslint-disable-next-line @typescript-eslint/require-await -- port methods are async; nothing here awaits
     async save(run) {
       runs.set(run.id, structuredClone(run));
+      if (isFinished(run)) prune(run.productionId);
     },
     // eslint-disable-next-line @typescript-eslint/require-await -- port methods are async; nothing here awaits
     async findById(jobId) {
@@ -323,6 +373,7 @@ export const createMemoryJobRunRepository = (): JobRunRepository => {
       if (current === undefined) return null;
       const { run, result } = transform(structuredClone(current));
       runs.set(jobId, structuredClone(run));
+      if (isFinished(run)) prune(run.productionId);
       return result;
     },
   };

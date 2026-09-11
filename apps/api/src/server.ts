@@ -48,7 +48,17 @@ export type ApiServerOptions = ApiDependencies & {
   readonly websocketPath?: string;
   /** Exact browser origins allowed to open the socket, besides the server's own host. Default: none. */
   readonly allowedOrigins?: readonly string[];
+  /** Socket resource caps (TASK-917); the gateway's defaults otherwise. */
+  readonly realtimeLimits?: {
+    readonly maxPayloadBytes?: number;
+    readonly maxConnectionsPerAddress?: number;
+    readonly maxMessagesPerSecond?: number;
+  };
 };
+
+/** How long a request may take end to end, and its headers to arrive, before the socket is dropped. */
+export const REQUEST_TIMEOUT_MS = 30_000;
+export const HEADERS_TIMEOUT_MS = 15_000;
 
 export type ApiServer = {
   readonly httpServer: HttpServer;
@@ -60,6 +70,9 @@ export type ApiServer = {
 export const createApiServer = (options: ApiServerOptions): ApiServer => {
   const app = createApiApp(options);
   const httpServer = createServer(app);
+  // A slow-loris or a stalled body holds a connection only this long (TASK-917).
+  httpServer.requestTimeout = REQUEST_TIMEOUT_MS;
+  httpServer.headersTimeout = HEADERS_TIMEOUT_MS;
   const websocketPath = options.websocketPath ?? "/ws";
   const gateway = createRealtimeGateway<Principal>({
     hub: options.hub,
@@ -103,6 +116,7 @@ export const createApiServer = (options: ApiServerOptions): ApiServer => {
         options.context.allowedProductionIds.includes(productionId)) &&
       principalMayAccess(principal, productionId),
     ...(options.logger === undefined ? {} : { logger: options.logger }),
+    ...(options.realtimeLimits ?? {}),
   });
   gateway.attach(httpServer, websocketPath);
 

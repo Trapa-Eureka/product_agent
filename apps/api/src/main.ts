@@ -23,9 +23,21 @@ import {
 } from "@pca/bootstrap";
 import { contextFromEnv } from "@pca/mcp-server/context";
 
+import { DEFAULT_REQUESTS_PER_MINUTE, DEFAULT_WRITES_PER_MINUTE } from "./app";
 import { stderrApiLogger } from "./logging";
 import { allowedOriginsFromEnv } from "./origins";
 import { createApiServer } from "./server";
+
+/** A positive integer from the environment, or the default; anything else refuses to start. */
+const positiveIntFromEnv = (name: string, fallback: number): number => {
+  const raw = process.env[name]?.trim();
+  if (raw === undefined || raw === "") return fallback;
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isInteger(value) || value <= 0 || String(value) !== raw) {
+    throw new Error(`${name}="${raw}" must be a positive integer (requests per minute).`);
+  }
+  return value;
+};
 
 /**
  * Entry point for `production-change-agent api` (TASK-806) and direct use:
@@ -78,6 +90,10 @@ const main = async (): Promise<void> => {
   const auth = selectAuth(process.env, clock);
   // Browser origins that may open the socket (TASK-916): the operator's list, or the dev UI in demo mode.
   const allowedOrigins = allowedOriginsFromEnv(process.env, auth.mode);
+  const limits = {
+    requestsPerMinute: positiveIntFromEnv("PCA_RATE_LIMIT_PER_MINUTE", DEFAULT_REQUESTS_PER_MINUTE),
+    writesPerMinute: positiveIntFromEnv("PCA_WRITE_LIMIT_PER_MINUTE", DEFAULT_WRITES_PER_MINUTE),
+  };
   const server = createApiServer({
     repositories,
     tracker,
@@ -86,6 +102,7 @@ const main = async (): Promise<void> => {
     clock,
     ids,
     context,
+    limits,
     identity: auth.identity,
     ...(auth.demoSession === undefined ? {} : { demoSession: auth.demoSession }),
     makerChecker: auth.makerChecker,
@@ -103,6 +120,8 @@ const main = async (): Promise<void> => {
     auth: auth.mode,
     makerChecker: auth.makerChecker,
     allowedOrigins: allowedOrigins.join(",") || "(same-origin only)",
+    requestsPerMinute: limits.requestsPerMinute,
+    writesPerMinute: limits.writesPerMinute,
     allowedProductions:
       context.allowedProductionIds === "*" ? "*" : context.allowedProductionIds.join(","),
   });

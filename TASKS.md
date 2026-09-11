@@ -834,31 +834,18 @@ Docs: `README.md` env table (`PCA_ALLOWED_ORIGINS`); `ARCHITECTURE.md` §6; `TES
 
 Not done here: `Host`/forwarded-host validation against a trusted-proxy topology (AUD-016/TASK-930 territory), and the per-connection and rate limits of TASK-917.
 
-## TASK-917 Resource limits: payload, rate, connection, and cardinality caps — TODO
+## TASK-917 Resource limits: payload, rate, connection, and cardinality caps — DONE
 
-**Goal**  
-Bound the work an unauthenticated or abusive client can cause.
+SEC-007 (High) / AUD-008 (High). Nothing bounded the work a client could cause: the WebSocket server took `ws`'s 100 MiB default frame, there was no connection, message, or request quota, externally supplied arrays had `.min(1)` and no `.max()`, and finished jobs and runs accumulated for the life of the process.
 
-**Context**  
-SEC-007 (High) / AUD-008 (High). No `maxPayload` (ws default 100 MiB), no rate limit, externally reachable arrays have `.min(1)` but no `.max()`.
+**Status**  
+Complete, in four places. **Contracts:** `INPUT_LIMITS` (`primitives.ts`) caps `sceneIds` per operation/change at 200, `operations` per simulation/proposal at 100, and `excludeDates` at 366, applied to every input schema that carries them (and to the stored proposal, which inputs already satisfy); over the cap is `INVALID_INPUT` before any handler runs. **REST:** an in-process fixed-window limiter (`apps/api/src/rate-limit.ts`, no dependency) charges every request to the client address (`PCA_RATE_LIMIT_PER_MINUTE`, default 600) as the first router middleware, and writes under a production to the verified principal (`PCA_WRITE_LIMIT_PER_MINUTE`, default 60) once the production scope is known; both answer `RATE_LIMITED` (new HTTP-only code, 429) with a `Retry-After` header and a next step. The HTTP server gets request/header timeouts (30 s / 15 s). **Gateway:** `maxPayloadBytes` (4 KiB; `ws` closes with 1009 before parsing), `maxConnectionsPerAddress` (8; the next upgrade is answered 429 before `handleUpgrade`, the slot freed on socket close), and `maxMessagesPerSecond` (20; a token bucket per connection, a client that runs dry is closed with 1008 and told why). **Retention:** the memory queue forgets its oldest COMPLETED/FAILED records past `maxRetainedJobs` (1000), with their idempotency keys; the memory job-run store forgets the oldest finished runs past `maxRunsPerProduction` (500), never one in flight.
 
-**Dependencies**  
-None.
+Tests: contracts (`limits.test.ts`: each cap at and over the boundary); rate limiter unit (window turn, non-zero retry, sweep); API contract (burst → 429 with `Retry-After` and the code/message/next step, writes charged per principal while reads and another principal pass, 201 scene IDs → `INVALID_INPUT`); ws-gateway (oversized frame → 1009 and the client gone, N+1 connections from one address → 429 and the slot freed on close, a message burst → 1008 with the reason); memory-queue (finished jobs pruned oldest-first with their keys, queued work never pruned; job runs pruned per production with in-flight runs kept). `pnpm run verify` passes (9/9).
 
-**Allowed scope**  
-`packages/adapters/ws-gateway`, `apps/api`, `packages/contracts` (array maxima), docs.
+Docs: `MCP.md` §3 (maxima table); `README.md` env table; `ARCHITECTURE.md` §6 and §11; `TESTING.md`.
 
-**Acceptance criteria**
-
-- WebSocket `maxPayload` set to a few KiB; per-IP connection cap; per-connection message rate cap; abusive clients closed;
-- HTTP request rate limit (in-process, no external dependency) returning 429 with `Retry-After`;
-- `sceneIds`, operations, and other external arrays capped with documented maxima; bounded job retention.
-
-**Tests**  
-Oversized frame closed; N+1 connections refused; burst over limit → 429; array over max → validation error.
-
-**Definition of Done**  
-Acceptance met, verify green, `MCP.md` contract maxima updated.
+Not done here: charging model calls to quotas at the provider (TASK-929 adds cancellation), a trusted-proxy address (TASK-930), and the WS subscription-cap race (TASK-918, next).
 
 ## TASK-918 WebSocket subscription cap cannot be raced — TODO
 

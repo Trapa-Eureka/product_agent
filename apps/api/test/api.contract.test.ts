@@ -859,6 +859,69 @@ describe("REST API", () => {
     });
   });
 
+  describe("resource limits (TASK-917, SEC-007 / AUD-008)", () => {
+    const restart = async (limits: { requestsPerMinute?: number; writesPerMinute?: number }) => {
+      await server.close();
+      const hub = createNotificationHub();
+      server = createApiServer({
+        repositories: withProposalNotifications(store, hub, clock),
+        tracker,
+        queue,
+        hub,
+        clock,
+        ids: sequentialIds(),
+        context: { actor: { type: "USER", id: "api-user" }, allowedProductionIds: [DEMO] },
+        identity: createLocalIdentity({ secret: SECRET, clock }),
+        makerChecker: false,
+        limits,
+      });
+      base = (await server.listen(0)).url;
+    };
+
+    it("answers a burst over the per-client quota with 429 and Retry-After, health included", async () => {
+      await restart({ requestsPerMinute: 3 });
+      for (let index = 0; index < 3; index += 1) {
+        expect((await api("GET", `/productions/${DEMO}`)).status).toBe(200);
+      }
+      const refused = await api("GET", "/health");
+      expect(refused.status).toBe(429);
+      expect(refused.headers.get("retry-after")).toMatch(/^\d+$/u);
+      expect(errorOf(refused)).toMatchObject({ code: "RATE_LIMITED" });
+      expect(errorOf(refused).message).toContain("at most 3 per minute");
+      expect(errorOf(refused).nextStep).toContain("Retry-After");
+    });
+
+    it("charges writes under a production to the principal, leaving reads alone", async () => {
+      await restart({ writesPerMinute: 1 });
+      const first = await api("POST", `/productions/${DEMO}/analysis/explanation`, {
+        change: { type: "CAST_UNAVAILABLE", castId: cast.sarah, unavailable: onDay(friday) },
+      });
+      expect(first.status).toBe(200);
+      const second = await api("POST", `/productions/${DEMO}/analysis/explanation`, {
+        change: { type: "CAST_UNAVAILABLE", castId: cast.sarah, unavailable: onDay(friday) },
+      });
+      expect(second.status).toBe(429);
+      expect(errorOf(second).message).toContain("writes by this principal");
+      expect((await api("GET", `/productions/${DEMO}`)).status).toBe(200);
+      // Another principal has its own quota.
+      const other = tokenFor(principal("mina@example.test", { productions: [DEMO] }));
+      const theirs = await api(
+        "POST",
+        `/productions/${DEMO}/analysis/explanation`,
+        { change: { type: "CAST_UNAVAILABLE", castId: cast.sarah, unavailable: onDay(friday) } },
+        { authorization: `Bearer ${other}` },
+      );
+      expect(theirs.status).toBe(200);
+    });
+
+    it("refuses an array over its documented maximum as INVALID_INPUT before any work", async () => {
+      const tooMany = Array.from({ length: 201 }, (_, index) => `S${index}`);
+      const reply = await api("POST", `/productions/${DEMO}/candidates`, { sceneIds: tooMany });
+      expect(reply.status).toBe(400);
+      expect(errorOf(reply).code).toBe("INVALID_INPUT");
+    });
+  });
+
   describe("demo mode (TASK-914)", () => {
     it("hands out the demo coordinator's token, which then works for REST and the socket", async () => {
       await server.close();

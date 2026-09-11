@@ -9,6 +9,7 @@ import {
   isoDateTimeSchema,
   productionVersionSchema,
   proposalDigestSchema,
+  INPUT_LIMITS,
 } from "./primitives";
 
 /**
@@ -22,7 +23,7 @@ import {
 
 export const moveScenesOperationSchema = z.strictObject({
   type: z.literal("MOVE_SCENES"),
-  sceneIds: z.array(entityIdSchema).min(1),
+  sceneIds: z.array(entityIdSchema).min(1).max(INPUT_LIMITS.sceneIdsPerOperation),
   fromShootDayId: entityIdSchema,
   toShootDayId: entityIdSchema,
 });
@@ -99,7 +100,7 @@ export const proposalSchema = z.strictObject({
   productionId: entityIdSchema,
   changeRequestId: entityIdSchema,
   baseProductionVersion: productionVersionSchema,
-  operations: z.array(proposedOperationSchema).min(1),
+  operations: z.array(proposedOperationSchema).min(1).max(INPUT_LIMITS.operationsPerProposal),
   impacts: z.array(impactSchema),
   conflicts: z.array(conflictSchema),
   warnings: z.array(explanationSchema),

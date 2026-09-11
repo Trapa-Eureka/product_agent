@@ -321,7 +321,14 @@ listed exactly in `PCA_ALLOWED_ORIGINS` (the Angular dev server's origins by
 default in demo mode) may open the socket, and a query-string token without
 an Origin is refused as well, so a hostile page cannot drive a developer's
 loopback API even with a token in hand; refusals are 403, again before
-`handleUpgrade`.
+`handleUpgrade`. Work is bounded (TASK-917): every request is charged to
+the client address (`PCA_RATE_LIMIT_PER_MINUTE`) before anything else runs,
+writes under a production to the verified principal
+(`PCA_WRITE_LIMIT_PER_MINUTE`), both answered 429 with `Retry-After` from an
+in-process fixed window; request and header timeouts drop a stalled
+connection; the JSON body stays at 256 KiB; and every externally supplied
+array has a documented maximum (`INPUT_LIMITS`, MCP.md §3), so a body cannot
+carry thousands of scene IDs into analysis.
 
 ### Angular UI
 
@@ -802,6 +809,15 @@ type AgentJobEvent = {
   occurredAt: string;
 };
 ```
+
+Resource caps (TASK-917): the gateway accepts frames of at most 4 KiB (a
+client message is a few dozen bytes; a larger frame closes the socket with
+1009 before it is parsed), lets one remote address hold at most 8 sockets
+(the next upgrade is answered 429), and closes a connection that sustains
+more than 20 messages a second (1008). The in-process queue forgets its
+oldest finished jobs past 1,000 records, and the in-memory job-run store its
+oldest finished runs past 500 per production; a run still in progress is
+never forgotten.
 
 ## 12. OpenSearch
 

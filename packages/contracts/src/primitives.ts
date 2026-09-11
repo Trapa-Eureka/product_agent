@@ -67,6 +67,22 @@ export const correlationIdSchema = z.string().min(1).max(128);
  */
 export const actorIdSchema = z.string().min(1).max(200);
 
+/**
+ * Cardinality caps on externally supplied arrays (TASK-917, SEC-007 /
+ * AUD-008). A 256 KiB body could otherwise carry thousands of scene IDs or
+ * operations into analysis and simulation. Sized to the largest production
+ * the engine is meant for, not to the demo: a feature's whole schedule moves
+ * in far fewer than 200 scenes, and a proposal is a handful of operations.
+ */
+export const INPUT_LIMITS = {
+  /** Scene IDs in one operation or one change. */
+  sceneIdsPerOperation: 200,
+  /** Operations in one proposal or simulation. */
+  operationsPerProposal: 100,
+  /** Dates a candidate search may exclude (a year). */
+  excludeDates: 366,
+} as const;
+
 /** Free-text meant for a human reader. Never empty, so the UI never renders a blank reason. */
 /** Upper bound of any explanation, conflict detail, or verification detail. Producers clip to it. */
 export const EXPLANATION_MAX_LENGTH = 2000;
