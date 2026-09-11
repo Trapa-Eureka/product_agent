@@ -69,7 +69,9 @@ const watchdog = setTimeout(() => {
 watchdog.unref();
 
 const work = await mkdtemp(join(tmpdir(), "pca-smoke-"));
-const install = join(work, "project");
+// Under a dot-directory on purpose: that is where `npx` keeps packages
+// (`~/.npm/_npx/…`), and 0.1.0 served its console from there as 404.
+const install = join(work, ".npm", "_npx", "project");
 const dataFile = join(work, "data.json");
 let serverProcess = null;
 let mcpProcess = null;

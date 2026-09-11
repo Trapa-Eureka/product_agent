@@ -1,4 +1,4 @@
-import { basename, join, resolve } from "node:path";
+import { basename, resolve } from "node:path";
 
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
@@ -900,8 +900,12 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
         },
       }),
     );
+    // `root` matters: without it, `send` applies its dotfile rule to every
+    // segment of the absolute path, and an install under `~/.npm/_npx/…`
+    // (where `npx` puts the package) answered 404 for the very file it had
+    // just served the assets of (0.1.0's defect, fixed in 0.1.1).
     app.get(/^(?!\/api(?:\/|$)).*/u, (_request, response) => {
-      response.sendFile(join(consoleDir, "index.html"));
+      response.sendFile("index.html", { root: consoleDir });
     });
   }
 

@@ -294,9 +294,10 @@ allow-list, an encrypted and authenticated Mongo URI).
 
 ## Planned
 
-The npm package is built and smoke-tested in CI (TASK-806); publishing is a
-version tag (`.github/workflows/publish.yml`). After that release, in order
-of value: an optional Ollama adapter for sentences outside the rule
+`production-change-agent` is published (TASK-806, 0.1.1); later versions
+publish from a version tag (`.github/workflows/publish.yml`) once npm's
+trusted publishing is configured for this repository. Next, in order of
+value: an optional Ollama adapter for sentences outside the rule
 patterns, the free scope of the deferred Bedrock (mocked SDK) and Terraform
 (`validate` only) tasks, the Angular initial-bundle budget, and small
 documentation touch-ups.

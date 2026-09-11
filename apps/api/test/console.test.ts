@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -86,6 +86,20 @@ describe("console serving (TASK-806)", () => {
 
     const post = await fetch(`${base}/`, { method: "POST" });
     expect(post.status).toBe(404);
+  });
+
+  it("serves index.html from a directory under a dot-directory, where npx installs packages", async () => {
+    // `~/.npm/_npx/<hash>/node_modules/<pkg>/web`: `send`'s dotfile rule must
+    // apply to the request path, not to the console directory's own path.
+    const dotted = join(consoleDir, ".npm", "_npx", "web");
+    await mkdir(dotted, { recursive: true });
+    await writeFile(join(dotted, "index.html"), "<!doctype html><pca-root></pca-root>");
+    await writeFile(join(dotted, "main-ABCDEFGH.js"), "console.log('console');");
+    const base = await serve({ consoleDir: dotted });
+
+    expect((await fetch(`${base}/`)).status).toBe(200);
+    expect((await fetch(`${base}/productions/PROD-DEMO`)).status).toBe(200);
+    expect((await fetch(`${base}/main-ABCDEFGH.js`)).status).toBe(200);
   });
 
   it("serves only /api when no console directory is given", async () => {
