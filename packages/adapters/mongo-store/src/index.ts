@@ -17,6 +17,9 @@ import type {
   Task,
 } from "@pca/contracts";
 import { productionStateSchema } from "@pca/contracts";
+import type { JobRunRepository } from "@pca/application";
+
+import { createMongoJobRunRepository, type JobRunRow } from "./job-runs";
 import type {
   ApplyProposalCommit,
   ApprovalRepository,
@@ -86,6 +89,7 @@ const COLLECTIONS = {
   approvals: "approvals",
   auditEvents: "auditEvents",
   idempotency: "idempotency",
+  jobRuns: "jobRuns",
 } as const;
 
 type EntityRow<T> = T & { _id: string };
@@ -150,6 +154,11 @@ export class MongoStore implements RepositorySet {
     return this.#db.databaseName;
   }
 
+  /** Job runs, durable with the rest of the store (TASK-923). */
+  get jobRuns(): JobRunRepository {
+    return createMongoJobRunRepository(this.#collection<JobRunRow>("jobRuns"));
+  }
+
   /** Index names on a collection, for tests that assert the documented layout. */
   async indexNames(name: keyof typeof COLLECTIONS): Promise<string[]> {
     const indexes = await this.#collection(name).indexes();
@@ -173,6 +182,10 @@ export class MongoStore implements RepositorySet {
       this.#collection("proposals").createIndex({ productionId: 1, status: 1 }),
       this.#collection("auditEvents").createIndex({ productionId: 1, _id: -1 }),
       this.#collection("idempotency").createIndex({ productionId: 1, key: 1 }, { unique: true }),
+      this.#collection("jobRuns").createIndexes([
+        { key: { productionId: 1, createdAt: -1 } },
+        { key: { stage: 1, createdAt: 1 } },
+      ]),
       ...(
         [
           "castMembers",

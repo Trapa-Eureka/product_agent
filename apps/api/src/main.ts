@@ -10,6 +10,7 @@ import {
   createVerifyProposalJobHandler,
   forwardJobEvents,
   randomIdFactory,
+  reconcileInterruptedRuns,
   systemClock,
   withProposalNotifications,
 } from "@pca/application";
@@ -52,19 +53,19 @@ const main = async (): Promise<void> => {
   const logger = stderrApiLogger();
   const clock = systemClock;
   const ids = randomIdFactory;
-  const {
-    repositories: stores,
-    selection,
-    close,
-  } = await createRepositoriesFromEnv(process.env, {
-    logger,
-  });
+  const storage = await createRepositoriesFromEnv(process.env, { logger });
+  const { repositories: stores, selection, close } = storage;
   const hub = createNotificationHub();
   const repositories = withProposalNotifications(stores, hub, clock);
   const queueKind = selectQueue(process.env);
   const queue = createQueue(queueKind);
-  const tracker = createJobTracker({ repository: createJobRuns(queueKind), clock, ids });
+  const jobRuns = createJobRuns(queueKind, storage);
+  const tracker = createJobTracker({ repository: jobRuns, clock, ids });
   forwardJobEvents(tracker, hub);
+  // TASK-923: with durable runs, the ones a restart interrupted are failed
+  // with a reason rather than left "in progress" forever; runs waiting on a
+  // human (resolving, awaiting_approval) are kept.
+  await reconcileInterruptedRuns({ tracker, repository: jobRuns, logger });
   bindQueueToJobTracker(queue, tracker);
   // No logger here: createRunChangeAgent re-guards this model with its own
   // guardModelPort call (belt-and-suspenders safety on the one path that

@@ -9,7 +9,7 @@ import type {
   QueuePort,
   RepositorySet,
 } from "@pca/application";
-import { guardModelPort, guardRepositories, systemClock } from "@pca/application";
+import { guardModelPort, guardPort, guardRepositories, systemClock } from "@pca/application";
 import type { EntityId, Principal } from "@pca/contracts";
 import { createFileStore, defaultDataFilePath } from "@pca/file-store";
 import { createDemoMovie } from "@pca/fixtures";
@@ -85,6 +85,8 @@ export const selectStorage = (env: Environment): StorageSelection => {
 export type Repositories = {
   readonly repositories: RepositorySet;
   readonly selection: StorageSelection;
+  /** Durable job runs, when the store has them (Mongo, TASK-923); otherwise runs stay in memory. */
+  readonly jobRuns?: JobRunRepository;
   /** Releases connections. A no-op for the file and memory stores. */
   readonly close: () => Promise<void>;
 };
@@ -135,6 +137,7 @@ export const createRepositories = async (
       return {
         repositories: guardRepositories("mongo", repositorySetOf(store), options),
         selection,
+        jobRuns: guardPort("mongo.jobRuns", store.jobRuns, options),
         close: () => store.close(),
       };
     }
@@ -251,11 +254,16 @@ export const createQueue = (
 export const createQueueFromEnv = (env: Environment = process.env): QueuePort =>
   createQueue(selectQueue(env));
 
-/** Job runs pair with the queue: in-process jobs keep in-process runs. */
-export const createJobRuns = (kind: QueueKind): JobRunRepository => {
+/**
+ * Job runs live where they can (TASK-923): in the store when it is durable
+ * (Mongo), in memory otherwise. The queue kind still decides whether the
+ * queue itself is durable — the in-process queue's jobs never are, which is
+ * why `reconcileInterruptedRuns` runs at startup.
+ */
+export const createJobRuns = (kind: QueueKind, storage?: Repositories): JobRunRepository => {
   switch (kind) {
     case "memory":
-      return createMemoryJobRunRepository();
+      return storage?.jobRuns ?? createMemoryJobRunRepository();
     case "sqs":
       throw new Error("PCA_QUEUE=sqs is deferred (paid); see TASKS.md TASK-402. Use memory.");
   }

@@ -4,9 +4,11 @@ import type { EntityId, JobRun } from "@pca/contracts";
  * Where job runs live (TASK-403).
  *
  * A job run is operational state: the canonical answer to "where is my
- * change?" that a reconnecting client reads over REST. The in-process queue
- * keeps its runs in memory, because its jobs do not outlive the process
- * either; a durable queue would pair with a durable run store.
+ * change?" that a reconnecting client reads over REST. With the in-process
+ * queue and the file or memory store, runs live in memory and die with the
+ * process; with `PCA_STORAGE=mongo` they live in Mongo (TASK-923), so a
+ * restart keeps every run — and the runs the restart interrupted are
+ * reconciled at startup (`reconcileInterruptedRuns`).
  */
 /**
  * The read side of the run store, for queries (a job by ID, a production's
@@ -19,6 +21,8 @@ export interface JobRunRepository {
   findById(jobId: EntityId): Promise<JobRun | null>;
   /** Newest first. */
   listByProduction(productionId: EntityId): Promise<JobRun[]>;
+  /** Every run not yet at `completed` or `failed`, across productions (TASK-923 startup reconciliation). */
+  listUnfinished(): Promise<JobRun[]>;
   /**
    * Loads, transforms, and stores one run as a single atomic step (TASK-905,
    * code review #6 / AUD-013). Two updates to the same run cannot interleave:
