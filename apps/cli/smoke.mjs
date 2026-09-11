@@ -19,7 +19,7 @@
  * not inside `verify`, which must work offline.
  */
 import { spawn, spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -59,6 +59,15 @@ const run = (command, args, options = {}) => {
   return result.stdout;
 };
 
+// A stage that hangs (a server that never answers, a client that never
+// hears back) fails with its name instead of holding CI to its timeout.
+let stage = "start";
+const watchdog = setTimeout(() => {
+  process.stderr.write(`smoke: timed out during "${stage}"\n`);
+  process.exit(1);
+}, 8 * 60_000);
+watchdog.unref();
+
 const work = await mkdtemp(join(tmpdir(), "pca-smoke-"));
 const install = join(work, "project");
 const dataFile = join(work, "data.json");
@@ -77,22 +86,29 @@ try {
   run("npm", ["install", "--no-audit", "--no-fund", "--loglevel=error", join(work, tarball)], {
     cwd: install,
   });
-  const cli = ["exec", "--no", "--", "production-change-agent"];
+  // The installed command as npm linked it: the bin entry must exist, and
+  // the bundle runs through node directly rather than `npm exec`, so a
+  // signal reaches the server itself, not a wrapper whose orphaned child
+  // would keep an inherited pipe (and this process) alive.
+  await access(join(install, "node_modules", ".bin", "production-change-agent"));
+  const cli = join(install, "node_modules", "production-change-agent", "dist", "cli.js");
   const npx = (args, options = {}) =>
-    run("npm", [...cli, ...args], {
+    run(process.execPath, [cli, ...args], {
       cwd: install,
       env: { ...process.env, PCA_DATA_FILE: dataFile },
       ...options,
     });
 
   // 2. seed
+  stage = "seed";
   const seeded = npx(["seed"]);
   if (!seeded.includes("Demo Movie restored")) fail(`seed said: ${seeded}`);
   log("seed ok");
 
   // 3. serve
+  stage = "serve";
   const port = await freePort();
-  serverProcess = spawn("npm", [...cli, "serve"], {
+  serverProcess = spawn(process.execPath, [cli, "serve"], {
     cwd: install,
     env: { ...process.env, PCA_DATA_FILE: dataFile, PCA_API_PORT: String(port) },
     stdio: ["ignore", "pipe", "pipe"],
@@ -148,6 +164,7 @@ try {
 
   // 4. The three golden scenarios, the way the console drives them.
   for (const text of SENTENCES) {
+    stage = `golden "${text}"`;
     npx(["seed"]);
     const before = (await api("GET", `/productions/${DEMO}`)).version;
     const submitted = await api("POST", `/productions/${DEMO}/changes`, { text });
@@ -176,12 +193,18 @@ try {
   await sleep(500);
 
   // 5. mcp over stdio: initialize, list tools, read the production.
-  mcpProcess = spawn("npm", [...cli, "mcp"], {
+  stage = "mcp";
+  mcpProcess = spawn(process.execPath, [cli, "mcp"], {
     cwd: install,
     env: { ...process.env, PCA_DATA_FILE: dataFile },
     stdio: ["pipe", "pipe", "pipe"],
   });
   let buffer = "";
+  let mcpLog = "";
+  mcpProcess.stderr.on("data", (chunk) => (mcpLog += chunk));
+  mcpProcess.on("exit", (code) => {
+    if (stage === "mcp") process.stderr.write(`smoke: mcp exited (${code}):\n${mcpLog}`);
+  });
   const pending = new Map();
   mcpProcess.stdout.on("data", (chunk) => {
     buffer += chunk;
@@ -229,6 +252,7 @@ try {
   if (!JSON.stringify(read.result).includes("Demo Movie"))
     fail("mcp get_production did not name the Demo Movie");
   log(`mcp ok (${names.length} tools)`);
+  stage = "done";
   mcpProcess.kill("SIGTERM");
   log("all checks passed");
 } finally {
@@ -236,3 +260,5 @@ try {
   mcpProcess?.kill("SIGKILL");
   await rm(work, { recursive: true, force: true });
 }
+// Explicit: nothing a child left behind may keep this process alive.
+process.exit(0);
