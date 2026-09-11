@@ -161,8 +161,10 @@ token may omit it; TASK-917: a burst over the per-client quota → 429 with
 its documented maximum → `INVALID_INPUT`; TASK-919: a decision or apply
 through another proposal's job → `JOB_MISMATCH` with nothing changed, a
 replayed apply answered with the run and not enqueued twice, a job resumed
-by another principal → 403 and a job not at `resolving` → `JOB_MISMATCH`),
-reads, GOLDEN-1 driven through REST alone,
+by another principal → 403 and a job not at `resolving` → `JOB_MISMATCH`;
+TASK-922: a sentence carrying a credential refused on both intake routes
+naming the kind only, and the audit event carrying a digest, a length, and
+the engine's summary but never the sentence), reads, GOLDEN-1 driven through REST alone,
 the stable error codes, changes as jobs with recovery, ambiguity resumed on
 the same job, and the WebSocket gateway on the same server.
 

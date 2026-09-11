@@ -1010,6 +1010,48 @@ describe("REST API", () => {
     });
   });
 
+  describe("raw change text policy (TASK-922, SEC-011 / AUD-017)", () => {
+    it("refuses a sentence carrying a credential on both intake routes, naming the kind only", async () => {
+      const secret = `Sarah cannot shoot Friday; use AKIAIOSFODNN7EXAMPLE to upload.`;
+      const asJob = await api("POST", `/productions/${DEMO}/changes`, { text: secret });
+      expect(asJob.status).toBe(400);
+      expect(errorOf(asJob)).toMatchObject({ code: "INVALID_INPUT", actual: "AWS access key" });
+      expect(JSON.stringify(asJob.body)).not.toContain("AKIAIOSFODNN7EXAMPLE");
+      expect(await queue.listJobs()).toEqual([]);
+      expect(await tracker.listByProduction(DEMO)).toEqual([]);
+
+      const direct = await api("POST", `/productions/${DEMO}/change-requests`, {
+        rawText: secret,
+        change: { type: "CAST_UNAVAILABLE", castId: cast.sarah, unavailable: onDay(friday) },
+      });
+      expect(direct.status).toBe(400);
+      expect(errorOf(direct).actual).toBe("AWS access key");
+      expect(await store.changeRequests.findById(DEMO, "CR-1")).toBeNull();
+      expect(await store.auditEvents.list(DEMO, {})).toEqual([]);
+    });
+
+    it("stores the sentence once: the audit event carries a digest, a length, and the engine's summary", async () => {
+      const created = await api("POST", `/productions/${DEMO}/change-requests`, {
+        rawText: "Sarah cannot shoot Friday.",
+        change: { type: "CAST_UNAVAILABLE", castId: cast.sarah, unavailable: onDay(friday) },
+      });
+      expect(created.status).toBe(201);
+      expect((created.body as { rawText: string }).rawText).toBe("Sarah cannot shoot Friday.");
+      const audit = await api("GET", `/productions/${DEMO}/audit`);
+      const submitted = (
+        audit.body as { events: { action: string; metadata?: Record<string, unknown> }[] }
+      ).events.find((event) => event.action === "CHANGE_REQUEST_SUBMITTED");
+      expect(submitted?.metadata).toEqual({
+        changeRequestId: "CR-1",
+        changeType: "CAST_UNAVAILABLE",
+        changeSummary: "Sarah unavailable Fri Sep 18",
+        rawTextDigest: expect.stringMatching(/^[0-9a-f]{64}$/u) as string,
+        rawTextLength: 26,
+      });
+      expect(JSON.stringify(submitted)).not.toContain("cannot shoot");
+    });
+  });
+
   describe("resource limits (TASK-917, SEC-007 / AUD-008)", () => {
     const restart = async (limits: { requestsPerMinute?: number; writesPerMinute?: number }) => {
       await server.close();

@@ -33,7 +33,7 @@ test("The warehouse is unavailable Friday: Scene 07/12 move off Friday", async (
   await page.getByRole("link", { name: "Audit" }).click();
   const lines = await readAuditLines(page);
   expect(lines).toHaveLength(7);
-  expect(lines[0]).toBe('demo-coordinator reported: "The warehouse is unavailable Friday."');
+  expect(lines[0]).toBe("demo-coordinator reported: Warehouse unavailable Fri Sep 18.");
   expect(lines.at(-1)).toBe("System verified the change.");
   expect(lines.some((line) => /^System applied \d+ operations?\.$/u.test(line))).toBe(true);
 });

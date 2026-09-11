@@ -299,6 +299,11 @@ production's own timezone, matching the header. An action outside this
 fixed vocabulary — none exists in the codebase today — still renders a
 humanized, non-blank line rather than nothing.
 
+Since TASK-922 the "reported" line shows the engine's account of the
+change ("Sarah unavailable Fri Sep 18") rather than quoting the sentence:
+the audit event no longer carries a copy of it. Events recorded before that
+still quote what they hold.
+
 ## 8. Accessibility
 
 - keyboard-accessible actions;

@@ -510,6 +510,32 @@ export const toProposalSummary = (explanation: ProposalExplanation): string => {
 // Impact panel
 // ---------------------------------------------------------------------------
 
+/**
+ * One deterministic line for what a typed change asks (TASK-922): the audit
+ * trail files a change request under this rather than under a copy of the
+ * sentence, so the story still reads ("Sarah unavailable Fri Sep 18") while
+ * the raw text lives in one place only.
+ */
+export const describeTypedChange = (index: ProductionIndex, change: TypedChange): string => {
+  switch (change.type) {
+    case "CAST_UNAVAILABLE":
+      return `${castName(index, change.castId)} unavailable ${formatRange(change.unavailable)}`;
+    case "LOCATION_UNAVAILABLE":
+      return `${locationName(index, change.locationId)} unavailable ${formatRange(change.unavailable)}`;
+    case "SCENE_REQUIREMENT_CHANGED": {
+      const scene = index.sceneById.get(change.sceneId);
+      return `Scene ${scene?.sceneNumber ?? change.sceneId} needs ${change.requirement.name} (${change.requirement.type.toLowerCase()})`;
+    }
+    case "SCHEDULE_CHANGED": {
+      const day = index.shootDayById.get(change.toShootDayId);
+      const scenes = change.sceneIds.map(
+        (sceneId) => `Scene ${index.sceneById.get(sceneId)?.sceneNumber ?? sceneId}`,
+      );
+      return `${scenes.join(", ")} to ${day === undefined ? change.toShootDayId : formatShootDate(day.date)}`;
+    }
+  }
+};
+
 const subjectOf = (index: ProductionIndex, change: TypedChange | undefined): string | null => {
   if (change === undefined) return null;
   switch (change.type) {

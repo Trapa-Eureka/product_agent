@@ -32,6 +32,16 @@ const buttonOf = (element: HTMLElement) =>
   element.querySelector("button.primary") as HTMLButtonElement;
 
 describe("ChangeInput", () => {
+  it("TASK-922: warns not to paste credentials, because the sentence is stored", () => {
+    const fixture = render({
+      state: signal("idle"),
+      error: signal(null),
+      submit: () => Promise.resolve(),
+    });
+    const hint = (fixture.nativeElement as HTMLElement).querySelector(".hint");
+    expect(hint?.textContent).toContain("Don't paste passwords, keys, or tokens");
+  });
+
   it("shows the golden-scenario examples as helper text", () => {
     const fixture = render({
       state: signal("idle"),

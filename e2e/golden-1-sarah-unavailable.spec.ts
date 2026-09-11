@@ -49,7 +49,7 @@ test("Sarah cannot shoot Friday: Scene 07/12 move off Friday", async ({ page }) 
   await page.getByRole("link", { name: "Audit" }).click();
   const lines = await readAuditLines(page);
   expect(lines).toHaveLength(7);
-  expect(lines[0]).toBe('demo-coordinator reported: "Sarah cannot shoot Friday."');
+  expect(lines[0]).toBe("demo-coordinator reported: Sarah unavailable Fri Sep 18.");
   expect(lines[1]).toBe("Agent requested impact analysis.");
   expect(lines[2]).toMatch(/^System found \d+ conflicts?, affecting \d+ entit(y|ies)\.$/u);
   expect(lines[3]).toMatch(/^Agent proposed .+ \(\d+ operations?\)\.$/u);

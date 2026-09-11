@@ -16,7 +16,23 @@ const event = (overrides: Partial<AuditEvent>): AuditEvent => ({
 });
 
 describe("describeAuditEvent", () => {
-  it("quotes the user's own reported text (DESIGN.md §7: 'User reported ...')", () => {
+  it("TASK-922: reports the engine's account of the change, never a second copy of the sentence", () => {
+    expect(
+      describeAuditEvent({
+        ...event({ actorType: "USER", actorId: "coordinator@example.test" }),
+        action: "CHANGE_REQUEST_SUBMITTED",
+        metadata: {
+          changeRequestId: "CR-1",
+          changeType: "CAST_UNAVAILABLE",
+          changeSummary: "Sarah unavailable Fri Sep 18",
+          rawTextDigest: "a".repeat(64),
+          rawTextLength: 26,
+        },
+      }),
+    ).toBe("coordinator@example.test reported: Sarah unavailable Fri Sep 18.");
+  });
+
+  it("quotes the user's own reported text on events recorded before TASK-922", () => {
     const text = describeAuditEvent(
       event({
         actorType: "USER",

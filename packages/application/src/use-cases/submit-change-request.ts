@@ -8,6 +8,8 @@ import type {
 import { typedChangeSchema } from "@pca/contracts";
 import { indexProduction } from "@pca/domain";
 
+import { findCredential, rawTextDigest } from "../data-policy";
+import { describeTypedChange } from "../explanation";
 import type { Clock, IdFactory, RepositorySet } from "../ports";
 import { firstMissingReference } from "../references";
 import type { UseCaseResult } from "../result";
@@ -21,8 +23,11 @@ import { fail, succeed } from "../result";
  * against this production's real data here, so an invented or misattributed
  * entity is refused before anything is persisted or analysed (SPEC.md §6).
  *
- * The raw sentence is stored verbatim beside the typed change so the audit
- * trail shows what the user actually said, not only what the system made of it.
+ * The raw sentence is stored verbatim beside the typed change, once, so the
+ * record of what the user actually said survives; the audit event carries a
+ * digest and length of it, and a deterministic line for the typed change,
+ * rather than a second copy (TASK-922). A sentence that plainly carries a
+ * credential is refused before anything is persisted.
  */
 
 export type SubmitChangeRequestInput = {
@@ -92,6 +97,18 @@ export const createSubmitChangeRequest = (
         nextStep: "Submit the user's original sentence as rawText.",
       });
     }
+    const credential = findCredential(rawText);
+    if (credential !== null) {
+      return fail(
+        "INVALID_INPUT",
+        `The change text appears to contain a ${credential}; credentials are never stored with a production.`,
+        {
+          correlationId,
+          actual: credential,
+          nextStep: "Remove the credential from the sentence and submit it again.",
+        },
+      );
+    }
 
     const state = await repositories.productions.loadState(input.productionId);
     if (state === null) {
@@ -138,7 +155,15 @@ export const createSubmitChangeRequest = (
       entityType: subject.type,
       entityId: subject.id,
       correlationId,
-      metadata: { changeRequestId: changeRequest.id, changeType: change.type, rawText },
+      // No second copy of the sentence (TASK-922): what it asked, in the
+      // engine's words, plus enough to prove which sentence it was.
+      metadata: {
+        changeRequestId: changeRequest.id,
+        changeType: change.type,
+        changeSummary: describeTypedChange(index, change),
+        rawTextDigest: rawTextDigest(rawText),
+        rawTextLength: rawText.length,
+      },
       createdAt,
     };
 

@@ -259,7 +259,10 @@ walks the same architecture through an actual approved change.
   deployment belongs on `PCA_STORAGE=mongo`. It is a single-user store: the
   directory and files are owner-only (`0700`/`0600`) and a symlinked path is
   refused, but there is no encryption at rest and no per-field access — a
-  multi-user deployment needs a managed database.
+  multi-user deployment needs a managed database. Change sentences are
+  stored verbatim once (on the change request) for the life of the store,
+  and a sentence carrying a credential is refused at intake; see `SPEC.md`
+  §8 "Data policy".
 
 ## Documentation
 
