@@ -137,15 +137,29 @@ pnpm run verify
 | `pnpm run test:e2e` | Playwright suite: three golden scenarios against a real browser (`e2e/`) |
 | `pnpm run verify` | Local completion gate: runs the whole pipeline in order |
 | `pnpm run seed` | Restores the Demo Movie fixture into the file store, clearing any stale proposals/audit trail from a previous run |
+| `pnpm run token` | Mints an access token signed with `PCA_AUTH_SECRET` (`--subject`, `--role`, `--production`, `--ttl`) |
 
 `verify` prints a per-step pass/fail summary and stops at the first failure with the command to re-run.
 
 ### Run the API
 
 ```bash
-PCA_STORAGE=memory PCA_API_PORT=3000 pnpm exec tsx apps/api/src/main.ts
+PCA_DEMO_MODE=true PCA_STORAGE=memory PCA_API_PORT=3000 pnpm exec tsx apps/api/src/main.ts
 # REST under http://127.0.0.1:3000/api, WebSocket on ws://127.0.0.1:3000/ws
 ```
+
+`PCA_DEMO_MODE=true` makes the server hand anyone who asks
+`GET /api/auth/demo-session` the demo coordinator's access token; the UI
+fetches it on load. For anything but a local demo, set `PCA_AUTH_SECRET`
+instead and mint tokens for people:
+
+```bash
+export PCA_AUTH_SECRET="$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
+pnpm run token -- --subject jane@example.test --role approver --production PROD-DEMO
+# prints a token; every request then needs  Authorization: Bearer <token>
+```
+
+The server refuses to start with neither set.
 
 ### Run the UI
 
@@ -165,6 +179,9 @@ pnpm --filter @pca/web start
 | `PCA_MODEL` | `rules` | `rules` (free, no network), `ollama` (later), or `bedrock` (deferred, paid) |
 | `PCA_QUEUE` | `memory` | `memory` (in-process, free) or `sqs` (deferred, paid) |
 | `PCA_ALLOWED_PRODUCTIONS` | `*` | Comma-separated production IDs the MCP server may act on |
+| `PCA_AUTH_SECRET` | (unset) | 32+ character secret that signs access tokens; required unless `PCA_DEMO_MODE=true` |
+| `PCA_DEMO_MODE` | (unset) | `true` lets the API issue the demo coordinator's token to anyone at `/api/auth/demo-session` |
+| `PCA_MAKER_CHECKER` | `true` with a secret, `false` in demo mode | Whether the person who submitted a change may decide its proposal |
 | `PCA_ACTOR_ID` | `mcp-agent` | Identity recorded for agent actions (1–200 characters; refused at startup otherwise) |
 | `PCA_API_PORT` | `3000` | REST API and WebSocket port |
 | `PCA_API_HOST` | `127.0.0.1` | Interface the API binds to |
@@ -217,9 +234,10 @@ walks the same architecture through an actual approved change.
 
 ## Limitations
 
-- No authentication/authorization beyond a single `X-Actor-Id` header and a
-  server-side production allow-list; a real deployment puts an auth layer in
-  front (`ARCHITECTURE.md` §15).
+- Identity is locally signed access tokens minted by the operator
+  (`ARCHITECTURE.md` §15): there is no identity provider, no self-service
+  sign-in, and no token revocation short of rotating the secret. Roles are
+  three fixed levels, not per-production permissions.
 - The rule-based model interprets a fixed set of change phrasings well
   (the three MVP scenarios and close variants); it is not a general
   natural-language understanding system, and an unrecognized sentence is

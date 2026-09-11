@@ -19,6 +19,11 @@ import { REALTIME_PROTOCOL_VERSION, realtimeClientMessageSchema } from "@pca/con
  * Clients choose productions explicitly, and an `authorize` hook can refuse
  * one, so a socket never receives events for a production it was not allowed
  * to name. Malformed messages get an `error` reply, not a disconnect.
+ *
+ * An `authenticate` hook (TASK-914) runs before the upgrade is accepted: a
+ * refused connection gets an HTTP 401/403 and no WebSocket at all, so an
+ * unauthenticated socket never exists to subscribe with. Whatever the hook
+ * returns as the session is handed to `authorize` for every subscription.
  */
 
 export type GatewayLogFields = Readonly<
@@ -31,14 +36,27 @@ export interface GatewayLogger {
 
 export const silentGatewayLogger: GatewayLogger = { log: () => undefined };
 
-export type RealtimeGatewayOptions = {
+export type AuthenticateOutcome<TSession> =
+  | { readonly ok: true; readonly session: TSession }
+  | { readonly ok: false; readonly status: 401 | 403; readonly reason: string };
+
+export type RealtimeGatewayOptions<TSession = undefined> = {
   readonly hub: NotificationHub;
   readonly clock: Clock;
   readonly logger?: GatewayLogger;
+  /**
+   * Verifies the upgrade request before a socket exists (TASK-914). A refusal
+   * is answered with its HTTP status and the connection is closed. Default:
+   * every upgrade is accepted with an undefined session.
+   */
+  readonly authenticate?: (
+    request: IncomingMessage,
+  ) => AuthenticateOutcome<TSession> | Promise<AuthenticateOutcome<TSession>>;
   /** Decides whether this connection may subscribe to the production. Default: everyone may. */
   readonly authorize?: (
     productionId: string,
     request: IncomingMessage,
+    session: TSession,
   ) => boolean | Promise<boolean>;
   /** Productions one connection may follow at once. */
   readonly maxSubscriptionsPerClient?: number;
@@ -56,11 +74,17 @@ export type RealtimeGateway = {
   subscriberCount(productionId: string): number;
 };
 
-type ClientState = {
+type ClientState<TSession> = {
   readonly socket: WebSocket;
   readonly request: IncomingMessage;
+  readonly session: TSession;
   readonly subscriptions: Set<string>;
   alive: boolean;
+};
+
+const STATUS_TEXT: Readonly<Record<401 | 403, string>> = {
+  401: "Unauthorized",
+  403: "Forbidden",
 };
 
 const DEFAULT_PATH = "/ws";
@@ -97,25 +121,32 @@ const parseClientMessage = (raw: RawData) => {
   return { ok: true as const, message: parsed.data };
 };
 
-export const createRealtimeGateway = (options: RealtimeGatewayOptions): RealtimeGateway => {
+export const createRealtimeGateway = <TSession = undefined>(
+  options: RealtimeGatewayOptions<TSession>,
+): RealtimeGateway => {
   const { hub, clock } = options;
   const logger = options.logger ?? silentGatewayLogger;
+  const authenticate =
+    options.authenticate ??
+    ((): AuthenticateOutcome<TSession> => ({ ok: true, session: undefined as TSession }));
   const authorize = options.authorize ?? (() => true);
   const maxSubscriptions = options.maxSubscriptionsPerClient ?? DEFAULT_MAX_SUBSCRIPTIONS;
   const heartbeatMs = options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_MS;
 
   const server = new WebSocketServer({ noServer: true });
-  const clients = new Set<ClientState>();
+  const clients = new Set<ClientState<TSession>>();
+  /** The session `authenticate` produced for an accepted upgrade, until its connection opens. */
+  const sessions = new WeakMap<IncomingMessage, TSession>();
   let ownHttpServer: HttpServer | null = null;
   let heartbeat: NodeJS.Timeout | null = null;
 
-  const send = (client: ClientState, message: RealtimeServerMessage): void => {
+  const send = (client: ClientState<TSession>, message: RealtimeServerMessage): void => {
     if (client.socket.readyState !== WebSocket.OPEN) return;
     client.socket.send(JSON.stringify(message));
   };
 
   const fail = (
-    client: ClientState,
+    client: ClientState<TSession>,
     code: "MALFORMED_MESSAGE" | "PRODUCTION_UNAUTHORIZED" | "SUBSCRIPTION_LIMIT",
     message: string,
   ): void => {
@@ -123,7 +154,7 @@ export const createRealtimeGateway = (options: RealtimeGatewayOptions): Realtime
     send(client, { type: "error", code, message });
   };
 
-  const handleMessage = async (client: ClientState, raw: RawData): Promise<void> => {
+  const handleMessage = async (client: ClientState<TSession>, raw: RawData): Promise<void> => {
     const parsed = parseClientMessage(raw);
     if (!parsed.ok) {
       fail(client, "MALFORMED_MESSAGE", parsed.message);
@@ -151,7 +182,7 @@ export const createRealtimeGateway = (options: RealtimeGatewayOptions): Realtime
           );
           return;
         }
-        if (!(await authorize(message.productionId, client.request))) {
+        if (!(await authorize(message.productionId, client.request, client.session))) {
           fail(
             client,
             "PRODUCTION_UNAUTHORIZED",
@@ -168,7 +199,14 @@ export const createRealtimeGateway = (options: RealtimeGatewayOptions): Realtime
   };
 
   server.on("connection", (socket: WebSocket, request: IncomingMessage) => {
-    const client: ClientState = { socket, request, subscriptions: new Set(), alive: true };
+    const client: ClientState<TSession> = {
+      socket,
+      request,
+      session: sessions.get(request) as TSession,
+      subscriptions: new Set(),
+      alive: true,
+    };
+    sessions.delete(request);
     clients.add(client);
     logger.log("info", "realtime_connection_opened", { clients: clients.size });
     send(client, {
@@ -222,9 +260,32 @@ export const createRealtimeGateway = (options: RealtimeGatewayOptions): Realtime
         socket.destroy();
         return;
       }
-      server.handleUpgrade(request, socket, head, (ws) => {
-        server.emit("connection", ws, request);
-      });
+      // `async` so a hook that throws synchronously rejects instead of escaping the upgrade handler.
+      void (async () => authenticate(request))()
+        .catch((): AuthenticateOutcome<TSession> => ({
+          ok: false,
+          status: 401,
+          reason: "The credential could not be verified.",
+        }))
+        .then((outcome) => {
+          if (socket.destroyed) return;
+          if (!outcome.ok) {
+            logger.log("warn", "realtime_upgrade_refused", { status: outcome.status });
+            const body = Buffer.from(outcome.reason, "utf8");
+            socket.write(
+              `HTTP/1.1 ${outcome.status} ${STATUS_TEXT[outcome.status]}\r\n` +
+                "Connection: close\r\n" +
+                "Content-Type: text/plain; charset=utf-8\r\n" +
+                `Content-Length: ${body.length}\r\n\r\n`,
+            );
+            socket.end(body);
+            return;
+          }
+          sessions.set(request, outcome.session);
+          server.handleUpgrade(request, socket, head, (ws) => {
+            server.emit("connection", ws, request);
+          });
+        });
     });
   };
 

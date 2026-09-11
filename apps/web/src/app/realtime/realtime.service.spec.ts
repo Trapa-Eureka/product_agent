@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { SocketLike } from "@pca/realtime-client";
 
 import { ProductionApi } from "../api/production-api";
+import { AuthService } from "../auth/auth.service";
 import { RealtimeService } from "./realtime.service";
 
 class FakeSocket implements SocketLike {
@@ -40,6 +41,7 @@ describe("RealtimeService", () => {
     failRecovery = false;
     TestBed.configureTestingModule({
       providers: [
+        { provide: AuthService, useValue: { token: () => "test-token" } },
         {
           provide: ProductionApi,
           useValue: {

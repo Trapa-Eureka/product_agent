@@ -13,6 +13,7 @@ export * from "./impact";
 export * from "./proposal";
 export * from "./approval";
 export * from "./audit";
+export * from "./identity";
 export * from "./errors";
 export * from "./job";
 export * from "./mcp";

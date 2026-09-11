@@ -34,6 +34,13 @@ Desktop-first MVP:
 └───────────────────┴──────────────────────────────────────────┘
 ```
 
+Before any of it loads, the console settles its session (TASK-914): a token
+kept for this tab, else the one a demo server hands out, else a single
+prompt in the routed area — "Access token required", a password-style
+field, one button — for the token the operator issued. Nothing else renders
+until then, because nothing else can load without it; a later 401 clears the
+token and shows the same prompt again.
+
 ## 3. Change workspace
 
 ### Input

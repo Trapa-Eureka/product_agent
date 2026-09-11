@@ -21,6 +21,8 @@ export const toolErrorCodeSchema = z.enum([
   "CONSTRAINT_VIOLATION",
   "IDEMPOTENCY_CONFLICT",
   "TOOL_UNAUTHORIZED",
+  /** No verified identity on the call (TASK-914). HTTP 401; never returned by an MCP tool. */
+  "UNAUTHENTICATED",
   "INVALID_INPUT",
   "INTERNAL_ERROR",
 ]);

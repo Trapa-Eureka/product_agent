@@ -4,7 +4,7 @@ import type { ProposedOperation } from "@pca/contracts";
 import { checkWriteAllowed, computeProposalDigest } from "@pca/domain";
 import { DEMO_MOVIE_DATES, DEMO_MOVIE_IDS, createDemoMovie } from "@pca/fixtures";
 import { createMemoryStore, type MemoryStore } from "@pca/memory-store";
-import { fixedClock, onDay, sequentialIds, withCastUnavailable } from "@pca/test-support";
+import { fixedClock, onDay, sequentialIds, withCastUnavailable, approver } from "@pca/test-support";
 
 import {
   createCreateProposal,
@@ -162,7 +162,7 @@ describe("proposal lifecycle: create, then decide", () => {
         productionId: DEMO,
         proposalId: "P-1",
         decision: "APPROVE",
-        decidedBy: "jinho@example.test",
+        decidedBy: approver("jinho@example.test"),
         correlationId: "corr-1",
       });
 
@@ -176,6 +176,8 @@ describe("proposal lifecycle: create, then decide", () => {
         proposalDigest: stored?.digest,
         productionVersion: 1,
         approvedBy: "jinho@example.test",
+        approvedByIssuer: "test",
+        approvedByRole: "approver",
         decision: "APPROVE",
         createdAt: NOW,
       });
@@ -190,7 +192,7 @@ describe("proposal lifecycle: create, then decide", () => {
         productionId: DEMO,
         proposalId: "P-1",
         decision: "APPROVE",
-        decidedBy: "jinho@example.test",
+        decidedBy: approver("jinho@example.test"),
       });
       if (!decision.ok) throw new Error("expected approval");
 
@@ -211,7 +213,7 @@ describe("proposal lifecycle: create, then decide", () => {
         productionId: DEMO,
         proposalId: "P-1",
         decision: "APPROVE",
-        decidedBy: "jinho@example.test",
+        decidedBy: approver("jinho@example.test"),
       });
 
       const [event] = await store.auditEvents.list(DEMO, { limit: 1 });
@@ -233,7 +235,7 @@ describe("proposal lifecycle: create, then decide", () => {
         productionId: DEMO,
         proposalId: "P-1",
         decision: "APPROVE",
-        decidedBy: "jinho@example.test",
+        decidedBy: approver("jinho@example.test"),
       });
       expect(result.ok).toBe(false);
       if (result.ok) return;
@@ -260,7 +262,7 @@ describe("proposal lifecycle: create, then decide", () => {
         productionId: DEMO,
         proposalId: "P-1",
         decision: "APPROVE",
-        decidedBy: "jinho@example.test",
+        decidedBy: approver("jinho@example.test"),
       });
       expect(!result.ok && result.error.code).toBe("PROPOSAL_INVALID");
       expect(await store.approvals.findByProposalId(DEMO, "P-1")).toBeNull();
@@ -275,7 +277,7 @@ describe("proposal lifecycle: create, then decide", () => {
         productionId: DEMO,
         proposalId: "P-1",
         decision: "APPROVE",
-        decidedBy: "jinho@example.test",
+        decidedBy: approver("jinho@example.test"),
       });
       expect(!result.ok && result.error.code).toBe("PROPOSAL_INVALID");
       expect(!result.ok && result.error.nextStep).toContain("Discard");
@@ -292,7 +294,7 @@ describe("proposal lifecycle: create, then decide", () => {
         productionId: DEMO,
         proposalId: "P-1",
         decision: "APPROVE",
-        decidedBy: "jinho@example.test",
+        decidedBy: approver("jinho@example.test"),
       });
       expect(!result.ok && result.error.code).toBe("PROPOSAL_INVALID");
     });
@@ -305,7 +307,7 @@ describe("proposal lifecycle: create, then decide", () => {
         productionId: DEMO,
         proposalId: "P-1",
         decision: "REJECT",
-        decidedBy: "jinho@example.test",
+        decidedBy: approver("jinho@example.test"),
       });
 
       expect(result.ok && result.value.approval.decision).toBe("REJECT");
@@ -322,7 +324,7 @@ describe("proposal lifecycle: create, then decide", () => {
         productionId: DEMO,
         proposalId: "P-1",
         decision: "REJECT",
-        decidedBy: "jinho@example.test",
+        decidedBy: approver("jinho@example.test"),
       });
       expect(result.ok).toBe(true);
     });
@@ -333,14 +335,14 @@ describe("proposal lifecycle: create, then decide", () => {
         productionId: DEMO,
         proposalId: "P-1",
         decision: "APPROVE",
-        decidedBy: "jinho@example.test",
+        decidedBy: approver("jinho@example.test"),
       });
       const auditCount = (await store.auditEvents.list(DEMO)).length;
       const second = await decide({
         productionId: DEMO,
         proposalId: "P-1",
         decision: "APPROVE",
-        decidedBy: "someone-else@example.test",
+        decidedBy: approver("someone-else@example.test"),
       });
 
       expect(second.ok).toBe(true);
@@ -356,13 +358,13 @@ describe("proposal lifecycle: create, then decide", () => {
         productionId: DEMO,
         proposalId: "P-1",
         decision: "APPROVE",
-        decidedBy: "jinho@example.test",
+        decidedBy: approver("jinho@example.test"),
       });
       const result = await decide({
         productionId: DEMO,
         proposalId: "P-1",
         decision: "REJECT",
-        decidedBy: "jinho@example.test",
+        decidedBy: approver("jinho@example.test"),
       });
 
       expect(result.ok).toBe(false);
@@ -378,8 +380,18 @@ describe("proposal lifecycle: create, then decide", () => {
     it("lets exactly one of two simultaneous opposite decisions win (TASK-902)", async () => {
       await proposeGolden1();
       const [approve, reject] = await Promise.all([
-        decide({ productionId: DEMO, proposalId: "P-1", decision: "APPROVE", decidedBy: "a" }),
-        decide({ productionId: DEMO, proposalId: "P-1", decision: "REJECT", decidedBy: "b" }),
+        decide({
+          productionId: DEMO,
+          proposalId: "P-1",
+          decision: "APPROVE",
+          decidedBy: approver("a"),
+        }),
+        decide({
+          productionId: DEMO,
+          proposalId: "P-1",
+          decision: "REJECT",
+          decidedBy: approver("b"),
+        }),
       ]);
 
       // Both pass the early read; only one passes the atomic write. The
@@ -403,13 +415,13 @@ describe("proposal lifecycle: create, then decide", () => {
         productionId: DEMO,
         proposalId: "P-9",
         decision: "APPROVE",
-        decidedBy: "x",
+        decidedBy: approver("x"),
       });
       const foreign = await decide({
         productionId: "PROD-OTHER",
         proposalId: "P-1",
         decision: "APPROVE",
-        decidedBy: "x",
+        decidedBy: approver("x"),
       });
       expect(!missing.ok && missing.error.code).toBe("ENTITY_NOT_FOUND");
       expect(!foreign.ok && foreign.error.code).toBe("ENTITY_NOT_FOUND");

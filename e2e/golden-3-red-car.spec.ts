@@ -34,7 +34,7 @@ test("Scene 18 now needs a red car: a requirement and a task are proposed", asyn
   await page.getByRole("link", { name: "Audit" }).click();
   const lines = await readAuditLines(page);
   expect(lines).toHaveLength(7);
-  expect(lines[0]).toBe('e2e reported: "Scene 18 now needs a red car."');
+  expect(lines[0]).toBe('demo-coordinator reported: "Scene 18 now needs a red car."');
   expect(lines.at(-1)).toBe("System verified the change.");
   expect(lines.some((line) => /^System applied \d+ operations?\.$/u.test(line))).toBe(true);
 });

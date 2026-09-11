@@ -21,9 +21,11 @@ import {
   createMemoryQueue,
   type MemoryQueue,
 } from "@pca/memory-queue";
+import type { Principal } from "@pca/contracts";
+import { createLocalIdentity, issueToken } from "@pca/local-auth";
 import { createMemoryStore, type MemoryStore } from "@pca/memory-store";
 import { createRuleModelAdapter } from "@pca/rule-model";
-import { fixedClock, onDay, sequentialIds } from "@pca/test-support";
+import { fixedClock, onDay, principal, sequentialIds } from "@pca/test-support";
 
 import { rawDataToText } from "@pca/ws-gateway";
 
@@ -33,6 +35,25 @@ const DEMO = DEMO_MOVIE_IDS.production;
 const { cast, callSheets, scenes, shootDays } = DEMO_MOVIE_IDS;
 const { friday, tuesday } = DEMO_MOVIE_DATES;
 const NOW = "2026-09-10T12:00:00.000Z";
+const SECRET = "api-contract-secret-".padEnd(32, "x");
+const clock = fixedClock(NOW);
+
+/** A signed token for `who` (TASK-914): what every request below carries unless it says otherwise. */
+const tokenFor = (who: Principal): string => issueToken({ secret: SECRET, principal: who, clock });
+const JINHO = principal("jinho@example.test", { productions: [DEMO] });
+const JINHO_TOKEN = tokenFor(JINHO);
+
+const golden1: ProposedOperation[] = [
+  { type: "RECORD_CAST_UNAVAILABILITY", castId: cast.sarah, unavailable: onDay(friday) },
+  {
+    type: "MOVE_SCENES",
+    sceneIds: [scenes.s07, scenes.s12],
+    fromShootDayId: shootDays.friday,
+    toShootDayId: shootDays.tuesday,
+  },
+  { type: "MARK_CALL_SHEET_STALE", callSheetId: callSheets.friday },
+  { type: "MARK_CALL_SHEET_STALE", callSheetId: callSheets.tuesday },
+];
 
 type Reply = { status: number; body: unknown; headers: Headers };
 
@@ -54,7 +75,11 @@ describe("REST API", () => {
   ): Promise<Reply> => {
     const response = await fetch(`${base}/api${path}`, {
       method,
-      headers: { "content-type": "application/json", ...headers },
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${JINHO_TOKEN}`,
+        ...headers,
+      },
       ...(body === undefined
         ? {}
         : { body: typeof body === "string" ? body : JSON.stringify(body) }),
@@ -69,10 +94,25 @@ describe("REST API", () => {
 
   const errorOf = (reply: Reply): ToolError => (reply.body as { error: ToolError }).error;
 
+  /** GOLDEN-1's change request and proposal through REST, as Jinho; returns the proposal ID. */
+  const proposeViaRest = async (): Promise<string> => {
+    await api("POST", `/productions/${DEMO}/change-requests`, {
+      rawText: "Sarah cannot shoot Friday.",
+      change: { type: "CAST_UNAVAILABLE", castId: cast.sarah, unavailable: onDay(friday) },
+    });
+    const created = await api("POST", `/productions/${DEMO}/proposals`, {
+      changeRequestId: "CR-1",
+      baseProductionVersion: 1,
+      operations: golden1,
+      summary: "Move to Tuesday",
+    });
+    expect(created.status).toBe(201);
+    return (created.body as { proposal: Proposal }).proposal.id;
+  };
+
   beforeEach(async () => {
     store = createMemoryStore({ now: () => NOW });
     await store.productions.save(createDemoMovie());
-    const clock = fixedClock(NOW);
     const ids = sequentialIds();
     const hub = createNotificationHub();
     const repositories = withProposalNotifications(store, hub, clock);
@@ -104,6 +144,10 @@ describe("REST API", () => {
       clock,
       ids,
       context: { actor: { type: "USER", id: "api-user" }, allowedProductionIds: [DEMO] },
+      identity: createLocalIdentity({ secret: SECRET, clock }),
+      // The flows below have one coordinator submit and approve; the
+      // maker-checker case has its own test.
+      makerChecker: false,
     });
     const bound = await server.listen(0);
     base = bound.url;
@@ -124,7 +168,7 @@ describe("REST API", () => {
       expect(generated.headers.get("x-correlation-id")).toMatch(/^corr-/);
     });
 
-    it("TASK-906: replaces an unusable correlation ID and refuses an unusable actor ID", async () => {
+    it("TASK-906: replaces an unusable correlation ID", async () => {
       // 129 characters: one over the contract every persisted record enforces.
       // Before this, the header was accepted, written into the change request,
       // and made every later read of the file store fail with STORE_CORRUPT.
@@ -133,15 +177,6 @@ describe("REST API", () => {
       });
       expect(tooLong.status).toBe(200);
       expect(tooLong.headers.get("x-correlation-id")).toMatch(/^corr-/);
-
-      // An identity is written into approvals and the audit trail, so a bad
-      // one is refused rather than silently swapped for the server default.
-      const badActor = await api("GET", "/health", undefined, { "x-actor-id": "a".repeat(201) });
-      expect(badActor.status).toBe(400);
-      expect(badActor.body).toMatchObject({
-        error: { code: "INVALID_INPUT", actual: "X-Actor-Id" },
-      });
-      expect(badActor.headers.get("x-correlation-id")).toMatch(/^corr-/);
     });
 
     it("refuses a production outside the allow-list before touching anything", async () => {
@@ -225,18 +260,6 @@ describe("REST API", () => {
   });
 
   describe("GOLDEN-1 through REST alone", () => {
-    const golden1: ProposedOperation[] = [
-      { type: "RECORD_CAST_UNAVAILABILITY", castId: cast.sarah, unavailable: onDay(friday) },
-      {
-        type: "MOVE_SCENES",
-        sceneIds: [scenes.s07, scenes.s12],
-        fromShootDayId: shootDays.friday,
-        toShootDayId: shootDays.tuesday,
-      },
-      { type: "MARK_CALL_SHEET_STALE", callSheetId: callSheets.friday },
-      { type: "MARK_CALL_SHEET_STALE", callSheetId: callSheets.tuesday },
-    ];
-
     it("analysis → candidates → simulation → proposal → decision → apply → verification → audit", async () => {
       const change = { type: "CAST_UNAVAILABLE", castId: cast.sarah, unavailable: onDay(friday) };
       const analysis = await api(
@@ -318,11 +341,25 @@ describe("REST API", () => {
         "POST",
         `/productions/${DEMO}/proposals/${proposal.id}/decision`,
         { decision: "APPROVE" },
-        { "x-actor-id": "jinho@example.test", "x-correlation-id": "corr-g1" },
+        { "x-correlation-id": "corr-g1" },
       );
       expect(decided.status).toBe(200);
-      const approval = (decided.body as { approval: { id: string; approvedBy: string } }).approval;
-      expect(approval.approvedBy).toBe("jinho@example.test");
+      const approval = (
+        decided.body as {
+          approval: {
+            id: string;
+            approvedBy: string;
+            approvedByIssuer: string;
+            approvedByRole: string;
+          };
+        }
+      ).approval;
+      // The identity is the token's, with who vouched for it and in what capacity (TASK-914).
+      expect(approval).toMatchObject({
+        approvedBy: "jinho@example.test",
+        approvedByIssuer: "test",
+        approvedByRole: "approver",
+      });
 
       const applied = await api(
         "POST",
@@ -595,9 +632,225 @@ describe("REST API", () => {
     });
   });
 
+  describe("identity (TASK-914, SEC-001 / AUD-001)", () => {
+    it("refuses every route but health without a token, naming the next step", async () => {
+      const health = await api("GET", "/health", undefined, { authorization: "" });
+      expect(health.status).toBe(200);
+      const none = await api("GET", `/productions/${DEMO}`, undefined, { authorization: "" });
+      expect(none.status).toBe(401);
+      expect(errorOf(none)).toMatchObject({
+        code: "UNAUTHENTICATED",
+        message: "This request carries no access token.",
+      });
+      expect(errorOf(none).nextStep).toContain("Authorization: Bearer");
+      const basic = await api("GET", `/productions/${DEMO}`, undefined, {
+        authorization: "Basic dXNlcjpwYXNz",
+      });
+      expect(basic.status).toBe(401);
+      // Even an unknown route answers 401 first: routes are not enumerable without a token.
+      const nowhere = await api("GET", "/nowhere", undefined, { authorization: "" });
+      expect(nowhere.status).toBe(401);
+    });
+
+    it("refuses a token this server did not sign, and an expired one", async () => {
+      const forged = issueToken({
+        secret: "not-the-server-secret".padEnd(32, "y"),
+        principal: JINHO,
+        clock,
+      });
+      const bad = await api("GET", `/productions/${DEMO}`, undefined, {
+        authorization: `Bearer ${forged}`,
+      });
+      expect(bad.status).toBe(401);
+      expect(errorOf(bad).code).toBe("UNAUTHENTICATED");
+      const expired = issueToken({
+        secret: SECRET,
+        principal: JINHO,
+        clock: fixedClock("2026-09-10T10:00:00.000Z"),
+        ttlSeconds: 60,
+      });
+      const late = await api("GET", `/productions/${DEMO}`, undefined, {
+        authorization: `Bearer ${expired}`,
+      });
+      expect(late.status).toBe(401);
+      expect(errorOf(late).message).toBe("The access token has expired.");
+    });
+
+    it("ignores a caller-supplied X-Actor-Id: the approval records the token's subject", async () => {
+      const proposalId = await proposeViaRest();
+      const decided = await api(
+        "POST",
+        `/productions/${DEMO}/proposals/${proposalId}/decision`,
+        { decision: "REJECT" },
+        { "x-actor-id": "the-director@example.test" },
+      );
+      expect(decided.status).toBe(200);
+      expect((decided.body as { approval: { approvedBy: string } }).approval.approvedBy).toBe(
+        "jinho@example.test",
+      );
+      const audit = await api("GET", `/productions/${DEMO}/audit`);
+      const events = (audit.body as { events: { action: string; actorId?: string }[] }).events;
+      expect(events.find((event) => event.action === "PROPOSAL_REJECTED")?.actorId).toBe(
+        "jinho@example.test",
+      );
+    });
+
+    it("refuses a production the token does not grant, even though the server allows it", async () => {
+      const elsewhere = tokenFor(principal("other@example.test", { productions: ["PROD-OTHER"] }));
+      const reply = await api("GET", `/productions/${DEMO}`, undefined, {
+        authorization: `Bearer ${elsewhere}`,
+      });
+      expect(reply.status).toBe(403);
+      expect(errorOf(reply)).toMatchObject({ code: "TOOL_UNAUTHORIZED", actual: DEMO });
+      expect(errorOf(reply).message).toContain("does not grant");
+    });
+
+    it("lets a viewer read but not write, and a requester write but not decide", async () => {
+      const viewer = tokenFor(principal("viewer@example.test", { roles: ["viewer"] }));
+      const read = await api("GET", `/productions/${DEMO}`, undefined, {
+        authorization: `Bearer ${viewer}`,
+      });
+      expect(read.status).toBe(200);
+      const write = await api(
+        "POST",
+        `/productions/${DEMO}/changes`,
+        { text: "Sarah cannot shoot Friday." },
+        { authorization: `Bearer ${viewer}` },
+      );
+      expect(write.status).toBe(403);
+      expect(errorOf(write)).toMatchObject({ code: "TOOL_UNAUTHORIZED", expected: "requester" });
+
+      const proposalId = await proposeViaRest();
+      const requester = tokenFor(principal("requester@example.test", { roles: ["requester"] }));
+      const decide = await api(
+        "POST",
+        `/productions/${DEMO}/proposals/${proposalId}/decision`,
+        { decision: "APPROVE" },
+        { authorization: `Bearer ${requester}` },
+      );
+      expect(decide.status).toBe(403);
+      expect(errorOf(decide)).toMatchObject({ code: "TOOL_UNAUTHORIZED", expected: "approver" });
+      expect((await store.proposals.findById(DEMO, proposalId))?.status).toBe("AWAITING_APPROVAL");
+      expect(await store.approvals.findByProposalId(DEMO, proposalId)).toBeNull();
+    });
+
+    it("does not issue demo sessions unless the composition root is a demo", async () => {
+      const reply = await api("GET", "/auth/demo-session", undefined, { authorization: "" });
+      expect(reply.status).toBe(404);
+      expect(errorOf(reply).nextStep).toContain("pnpm run token");
+    });
+
+    it("with maker-checker on, the person who submitted the change cannot approve it", async () => {
+      await server.close();
+      const hub = createNotificationHub();
+      const repositories = withProposalNotifications(store, hub, clock);
+      server = createApiServer({
+        repositories,
+        tracker,
+        queue,
+        hub,
+        clock,
+        ids: sequentialIds(),
+        context: { actor: { type: "USER", id: "api-user" }, allowedProductionIds: [DEMO] },
+        identity: createLocalIdentity({ secret: SECRET, clock }),
+        makerChecker: true,
+      });
+      base = (await server.listen(0)).url;
+
+      const proposalId = await proposeViaRest();
+
+      const own = await api("POST", `/productions/${DEMO}/proposals/${proposalId}/decision`, {
+        decision: "APPROVE",
+      });
+      expect(own.status).toBe(403);
+      expect(errorOf(own).message).toContain("a decision needs a second person");
+
+      const second = tokenFor(principal("mina@example.test", { productions: [DEMO] }));
+      const other = await api(
+        "POST",
+        `/productions/${DEMO}/proposals/${proposalId}/decision`,
+        { decision: "APPROVE" },
+        { authorization: `Bearer ${second}` },
+      );
+      expect(other.status).toBe(200);
+      expect((other.body as { approval: { approvedBy: string } }).approval.approvedBy).toBe(
+        "mina@example.test",
+      );
+    });
+
+    it("refuses a WebSocket upgrade without a token, before any socket exists", async () => {
+      const refused = new WebSocket(websocketUrl);
+      const error = await new Promise<Error>((resolve) => refused.once("error", resolve));
+      expect(error.message).toContain("401");
+
+      const wrong = new WebSocket(`${websocketUrl}?access_token=pca1.forged.forged`);
+      expect(
+        (await new Promise<Error>((resolve) => wrong.once("error", resolve))).message,
+      ).toContain("401");
+
+      // A subscription needs the token's grant, not only the server's allow-list.
+      const elsewhere = tokenFor(principal("other@example.test", { productions: ["PROD-OTHER"] }));
+      const socket = new WebSocket(websocketUrl, {
+        headers: { authorization: `Bearer ${elsewhere}` },
+      });
+      const replies: unknown[] = [];
+      socket.on("message", (raw) => replies.push(JSON.parse(rawDataToText(raw))));
+      await new Promise<void>((resolve) => socket.once("open", () => resolve()));
+      socket.send(JSON.stringify({ type: "subscribe", productionId: DEMO }));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(replies).toEqual([
+        expect.objectContaining({ type: "welcome" }),
+        expect.objectContaining({ type: "error", code: "PRODUCTION_UNAUTHORIZED" }),
+      ]);
+      socket.close();
+    });
+  });
+
+  describe("demo mode (TASK-914)", () => {
+    it("hands out the demo coordinator's token, which then works for REST and the socket", async () => {
+      await server.close();
+      const hub = createNotificationHub();
+      const repositories = withProposalNotifications(store, hub, clock);
+      const demoSecret = "demo-ephemeral-secret-".padEnd(32, "z");
+      const demo = principal("demo-coordinator", { issuer: "pca-demo" });
+      server = createApiServer({
+        repositories,
+        tracker,
+        queue,
+        hub,
+        clock,
+        ids: sequentialIds(),
+        context: { actor: { type: "USER", id: "api-user" }, allowedProductionIds: "*" },
+        identity: createLocalIdentity({ secret: demoSecret, clock }),
+        demoSession: () => issueToken({ secret: demoSecret, principal: demo, clock }),
+        makerChecker: false,
+      });
+      const bound = await server.listen(0);
+      base = bound.url;
+
+      const session = await api("GET", "/auth/demo-session", undefined, { authorization: "" });
+      expect(session.status).toBe(200);
+      expect(session.headers.get("cache-control")).toBe("no-store");
+      const { token, principal: issued } = session.body as { token: string; principal: Principal };
+      expect(issued).toEqual(demo);
+
+      const read = await api("GET", `/productions/${DEMO}`, undefined, {
+        authorization: `Bearer ${token}`,
+      });
+      expect(read.status).toBe(200);
+
+      const socket = new WebSocket(`${bound.websocketUrl}?access_token=${token}`);
+      const first = await new Promise<unknown>((resolve) =>
+        socket.once("message", (raw) => resolve(JSON.parse(rawDataToText(raw)))),
+      );
+      expect(first).toMatchObject({ type: "welcome" });
+      socket.close();
+    });
+  });
+
   describe("websocket on the same server", () => {
     it("greets on /ws and delivers a job event for a subscribed production", async () => {
-      const socket = new WebSocket(websocketUrl);
+      const socket = new WebSocket(`${websocketUrl}?access_token=${JINHO_TOKEN}`);
       const messages: unknown[] = [];
       const waiters: ((message: unknown) => void)[] = [];
       socket.on("message", (raw) => {

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { ProposedOperation } from "@pca/contracts";
 import { DEMO_MOVIE_DATES, DEMO_MOVIE_IDS, createDemoMovie } from "@pca/fixtures";
 import { createMemoryStore, type MemoryStore } from "@pca/memory-store";
-import { fixedClock, onDay, sequentialIds } from "@pca/test-support";
+import { fixedClock, onDay, sequentialIds, approver } from "@pca/test-support";
 
 import {
   createApplyApprovedProposal,
@@ -73,7 +73,7 @@ describe("verifyAppliedProposal", () => {
         productionId: DEMO,
         proposalId,
         decision: "APPROVE",
-        decidedBy: "jinho@example.test",
+        decidedBy: approver("jinho@example.test"),
       });
       if (!decided.ok) throw new Error(decided.error.message);
       const applied = await apply({

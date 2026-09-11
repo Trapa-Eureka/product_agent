@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { App } from "./app";
 import { routes } from "./app.routes";
+import { AuthService } from "./auth/auth.service";
 import { RealtimeService } from "./realtime/realtime.service";
 import { NAV_ENTRIES } from "./shell/production-nav";
 import { ProductionStore } from "./state/production.store";
@@ -33,6 +34,8 @@ describe("App shell", () => {
         provideRouter(routes),
         provideHttpClient(),
         provideHttpClientTesting(),
+        // A settled session (TASK-914): the shell loads nothing until it is.
+        { provide: AuthService, useValue: { state: () => "ready", token: () => "test-token" } },
         {
           provide: RealtimeService,
           useValue: {

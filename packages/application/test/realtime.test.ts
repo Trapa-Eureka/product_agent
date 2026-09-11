@@ -4,7 +4,7 @@ import type { RealtimeNotification } from "@pca/contracts";
 import { DEMO_MOVIE_DATES, DEMO_MOVIE_IDS, createDemoMovie } from "@pca/fixtures";
 import { createMemoryJobRunRepository } from "@pca/memory-queue";
 import { createMemoryStore, type MemoryStore } from "@pca/memory-store";
-import { fixedClock, onDay, sequentialIds } from "@pca/test-support";
+import { fixedClock, onDay, sequentialIds, approver } from "@pca/test-support";
 
 import {
   createApplyApprovedProposal,
@@ -122,7 +122,7 @@ describe("withProposalNotifications", () => {
       productionId: DEMO,
       proposalId: created.value.id,
       decision: "REJECT",
-      decidedBy: "jinho@example.test",
+      decidedBy: approver("jinho@example.test"),
     });
     if (!decided.ok) throw new Error(decided.error.message);
 
@@ -184,13 +184,13 @@ describe("withProposalNotifications", () => {
         productionId: DEMO,
         proposalId: created.value.id,
         decision: "APPROVE",
-        decidedBy: "a",
+        decidedBy: approver("a"),
       }),
       decide({
         productionId: DEMO,
         proposalId: created.value.id,
         decision: "REJECT",
-        decidedBy: "b",
+        decidedBy: approver("b"),
       }),
     ]);
     const winner = approved.ok ? approved : rejected;

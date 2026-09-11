@@ -12,3 +12,4 @@ export * from "./golden-scenarios";
 export * from "./fake-model";
 export * from "./queue-contract";
 export * from "./faults";
+export * from "./identity";

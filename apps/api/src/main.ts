@@ -18,6 +18,7 @@ import {
   createModelFromEnv,
   createQueue,
   createRepositoriesFromEnv,
+  selectAuth,
   selectQueue,
 } from "@pca/bootstrap";
 import { contextFromEnv } from "@pca/mcp-server/context";
@@ -72,6 +73,8 @@ const main = async (): Promise<void> => {
   queue.start();
 
   const context = contextFromEnv(process.env);
+  // Identity (TASK-914): a signed-token deployment, or an explicit demo. Neither: refuse to start.
+  const auth = selectAuth(process.env, clock);
   const server = createApiServer({
     repositories,
     tracker,
@@ -80,6 +83,9 @@ const main = async (): Promise<void> => {
     clock,
     ids,
     context,
+    identity: auth.identity,
+    ...(auth.demoSession === undefined ? {} : { demoSession: auth.demoSession }),
+    makerChecker: auth.makerChecker,
     logger,
   });
   const port = Number.parseInt(process.env["PCA_API_PORT"] ?? "3000", 10);
@@ -90,9 +96,18 @@ const main = async (): Promise<void> => {
     websocket: bound.websocketUrl,
     storage: selection.kind,
     queue: queueKind,
+    auth: auth.mode,
+    makerChecker: auth.makerChecker,
     allowedProductions:
       context.allowedProductionIds === "*" ? "*" : context.allowedProductionIds.join(","),
   });
+
+  if (auth.mode === "demo") {
+    logger.log("warn", "auth_demo_mode", {
+      message:
+        "PCA_DEMO_MODE=true: anyone who can reach this server can obtain the demo coordinator's token from GET /api/auth/demo-session. Set PCA_AUTH_SECRET for a deployment.",
+    });
+  }
 
   const shutdown = async (): Promise<void> => {
     logger.log("info", "api_stop");

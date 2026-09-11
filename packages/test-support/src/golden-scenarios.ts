@@ -29,6 +29,7 @@ import { DEMO_MOVIE_DATES, DEMO_MOVIE_IDS, createDemoMovie } from "@pca/fixtures
 
 import { fixedClock, sequentialIds } from "./determinism";
 import { onDay } from "./scenario";
+import { approver } from "./identity";
 
 /**
  * The golden scenarios (TESTING.md §4), as one suite that runs against any
@@ -167,7 +168,7 @@ const runScenario = async (
       productionId: DEMO,
       proposalId: proposal.id,
       decision: "APPROVE",
-      decidedBy: COORDINATOR,
+      decidedBy: approver(COORDINATOR),
     }),
     "decide",
   );

@@ -11,6 +11,7 @@ import {
   onDay,
   sequentialIds,
   withFault,
+  approver,
 } from "@pca/test-support";
 
 import {
@@ -99,7 +100,7 @@ describe("failure injection", () => {
       productionId: DEMO,
       proposalId: created.value.id,
       decision: "APPROVE",
-      decidedBy: "jinho@example.test",
+      decidedBy: approver("jinho@example.test"),
       correlationId: CORR,
     });
     if (!decided.ok) throw new Error(decided.error.message);
@@ -279,7 +280,7 @@ describe("failure injection", () => {
         productionId: DEMO,
         proposalId: other.value.id,
         decision: "APPROVE",
-        decidedBy: "jinho@example.test",
+        decidedBy: approver("jinho@example.test"),
       });
       if (!otherDecision.ok) throw new Error(otherDecision.error.message);
 

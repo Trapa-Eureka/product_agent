@@ -31,6 +31,7 @@ import {
   systemClock,
   withProposalNotifications,
 } from "@pca/application";
+import { selectAuth } from "@pca/bootstrap";
 import { createDemoMovie, type DemoMovieFixture } from "@pca/fixtures";
 import { createMemoryJobRunRepository, createMemoryQueue } from "@pca/memory-queue";
 import { createMemoryStore } from "@pca/memory-store";
@@ -98,6 +99,11 @@ const main = async (): Promise<void> => {
   queue.register("VERIFY_PROPOSAL", createVerifyProposalJobHandler({ tracker, verify }));
   queue.start();
 
+  // Demo identity (TASK-914): the browser fetches the demo coordinator's
+  // token from /api/auth/demo-session exactly as `npx … serve` users do, so
+  // the E2E suite exercises the real bearer-token path with no secret to
+  // configure. Every REST call and approval is recorded as that principal.
+  const auth = selectAuth({ PCA_DEMO_MODE: "true" }, clock);
   const server = createApiServer({
     repositories,
     tracker,
@@ -107,11 +113,11 @@ const main = async (): Promise<void> => {
     ids,
     // Every production this script just seeded is on the allow-list;
     // nothing outside it exists to protect (local E2E only, never a
-    // deployment's context). Every REST call is actually attributed to
-    // "USER" regardless of this type (app.ts falls back to context.actor.id
-    // only when a request carries no X-Actor-Id header), so the browser's
-    // own actions show up in the audit trail as this actor's ID.
+    // deployment's context).
     context: { actor: { type: "USER", id: "e2e" }, allowedProductionIds: "*" },
+    identity: auth.identity,
+    ...(auth.demoSession === undefined ? {} : { demoSession: auth.demoSession }),
+    makerChecker: auth.makerChecker,
     logger,
   });
   const bound = await server.listen(3000, "127.0.0.1");
