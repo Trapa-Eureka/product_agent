@@ -8,6 +8,8 @@ import type {
   TypedChange,
 } from "@pca/contracts";
 
+import { idempotencyKeyForProposal } from "@pca/contracts";
+
 import { ApiError, ProductionApi } from "../api/production-api";
 import { RealtimeService } from "../realtime/realtime.service";
 
@@ -143,7 +145,7 @@ export class ChangeSubmissionService {
       const { job } = await this.api.applyProposalAsJob(productionId, proposalId, {
         approvalId: decided.approval.id,
         expectedProductionVersion: decided.proposal.baseProductionVersion,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: idempotencyKeyForProposal(decided.proposal),
         jobId: current.id,
       });
       this.job.set(job);
