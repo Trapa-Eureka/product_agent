@@ -1,5 +1,7 @@
 import type { EntityId, IsoDateTime, JobEnvelope, JobType } from "@pca/contracts";
 
+import { scopedKeyOf } from "./isolation";
+
 /**
  * Queue port (ARCHITECTURE.md §10, TASK-401).
  *
@@ -10,8 +12,11 @@ import type { EntityId, IsoDateTime, JobEnvelope, JobType } from "@pca/contracts
  *
  * Rules the port fixes, whatever the transport:
  *
- * - an idempotency key names a job once; a second enqueue with the same key
- *   is a `DUPLICATE` and never runs the handler twice;
+ * - a job's identity is the tuple `(productionId, type, idempotencyKey)`
+ *   (TASK-935, code review #19): a second enqueue with the same tuple is a
+ *   `DUPLICATE` and never runs the handler twice, while the same key in two
+ *   productions, or for two job types, is two jobs — a client-generated key
+ *   in one production can never suppress another production's job;
  * - retry is bounded by `QueuePolicy.maxAttempts`; exhausting it is an
  *   explicit `FAILED` state and a dead-letter entry, not a silent drop;
  * - a handler decides between retrying and failing; an exception it throws is
@@ -75,8 +80,17 @@ export type EnqueueJobInput = Omit<JobEnvelope, "id" | "attempt">;
 
 export type EnqueueOutcome =
   | { readonly kind: "ENQUEUED"; readonly record: JobRecord }
-  /** The idempotency key was seen before; `record` is the existing job. */
+  /** The `(productionId, type, idempotencyKey)` tuple was seen before; `record` is the existing job. */
   | { readonly kind: "DUPLICATE"; readonly record: JobRecord };
+
+/**
+ * The one string every adapter indexes a job's identity by (TASK-935). Each
+ * part is escaped the way `scopedRecordKey` escapes, so a key or ID that
+ * contains the separator cannot forge another tuple.
+ */
+export const jobIdentityKey = (
+  job: Pick<JobEnvelope, "productionId" | "type" | "idempotencyKey">,
+): string => scopedKeyOf(job.productionId, job.type, job.idempotencyKey);
 
 export type QueuePolicy = {
   /** Deliveries per job, including the first. */

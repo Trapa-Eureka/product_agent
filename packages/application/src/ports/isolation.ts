@@ -47,6 +47,10 @@ export const assertBelongsToProduction = (
  * exactly the string it always did: existing Mongo rows keep their `_id`.
  */
 export const scopedRecordKey = (productionId: string, id: string): string =>
-  `${escapeKeyPart(productionId)}::${escapeKeyPart(id)}`;
+  scopedKeyOf(productionId, id);
+
+/** The same encoding for any number of parts; `jobIdentityKey` uses three (TASK-935). */
+export const scopedKeyOf = (...parts: readonly string[]): string =>
+  parts.map(escapeKeyPart).join("::");
 
 const escapeKeyPart = (part: string): string => part.replaceAll("%", "%25").replaceAll(":", "%3A");
