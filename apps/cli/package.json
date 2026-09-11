@@ -1,6 +1,6 @@
 {
   "name": "production-change-agent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AI Production Change Agent: a local console, REST API, and MCP server that analyse a film production change and apply it only after human approval. Runs on a clean machine with npx and no paid service.",
   "license": "MIT",
   "type": "module",
