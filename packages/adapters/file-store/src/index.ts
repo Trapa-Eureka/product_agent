@@ -24,6 +24,7 @@ import type {
   IdempotencyRepository,
   Logger,
   ProductionMutation,
+  StoreHealth,
   ProductionRepository,
   ProposalDecisionCommit,
   ProposalRepository,
@@ -231,6 +232,31 @@ export class FileStore implements RepositorySet {
       from: fileMode.toString(8),
       to: DATA_FILE_MODE.toString(8),
     });
+  }
+
+  /**
+   * Readiness probe (TASK-931): can the data file be reached, and is a
+   * writer holding the lock? A `stat` each, never a read of the database.
+   */
+  async probe(): Promise<StoreHealth> {
+    try {
+      await this.verify();
+      const file = await stat(this.#filePath).catch((error: unknown) => {
+        if (isNotFound(error)) return null;
+        throw error;
+      });
+      if (file !== null && !file.isFile()) {
+        return { kind: "file", ok: false, detail: "The data path is not a regular file." };
+      }
+      const lock = await stat(this.lockPath).catch((error: unknown) => {
+        if (isNotFound(error)) return null;
+        throw error;
+      });
+      return { kind: "file", ok: true, lockHeld: lock !== null };
+    } catch (error) {
+      const code = error instanceof Error ? (error.message.split(":")[0] ?? "error") : "error";
+      return { kind: "file", ok: false, detail: `The data file cannot be used (${code}).` };
+    }
   }
 
   /** Where the writer lock lives: beside the data file, never inside it. */

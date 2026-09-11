@@ -98,3 +98,14 @@ describe("mongo store specifics", () => {
     ).resolves.toBeUndefined();
   });
 });
+
+describe("mongo store probe (TASK-931)", () => {
+  it("pings, and reports not ok once the connection is gone, never naming the URI", async () => {
+    const store = await openStore();
+    expect(await store.probe()).toEqual({ kind: "mongo", ok: true });
+    await store.close();
+    const down = await store.probe();
+    expect(down.ok).toBe(false);
+    expect(JSON.stringify(down)).not.toContain("mongodb://");
+  });
+});

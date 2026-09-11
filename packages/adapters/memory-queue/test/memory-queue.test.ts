@@ -179,6 +179,38 @@ describe("memory queue specifics", () => {
     expect((await queue.getJob(record.job.id))?.job.attempt).toBe(1);
   });
 
+  it("TASK-931: stats count queued, running, waiting, dead-lettered, and retained jobs", async () => {
+    const scheduler = manualScheduler();
+    const queue = createMemoryQueue({
+      ids: sequentialIds(),
+      scheduler,
+      policy: { maxAttempts: 2, retryDelayMs: () => 1000 },
+    });
+    let attempts = 0;
+    queue.register("ANALYZE_CHANGE", () => {
+      attempts += 1;
+      return Promise.resolve(
+        attempts === 1 ? { kind: "RETRY", reason: "again" } : { kind: "COMPLETED" },
+      );
+    });
+    expect(await queue.stats()).toEqual({
+      queued: 0,
+      running: 0,
+      waiting: 0,
+      deadLettered: 0,
+      retained: 0,
+    });
+    await queue.enqueue(job({ idempotencyKey: "idem-key-a" }));
+    await queue.enqueue(job({ idempotencyKey: "idem-key-b" }));
+    expect(await queue.stats()).toMatchObject({ queued: 2, retained: 2 });
+    // Started: the loop runs both; the first asks for a retry that waits on its timer.
+    queue.start();
+    scheduler.runNext();
+    await settle();
+    await settle();
+    expect(await queue.stats()).toMatchObject({ queued: 0, running: 0, waiting: 1, retained: 2 });
+  });
+
   it("TASK-917: forgets the oldest finished jobs past maxRetainedJobs, never a queued one", async () => {
     const queue = createMemoryQueue({ ids: sequentialIds(), maxRetainedJobs: 2 });
     queue.register("ANALYZE_CHANGE", () => Promise.resolve({ kind: "COMPLETED" }));

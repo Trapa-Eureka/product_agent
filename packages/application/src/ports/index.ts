@@ -7,3 +7,4 @@ export * from "./queue";
 export * from "./jobs";
 export * from "./notifications";
 export * from "./identity";
+export * from "./health";

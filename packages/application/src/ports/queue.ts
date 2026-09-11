@@ -50,6 +50,18 @@ export type JobTransition = {
   readonly occurredAt: IsoDateTime;
 };
 
+export type QueueStats = {
+  /** Ready to deliver now. */
+  readonly queued: number;
+  /** A handler is running it. */
+  readonly running: number;
+  /** Waiting on a retry timer. */
+  readonly waiting: number;
+  readonly deadLettered: number;
+  /** Records retained in memory (TASK-917 caps them). */
+  readonly retained: number;
+};
+
 export type JobHandlerOutcome =
   | { readonly kind: "COMPLETED" }
   /** Transient trouble; deliver again if attempts remain. `userReason` when `reason` must not reach a run. */
@@ -86,6 +98,8 @@ export interface QueuePort {
   getJob(jobId: EntityId): Promise<JobRecord | null>;
   /** Jobs that failed by exhausting their attempts, oldest first. */
   listDeadLetters(): Promise<JobRecord[]>;
+  /** Depth and saturation counters for readiness (TASK-931); cheap, no scan of payloads. */
+  stats(): Promise<QueueStats>;
   onTransition(listener: (transition: JobTransition) => void): () => void;
   /**
    * Deliver every runnable job, retries included, until nothing is runnable.

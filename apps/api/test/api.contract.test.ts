@@ -1010,6 +1010,69 @@ describe("REST API", () => {
     });
   });
 
+  describe("readiness (TASK-931, AUD-021)", () => {
+    it("reports store, queue, job backlog, and rate-limit counters without a token", async () => {
+      const idle = await api("GET", "/ready", undefined, { authorization: "" });
+      expect(idle.status).toBe(200);
+      expect(idle.body).toEqual({
+        status: "ready",
+        time: NOW,
+        store: { kind: "memory", ok: true },
+        queue: { queued: 0, running: 0, waiting: 0, deadLettered: 0, retained: 0 },
+        jobs: { unfinished: 0, waitingOnHuman: 0, inFlight: 0 },
+        rateLimit: { rejectedRequests: 0, rejectedWrites: 0 },
+      });
+
+      // A submitted change sits on the queue until it is drained, then waits on a human.
+      await api("POST", `/productions/${DEMO}/changes`, { text: "Sarah cannot shoot Friday." });
+      const loaded = (await api("GET", "/ready", undefined, { authorization: "" })).body as {
+        queue: { queued: number; retained: number };
+        jobs: { unfinished: number; inFlight: number; waitingOnHuman: number };
+      };
+      expect(loaded.queue).toMatchObject({ queued: 1, retained: 1 });
+      expect(loaded.jobs).toEqual({ unfinished: 1, waitingOnHuman: 0, inFlight: 1 });
+      await queue.drain();
+      await settle();
+      const settled = (await api("GET", "/ready", undefined, { authorization: "" })).body as {
+        queue: { queued: number };
+        jobs: { unfinished: number; waitingOnHuman: number; inFlight: number };
+      };
+      expect(settled.queue.queued).toBe(0);
+      expect(settled.jobs).toEqual({ unfinished: 1, waitingOnHuman: 1, inFlight: 0 });
+      expect(JSON.stringify(settled)).not.toMatch(/JOB-|P-|corr-|\//u);
+    });
+
+    it("answers 503 not_ready when the store cannot be reached, and health still 200", async () => {
+      await server.close();
+      const hub = createNotificationHub();
+      server = createApiServer({
+        repositories: withProposalNotifications(store, hub, clock),
+        tracker,
+        queue,
+        hub,
+        clock,
+        ids: sequentialIds(),
+        context: { actor: { type: "USER", id: "api-user" }, allowedProductionIds: [DEMO] },
+        identity: createLocalIdentity({ secret: SECRET, clock }),
+        makerChecker: false,
+        probeStore: () =>
+          Promise.resolve({
+            kind: "mongo",
+            ok: false,
+            detail: "The database did not answer a ping.",
+          }),
+      });
+      base = (await server.listen(0)).url;
+      const ready = await api("GET", "/ready", undefined, { authorization: "" });
+      expect(ready.status).toBe(503);
+      expect(ready.body).toMatchObject({
+        status: "not_ready",
+        store: { kind: "mongo", ok: false, detail: "The database did not answer a ping." },
+      });
+      expect((await api("GET", "/health", undefined, { authorization: "" })).status).toBe(200);
+    });
+  });
+
   describe("security headers (TASK-928, SEC-017 / AUD-024)", () => {
     const expectHardened = (reply: Reply) => {
       expect(reply.headers.get("content-security-policy")).toBe(

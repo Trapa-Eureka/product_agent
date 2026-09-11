@@ -288,6 +288,22 @@ export const createMemoryQueue = (options: MemoryQueueOptions = {}): MemoryQueue
     },
 
     // eslint-disable-next-line @typescript-eslint/require-await -- port methods are async; nothing here awaits
+    async stats() {
+      let queued = 0;
+      let running = 0;
+      for (const record of records.values()) {
+        if (record.state === "QUEUED" && !waiting.has(record.job.id)) queued += 1;
+        if (record.state === "RUNNING") running += 1;
+      }
+      return {
+        queued,
+        running,
+        waiting: waiting.size,
+        deadLettered: deadLetters.length,
+        retained: records.size,
+      };
+    },
+    // eslint-disable-next-line @typescript-eslint/require-await -- port methods are async; nothing here awaits
     async listJobs() {
       return [...records.values()].map(snapshot);
     },

@@ -8,6 +8,7 @@ import type {
   QueuePolicy,
   QueuePort,
   RepositorySet,
+  StoreProbe,
 } from "@pca/application";
 import { guardModelPort, guardPort, guardRepositories, systemClock } from "@pca/application";
 import type { EntityId, Principal } from "@pca/contracts";
@@ -125,6 +126,8 @@ export type Repositories = {
   readonly selection: StorageSelection;
   /** Durable job runs, when the store has them (Mongo, TASK-923); otherwise runs stay in memory. */
   readonly jobRuns?: JobRunRepository;
+  /** Readiness probe for `/ready` (TASK-931). */
+  readonly probe: StoreProbe;
   /** Releases connections. A no-op for the file and memory stores. */
   readonly close: () => Promise<void>;
 };
@@ -158,6 +161,7 @@ export const createRepositories = async (
       return {
         repositories: guardRepositories("file", repositorySetOf(store), options),
         selection,
+        probe: () => store.probe(),
         close: () => Promise.resolve(),
       };
     }
@@ -165,6 +169,7 @@ export const createRepositories = async (
       return {
         repositories: guardRepositories("memory", repositorySetOf(createMemoryStore()), options),
         selection,
+        probe: () => Promise.resolve({ kind: "memory", ok: true }),
         close: () => Promise.resolve(),
       };
     case "mongo": {
@@ -176,6 +181,7 @@ export const createRepositories = async (
         repositories: guardRepositories("mongo", repositorySetOf(store), options),
         selection,
         jobRuns: guardPort("mongo.jobRuns", store.jobRuns, options),
+        probe: () => store.probe(),
         close: () => store.close(),
       };
     }
