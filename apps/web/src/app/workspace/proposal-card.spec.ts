@@ -82,4 +82,30 @@ describe("ProposalCard", () => {
     });
     expect((fixture.nativeElement as HTMLElement).querySelector(".narrative")).toBeNull();
   });
+
+  const bare: ProposalExplanation = {
+    headline: "Move Scene 07 from Fri Sep 18 → Tue Sep 22",
+    effects: [{ tone: "ATTENTION", text: "Call sheet Fri Sep 18 must be regenerated" }],
+    operations: ["remove Scene 07 from Fri Sep 18"],
+  };
+
+  it("TASK-920: shows no narrative section when the model wrote none", () => {
+    const without = render(bare).nativeElement as HTMLElement;
+    expect(without.querySelector('[data-group="narrative"]')).toBeNull();
+  });
+
+  it("TASK-920: renders the model narrative last, labelled as the model's", () => {
+    const root = render({ ...bare, narrative: "Moving Scene 07 keeps Tuesday light." })
+      .nativeElement as HTMLElement;
+    const groups = [...root.querySelectorAll("section")].map((section) =>
+      section.getAttribute("data-group"),
+    );
+    expect(groups).toEqual(["effects", "operations", "narrative"]);
+    const narrative = root.querySelector('[data-group="narrative"]');
+    expect(narrative?.querySelector("h3")?.textContent).toBe("Model narrative");
+    expect(narrative?.querySelector(".narrative")?.textContent).toBe(
+      "Moving Scene 07 keeps Tuesday light.",
+    );
+    expect(narrative?.querySelector(".caveat")?.textContent).toContain("this paragraph is not");
+  });
 });

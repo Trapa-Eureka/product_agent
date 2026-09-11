@@ -448,7 +448,25 @@ interface ModelPort {
 }
 ```
 
-Production target: Bedrock adapter.  
+Production target: Bedrock adapter.
+
+Model prose is untrusted presentation data (TASK-920, SEC-009 / AUD-014).
+The contracts already keep a narrative or a ranking reason from adding an
+operation or an effect; `guardModelPort` now also keeps it from lying to
+the approver, with two closed checks. A text may not assert authorization
+or safety at all — "already approved", "approved by …", "no approval
+needed", "without approval", "safe to apply", "no risk" — because those are
+the engine's and the approver's to say. And it may not contradict the
+findings it was handed ("no conflicts" against a conflict, "no impact"
+against an impact, "no warnings" against a warning) or name an ID-shaped
+token (`CAST-BOB`, `SD-2026-09-29`) that was not among the change, the
+impacts, the conflicts, or the candidates it was shown. A rejected text is
+`UNGROUNDED_OUTPUT`, logged as `model_output_rejected`, and the
+orchestrator's fallback shows the deterministic card with no prose rather
+than with a false paragraph. In the UI the narrative is rendered last,
+under a "Model narrative" label with a caveat that the effects and
+operations above it are the facts; the approval confirmation shows only
+deterministic fields (headline, operation count, warnings, version).  
 Tests/local deterministic mode: fake adapter.
 
 Do not couple domain types to a Bedrock response shape.

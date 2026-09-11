@@ -160,7 +160,11 @@ this card from the snapshot, the operations, and the simulation findings:
 - operations are listed one concrete step per line.
 
 The model may add a `narrative` paragraph; it cannot add an effect or an
-operation. `renderProposalExplanation` produces the block above, and its
+operation, and (TASK-920) it cannot assert approval or safety, contradict
+the findings, or name an entity it was not shown — the guard drops such a
+paragraph and the card shows without it. When present it renders last,
+under a "Model narrative" heading, italic, with the caveat "the effects and
+operations are the facts; this paragraph is not". `renderProposalExplanation` produces the block above, and its
 rendered form is the proposal's `summary`, so the UI, the REST API, and an MCP
 client all show the same account. The structured shape is the
 `proposalExplanationSchema` contract.

@@ -134,6 +134,15 @@ existing file-store tests already run real (temp-directory) file I/O.
 ### MCP contract tests
 Test every tool schema and safety boundary.
 
+Model prose (TASK-920): `packages/application/test/model-port.test.ts`
+drives adversarial but schema-valid narratives and ranking reasons through
+`guardModelPort` — each authorization/safety phrase in the closed list, "no
+conflicts" against a conflicting finding (allowed when there is none), an
+ID the model was not shown (allowed when it was), and a ranking reason
+claiming "no warnings" for a day that has one — and asserts each is
+`UNGROUNDED_OUTPUT`; `apps/web` asserts the card renders the deterministic
+block first and the narrative last under its label, or not at all.
+
 ### API tests
 Test REST endpoints and auth/context boundaries.
 

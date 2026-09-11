@@ -94,6 +94,160 @@ const assertGroundedInterpretation = (
   }
 };
 
+/**
+ * Model prose is untrusted presentation data (TASK-920, SEC-009 / AUD-014).
+ *
+ * A narrative or a ranking reason cannot add an operation — the contracts
+ * see to that — but it reaches the human at the approval boundary, where a
+ * persuasive false claim has the most leverage. Two closed checks keep it
+ * honest. It may not assert authorization or safety at all: those are the
+ * engine's and the approver's to say, never the model's. And it may not
+ * contradict the findings it was handed, or name an entity it was not
+ * shown. A rejected text is `UNGROUNDED_OUTPUT`; the orchestrator then
+ * shows the deterministic card without prose rather than with a lie.
+ */
+
+/** Claims a model may never make, whatever the findings. */
+const FORBIDDEN_CLAIMS: readonly { readonly pattern: RegExp; readonly label: string }[] = [
+  { pattern: /\b(?:already|pre-?)\s*(?:approved|authori[sz]ed)\b/iu, label: "prior approval" },
+  { pattern: /\b(?:approved|authori[sz]ed)\s+by\b/iu, label: "approval by someone" },
+  {
+    pattern: /\bno approval\s+(?:is\s+)?(?:needed|required|necessary)\b/iu,
+    label: "no approval needed",
+  },
+  {
+    pattern:
+      /\b(?:does\s+not|doesn't|won't|will\s+not|need\s+not)\s+(?:need|require)\s+(?:an\s+)?approval\b/iu,
+    label: "no approval needed",
+  },
+  { pattern: /\bwithout\s+(?:an\s+)?approval\b/iu, label: "approval bypass" },
+  { pattern: /\bskip(?:s|ped|ping)?\s+(?:the\s+)?approval\b/iu, label: "approval bypass" },
+  { pattern: /\bsafe\s+to\s+apply\b/iu, label: "safety" },
+  { pattern: /\b(?:no|zero)\s+risk\b|\brisk-free\b/iu, label: "safety" },
+];
+
+/** Claims that are false against the findings the model was given. */
+const contradictedClaim = (
+  text: string,
+  facts: { readonly conflicts: number; readonly impacts: number; readonly warnings: number },
+): string | null => {
+  if (facts.conflicts > 0 && /\b(?:no|zero)\s+conflicts?\b|\bconflict-free\b/iu.test(text)) {
+    return "no conflicts";
+  }
+  if (
+    facts.impacts > 0 &&
+    /\b(?:no|zero)\s+impacts?\b|\bnothing\s+(?:is\s+|will\s+be\s+)?affected\b/iu.test(text)
+  ) {
+    return "no impact";
+  }
+  if (facts.warnings > 0 && /\b(?:no|zero)\s+warnings?\b/iu.test(text)) {
+    return "no warnings";
+  }
+  return null;
+};
+
+/** Tokens shaped like entity IDs (`CAST-SARAH`, `SD-2026-09-18`); a bare `S07` is not checked. */
+const ID_LIKE = /\b[A-Z]{1,8}-[A-Za-z0-9][A-Za-z0-9._:-]*/gu;
+
+const idTokensIn = (text: string): string[] =>
+  [...text.matchAll(ID_LIKE)].map((match) => match[0].replace(/[.:,;]+$/u, ""));
+
+const unknownIdReference = (text: string, known: ReadonlySet<string>): string | null =>
+  idTokensIn(text).find((token) => !known.has(token)) ?? null;
+
+const assertHonestProse = (
+  operation: keyof ModelPort,
+  text: string,
+  facts: { readonly conflicts: number; readonly impacts: number; readonly warnings: number },
+  known: ReadonlySet<string>,
+): void => {
+  const forbidden = FORBIDDEN_CLAIMS.find((claim) => claim.pattern.test(text));
+  if (forbidden !== undefined) {
+    throw new ModelError(
+      "UNGROUNDED_OUTPUT",
+      operation,
+      `The model asserted ${forbidden.label}, which only the engine and the approver may say.`,
+      forbidden.label,
+    );
+  }
+  const contradicted = contradictedClaim(text, facts);
+  if (contradicted !== null) {
+    throw new ModelError(
+      "UNGROUNDED_OUTPUT",
+      operation,
+      `The model claimed "${contradicted}" against findings that say otherwise.`,
+      contradicted,
+    );
+  }
+  const unknown = unknownIdReference(text, known);
+  if (unknown !== null) {
+    throw new ModelError(
+      "UNGROUNDED_OUTPUT",
+      operation,
+      `The model named ${unknown}, which was not in the findings it was given.`,
+      unknown,
+    );
+  }
+};
+
+const assertGroundedNarrative = (input: ExplainImpactInput, output: ExplanationOutput): void => {
+  const blocking = input.impacts.filter((impact) => impact.severity === "BLOCKING").length;
+  const warningImpacts = input.impacts.filter((impact) => impact.severity === "WARNING").length;
+  // Whatever the model was shown it may echo: the entities named, and any
+  // ID inside the findings' own text.
+  const known = new Set<string>([
+    input.productionId,
+    ...idsNamedBy(input.change),
+    ...input.impacts.map((impact) => impact.entityId),
+    ...input.conflicts.map((conflict) => conflict.entityId),
+    ...(input.resolvedConflicts ?? []).map((conflict) => conflict.entityId),
+    ...[
+      input.rawText,
+      ...input.impacts.map((impact) => impact.explanation),
+      ...input.conflicts.map((conflict) => conflict.detail),
+      ...(input.resolvedConflicts ?? []).map((conflict) => conflict.detail),
+      ...(input.warnings ?? []),
+    ].flatMap(idTokensIn),
+  ]);
+  assertHonestProse(
+    "explainImpact",
+    output.explanation,
+    {
+      conflicts: input.conflicts.length + blocking,
+      impacts: input.impacts.length,
+      warnings: warningImpacts + (input.warnings?.length ?? 0),
+    },
+    known,
+  );
+};
+
+const assertGroundedReasons = (
+  input: RankCandidatesInput,
+  output: RankedCandidatesOutput,
+): void => {
+  const known = new Set<string>([
+    input.productionId,
+    ...idsNamedBy(input.change),
+    ...input.candidates.flatMap((candidate) => [candidate.shootDayId, ...candidate.sceneIds]),
+    ...(input.rejected ?? []).map((day) => day.shootDayId),
+    ...[
+      ...input.candidates.flatMap((candidate) => candidate.warnings),
+      ...(input.rejected ?? []).flatMap((day) => day.reasons),
+    ].flatMap(idTokensIn),
+  ]);
+  const warningsByDay = new Map(
+    input.candidates.map((candidate) => [candidate.shootDayId, candidate.warnings.length]),
+  );
+  for (const entry of output.ranked) {
+    assertHonestProse(
+      "rankCandidates",
+      entry.reason,
+      { conflicts: 0, impacts: 0, warnings: warningsByDay.get(entry.shootDayId) ?? 0 },
+      known,
+    );
+  }
+};
+
 /** Rejects a ranking that adds, drops, or duplicates a candidate, or leaves a gap in the ranks. */
 const assertGroundedRanking = (
   input: RankCandidatesInput,
@@ -223,7 +377,17 @@ export const guardModelPort = (port: ModelPort, options: ModelGuardOptions = {})
       options.timeoutMs,
       options.logger,
     );
-    return parseOr("explainImpact", () => explanationOutputSchema.safeParse(raw));
+    const output = parseOr("explainImpact", () => explanationOutputSchema.safeParse(raw));
+    try {
+      assertGroundedNarrative(input, output);
+    } catch (error) {
+      options.logger?.log("warn", "model_output_rejected", {
+        operation: "explainImpact",
+        reason: error instanceof ModelError ? (error.detail ?? error.code) : String(error),
+      });
+      throw error;
+    }
+    return output;
   },
   rankCandidates: async (input) => {
     const raw: unknown = await callProvider(
@@ -234,6 +398,15 @@ export const guardModelPort = (port: ModelPort, options: ModelGuardOptions = {})
     );
     const output = parseOr("rankCandidates", () => rankedCandidatesOutputSchema.safeParse(raw));
     assertGroundedRanking(input, output);
+    try {
+      assertGroundedReasons(input, output);
+    } catch (error) {
+      options.logger?.log("warn", "model_output_rejected", {
+        operation: "rankCandidates",
+        reason: error instanceof ModelError ? (error.detail ?? error.code) : String(error),
+      });
+      throw error;
+    }
     return output;
   },
 });
