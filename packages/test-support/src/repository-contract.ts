@@ -304,6 +304,94 @@ export const describeRepositoryContract = (
       });
     });
 
+    describe("applyProposalTransaction (TASK-901: code review #1 / SEC-005 / AUD-002)", () => {
+      beforeEach(async () => {
+        await repositories.productions.save(demoState());
+      });
+
+      const idempotencyRecord = {
+        key: "apply:P-104:aaaaaaaaaaaaaaaa",
+        proposalId: "P-104",
+        proposalDigest: "a".repeat(64),
+        productionVersionAfter: 2,
+        affectedEntityIds: ["S07"],
+      };
+
+      it("commits the mutation, the idempotency record, the proposal, and the audit event together", async () => {
+        const before = await repositories.productions.loadState(DEMO);
+        const friday = before?.shootDays.find((day) => day.id === DEMO_MOVIE_IDS.shootDays.friday);
+
+        const outcome = await repositories.applyProposalTransaction({
+          mutation: {
+            productionId: DEMO,
+            expectedVersion: 1,
+            shootDays: [{ ...friday!, sceneIds: [] }],
+          },
+          idempotencyRecord,
+          proposal: aProposal({ status: "APPLIED" }),
+          auditEvent: anAuditEvent({ action: "PROPOSAL_APPLIED" }),
+        });
+
+        expect(outcome).toEqual({ status: "COMMITTED", productionVersion: 2 });
+        expect((await repositories.productions.loadState(DEMO))?.production.version).toBe(2);
+        expect((await repositories.proposals.findById(DEMO, "P-104"))?.status).toBe("APPLIED");
+        expect(await repositories.idempotency.find(DEMO, idempotencyRecord.key)).toEqual(
+          idempotencyRecord,
+        );
+        expect((await repositories.auditEvents.list(DEMO)).map((event) => event.action)).toContain(
+          "PROPOSAL_APPLIED",
+        );
+      });
+
+      it("leaves every record untouched on a version mismatch", async () => {
+        const outcome = await repositories.applyProposalTransaction({
+          mutation: { productionId: DEMO, expectedVersion: 99 },
+          idempotencyRecord,
+          proposal: aProposal({ status: "APPLIED" }),
+          auditEvent: anAuditEvent({ action: "PROPOSAL_APPLIED" }),
+        });
+
+        expect(outcome).toEqual({ status: "VERSION_MISMATCH", expected: 99, actual: 1 });
+        expect((await repositories.productions.loadState(DEMO))?.production.version).toBe(1);
+        expect(await repositories.proposals.findById(DEMO, "P-104")).toBeNull();
+        expect(await repositories.idempotency.find(DEMO, idempotencyRecord.key)).toBeNull();
+        expect(await repositories.auditEvents.list(DEMO)).toEqual([]);
+      });
+
+      it("serialises concurrent applies so only the first wins, with no partial bookkeeping from the loser", async () => {
+        const results = await Promise.allSettled([
+          repositories.applyProposalTransaction({
+            mutation: { productionId: DEMO, expectedVersion: 1 },
+            idempotencyRecord,
+            proposal: aProposal({ id: "P-104", status: "APPLIED" }),
+            auditEvent: anAuditEvent({ id: "AE-first", action: "PROPOSAL_APPLIED" }),
+          }),
+          repositories.applyProposalTransaction({
+            mutation: { productionId: DEMO, expectedVersion: 1 },
+            idempotencyRecord: { ...idempotencyRecord, key: "apply:P-105:bbbbbbbbbbbbbbbb" },
+            proposal: aProposal({ id: "P-105", status: "APPLIED" }),
+            auditEvent: anAuditEvent({ id: "AE-second", action: "PROPOSAL_APPLIED" }),
+          }),
+        ]);
+
+        const outcomes = results.map((result) =>
+          result.status === "fulfilled" ? result.value.status : "REJECTED",
+        );
+        expect(outcomes.filter((status) => status === "COMMITTED")).toHaveLength(1);
+        expect(outcomes.filter((status) => status === "VERSION_MISMATCH")).toHaveLength(1);
+
+        // Exactly one proposal/idempotency pair exists: the loser's bookkeeping
+        // never landed, matching the winner's mutation one-to-one.
+        const [p104, p105] = await Promise.all([
+          repositories.proposals.findById(DEMO, "P-104"),
+          repositories.proposals.findById(DEMO, "P-105"),
+        ]);
+        const appliedCount = [p104, p105].filter((p) => p?.status === "APPLIED").length;
+        expect(appliedCount).toBe(1);
+        expect(await repositories.auditEvents.list(DEMO)).toHaveLength(1);
+      });
+    });
+
     describe("change requests, proposals, and approvals", () => {
       it("round-trips a change request", async () => {
         await repositories.changeRequests.save(aChangeRequest());

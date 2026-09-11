@@ -114,6 +114,22 @@ export interface IdempotencyRepository {
 }
 
 /**
+ * The one consequential write (`apply_approved_proposal`, MCP.md §7) and
+ * everything that must be true the instant it lands: the idempotency record
+ * a replay needs, the proposal's terminal status, and the audit event that
+ * makes the mutation legible. Bundled into one input so an adapter commits
+ * all four together instead of the caller sequencing four separate calls
+ * (code review finding #1, SEC-005, AUD-002).
+ */
+export type ApplyProposalCommit = {
+  readonly mutation: ProductionMutation;
+  readonly idempotencyRecord: IdempotencyRecord;
+  /** The proposal as it should read after this commit (status already `APPLIED`). */
+  readonly proposal: Proposal;
+  readonly auditEvent: AuditEvent;
+};
+
+/**
  * Everything a use case needs from storage, passed as one object so a new port
  * does not ripple through every constructor.
  */
@@ -124,4 +140,18 @@ export type RepositorySet = {
   readonly approvals: ApprovalRepository;
   readonly auditEvents: AuditEventRepository;
   readonly idempotency: IdempotencyRepository;
+
+  /**
+   * Commits `mutation` (INV-7's version check included) together with the
+   * idempotency record, the proposal's next status, and its audit event as
+   * one atomic unit: either the production changes and all three records
+   * exist, or none of the four do. A version mismatch leaves every one of
+   * them untouched, exactly like a plain `productions.commit` mismatch.
+   *
+   * A property-typed function, not method shorthand: every implementation is
+   * an arrow-function field bound to its adapter instance, so it stays safe
+   * to read out and pass around (`guardRepositories`, `repositorySetOf`)
+   * without an unbound-`this` risk — which method shorthand would obscure.
+   */
+  readonly applyProposalTransaction: (commit: ApplyProposalCommit) => Promise<CommitOutcome>;
 };

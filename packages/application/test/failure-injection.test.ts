@@ -10,7 +10,7 @@ import {
   fixedClock,
   onDay,
   sequentialIds,
-  withRepositoryFault,
+  withFault,
 } from "@pca/test-support";
 
 import {
@@ -131,9 +131,12 @@ describe("failure injection", () => {
   describe("repository failure", () => {
     it("a store that fails mid-apply throws a named boundary and commits nothing", async () => {
       const { proposalId, approvalId } = await approvedGolden1();
+      // TASK-901: the apply path's one write is now `applyProposalTransaction`,
+      // not `productions.commit` — faulting that is what proves the atomic
+      // write still surfaces a named boundary and commits nothing.
       const faulty = guardRepositories(
         "memory",
-        withRepositoryFault(store, "productions", "commit", { error: new Error("socket hang up") }),
+        withFault(store, "applyProposalTransaction", { error: new Error("socket hang up") }),
       );
       const { apply } = useCases(faulty);
 
@@ -141,8 +144,10 @@ describe("failure injection", () => {
         (error: unknown) => error,
       );
       expect(failure).toBeInstanceOf(InfrastructureError);
-      expect((failure as InfrastructureError).boundary).toBe("memory.productions.commit");
-      expect((failure as Error).message).toBe("memory.productions.commit failed: socket hang up");
+      expect((failure as InfrastructureError).boundary).toBe("memory.applyProposalTransaction");
+      expect((failure as Error).message).toBe(
+        "memory.applyProposalTransaction failed: socket hang up",
+      );
 
       await unchanged();
       expect((await store.proposals.findById(DEMO, proposalId))?.status).toBe("APPROVED");
@@ -153,7 +158,7 @@ describe("failure injection", () => {
       const { proposalId, approvalId } = await approvedGolden1();
       const faulty = guardRepositories(
         "memory",
-        withRepositoryFault(store, "productions", "commit", {
+        withFault(store, "applyProposalTransaction", {
           error: new Error("socket hang up"),
           times: 1,
         }),
@@ -195,10 +200,10 @@ describe("failure injection", () => {
       expect(final.stage).toBe("completed");
       const retry = final.history.find((event) => event.message?.startsWith("Retrying"));
       expect(retry?.message).toBe(
-        `Retrying (attempt 2): memory.productions.commit failed: socket hang up (correlation ${CORR})`,
+        `Retrying (attempt 2): memory.applyProposalTransaction failed: socket hang up (correlation ${CORR})`,
       );
       expect(retry?.correlationId).toBe(CORR);
-      expect(faulty.fault.failures()).toBe(1);
+      expect(faulty.failures()).toBe(1);
       expect((await store.productions.loadState(DEMO))?.production.version).toBe(2);
       expect((await queue.listJobs())[0]).toMatchObject({
         state: "COMPLETED",

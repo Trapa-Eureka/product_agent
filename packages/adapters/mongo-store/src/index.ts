@@ -18,6 +18,7 @@ import type {
 } from "@pca/contracts";
 import { productionStateSchema } from "@pca/contracts";
 import type {
+  ApplyProposalCommit,
   ApprovalRepository,
   AuditEventRepository,
   ChangeRequestRepository,
@@ -269,7 +270,44 @@ export class MongoStore implements RepositorySet {
     commit: (mutation) => this.#commit(mutation),
   };
 
-  async #commit(mutation: ProductionMutation): Promise<CommitOutcome> {
+  /**
+   * TASK-901 (code review #1 / SEC-005 / AUD-002): the version-checked
+   * mutation, the idempotency record, the proposal's next status, and its
+   * audit event commit inside the same session/transaction as the mutation
+   * itself, so a version mismatch — or any failure — leaves every one of
+   * them untouched.
+   *
+   * An arrow-function field, not a class method, for the same reason as the
+   * file and memory stores: `guardRepositories`/`repositorySetOf` copy
+   * `RepositorySet` members out by property access, and only a field is an
+   * own enumerable property that keeps its `this` binding once copied.
+   */
+  readonly applyProposalTransaction = (commit: ApplyProposalCommit): Promise<CommitOutcome> =>
+    this.#commit(commit.mutation, async (session) => {
+      await this.#collection<EntityRow<Proposal>>("proposals").replaceOne(
+        { _id: rowId(commit.proposal.productionId, commit.proposal.id) },
+        toRow(commit.proposal),
+        { upsert: true, session },
+      );
+      await this.#collection<Document>("idempotency").replaceOne(
+        { productionId: commit.mutation.productionId, key: commit.idempotencyRecord.key },
+        {
+          productionId: commit.mutation.productionId,
+          ...commit.idempotencyRecord,
+          affectedEntityIds: [...commit.idempotencyRecord.affectedEntityIds],
+        },
+        { upsert: true, session },
+      );
+      await this.#collection<AuditEvent>("auditEvents").insertOne(
+        { ...commit.auditEvent },
+        { session },
+      );
+    });
+
+  async #commit(
+    mutation: ProductionMutation,
+    withinTransaction?: (session: ClientSession) => Promise<void>,
+  ): Promise<CommitOutcome> {
     const { productionId } = mutation;
     assertBelongsToProduction(productionId, "CAST_MEMBER", mutation.castMembers);
     assertBelongsToProduction(productionId, "LOCATION", mutation.locations);
@@ -331,6 +369,8 @@ export class MongoStore implements RepositorySet {
         await upsertAll("shootDays", mutation.shootDays);
         await upsertAll("callSheets", mutation.callSheets);
         await upsertAll("tasks", mutation.tasks);
+
+        await withinTransaction?.(session);
 
         return { status: "COMMITTED", productionVersion: nextVersion };
       }),

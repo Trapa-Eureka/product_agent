@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 
 import type { EntityId, IdempotencyKey, IsoDateTime, ProposalStatus } from "@pca/contracts";
 import type {
+  ApplyProposalCommit,
   ApprovalRepository,
   AuditEventRepository,
   ChangeRequestRepository,
@@ -149,6 +150,49 @@ export class FileStore implements RepositorySet {
       };
     });
   }
+
+  /**
+   * TASK-901 (code review #1 / SEC-005 / AUD-002): the whole apply write in
+   * one `#mutate` cycle, so the production mutation, idempotency record,
+   * proposal status, and audit event either all land in the same rename or
+   * none do. A version mismatch returns the database untouched, same as a
+   * plain `productions.commit` mismatch.
+   *
+   * Declared as an arrow-function field, not a class method: `RepositorySet`
+   * methods are read out with `Object.entries`/property access (by
+   * `guardRepositories` and `repositorySetOf`) rather than always called as
+   * `store.applyProposalTransaction(...)`, and only a field is an own
+   * enumerable property that carries its `this` binding along when copied.
+   */
+  readonly applyProposalTransaction = (commit: ApplyProposalCommit): Promise<CommitOutcome> =>
+    this.#mutate((database): { database: FileDatabase; result: CommitOutcome } => {
+      const { database: committed, result } = commitInto(database, commit.mutation, this.#now());
+      if (result.status === "VERSION_MISMATCH") {
+        return { database, result };
+      }
+      return {
+        database: {
+          ...committed,
+          proposals: replaceById(committed.proposals, commit.proposal),
+          idempotency: [
+            ...committed.idempotency.filter(
+              (candidate) =>
+                !(
+                  candidate.productionId === commit.mutation.productionId &&
+                  candidate.key === commit.idempotencyRecord.key
+                ),
+            ),
+            {
+              ...commit.idempotencyRecord,
+              affectedEntityIds: [...commit.idempotencyRecord.affectedEntityIds],
+              productionId: commit.mutation.productionId,
+            },
+          ],
+          auditEvents: [...committed.auditEvents, commit.auditEvent],
+        },
+        result,
+      };
+    });
 
   readonly changeRequests: ChangeRequestRepository = {
     save: (changeRequest) =>

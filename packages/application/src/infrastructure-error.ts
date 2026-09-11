@@ -64,6 +64,53 @@ export type PortGuardOptions = {
 };
 
 /**
+ * Wraps one method so a thrown error, sync or async, becomes an
+ * `InfrastructureError` naming `operation`, and — with a logger — times the
+ * call and logs one `db_call` line whether it succeeds or fails. Shared by
+ * `guardPort` (wrapping every method of a nested port) and `guardRepositories`
+ * (wrapping a `RepositorySet` member that is itself a function, such as
+ * `applyProposalTransaction`, rather than a nested port object).
+ */
+const guardCall = (
+  operation: string,
+  method: (...args: unknown[]) => unknown,
+  thisArg: unknown,
+  logger: Logger | undefined,
+): ((...args: unknown[]) => unknown) => {
+  return (...args: unknown[]): unknown => {
+    const startedAt = Date.now();
+    const record = (callOutcome: "ok" | "error"): void => {
+      logger?.log("info", "db_call", {
+        boundary: operation,
+        outcome: callOutcome,
+        durationMs: Date.now() - startedAt,
+      });
+    };
+    let outcome: unknown;
+    try {
+      outcome = method.apply(thisArg, args);
+    } catch (error) {
+      record("error");
+      throw wrap(operation, error);
+    }
+    if (outcome instanceof Promise) {
+      return outcome.then(
+        (value: unknown) => {
+          record("ok");
+          return value;
+        },
+        (error: unknown) => {
+          record("error");
+          throw wrap(operation, error);
+        },
+      );
+    }
+    record("ok");
+    return outcome;
+  };
+};
+
+/**
  * Wraps every method of a port so a thrown error, sync or async, becomes an
  * `InfrastructureError` naming `<boundary>.<method>`. Values are returned
  * untouched; expected failures a port returns as values are not errors.
@@ -78,43 +125,10 @@ export const guardPort = <Port extends AnyPort>(
   const guarded: Record<string, unknown> = {};
   for (const key of Object.keys(port) as (keyof Port & string)[]) {
     const member = port[key];
-    if (typeof member !== "function") {
-      guarded[key] = member;
-      continue;
-    }
-    const method = member as (...args: unknown[]) => unknown;
-    const operation = `${boundary}.${key}`;
-    guarded[key] = (...args: unknown[]): unknown => {
-      const startedAt = Date.now();
-      const record = (callOutcome: "ok" | "error"): void => {
-        logger?.log("info", "db_call", {
-          boundary: operation,
-          outcome: callOutcome,
-          durationMs: Date.now() - startedAt,
-        });
-      };
-      let outcome: unknown;
-      try {
-        outcome = method.apply(port, args);
-      } catch (error) {
-        record("error");
-        throw wrap(operation, error);
-      }
-      if (outcome instanceof Promise) {
-        return outcome.then(
-          (value: unknown) => {
-            record("ok");
-            return value;
-          },
-          (error: unknown) => {
-            record("error");
-            throw wrap(operation, error);
-          },
-        );
-      }
-      record("ok");
-      return outcome;
-    };
+    guarded[key] =
+      typeof member === "function"
+        ? guardCall(`${boundary}.${key}`, member as (...args: unknown[]) => unknown, port, logger)
+        : member;
   }
   return guarded as Port;
 };
@@ -122,18 +136,32 @@ export const guardPort = <Port extends AnyPort>(
 const wrap = (boundary: string, error: unknown): InfrastructureError =>
   error instanceof InfrastructureError ? error : new InfrastructureError(boundary, error);
 
-/** Every repository in the set, guarded under `<adapter>.<repository>.<method>`. */
+/**
+ * Every repository in the set, guarded under `<adapter>.<repository>.<method>`.
+ * A `RepositorySet` member that is itself a method (`applyProposalTransaction`,
+ * TASK-901) rather than a nested port is guarded directly under
+ * `<adapter>.<member>`, the same way a nested port's methods are.
+ */
 export const guardRepositories = <Set extends object>(
   adapter: string,
   repositories: Set,
   options: PortGuardOptions = {},
 ): Set => {
+  const { logger } = options;
   const guarded: Record<string, unknown> = {};
-  for (const [name, repository] of Object.entries(repositories)) {
-    guarded[name] =
-      typeof repository === "object" && repository !== null
-        ? guardPort(`${adapter}.${name}`, repository as AnyPort, options)
-        : repository;
+  for (const [name, member] of Object.entries(repositories)) {
+    if (typeof member === "function") {
+      guarded[name] = guardCall(
+        `${adapter}.${name}`,
+        member as (...args: unknown[]) => unknown,
+        repositories,
+        logger,
+      );
+    } else if (typeof member === "object" && member !== null) {
+      guarded[name] = guardPort(`${adapter}.${name}`, member as AnyPort, options);
+    } else {
+      guarded[name] = member;
+    }
   }
   return guarded as Set;
 };
