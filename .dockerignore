@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+**/dist
+**/out-tsc
+**/.angular
+.git
+.github
+test-results
+playwright-report
+coverage
+*.log
+.env*
+Dockerfile
+.dockerignore

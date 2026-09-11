@@ -54,3 +54,26 @@ jobs:
 
       - name: Verify
         run: pnpm run verify
+
+  # TASK-930 (AUD-015): the deployable artifact is built from the same
+  # checkout and proved to boot the documented demo before anything merges.
+  artifact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Build the image
+        run: docker build -t production-change-agent:ci .
+
+      - name: Boot the demo from the image and check health
+        run: |
+          docker run -d --name pca -p 3000:3000 -e PCA_DEMO_MODE=true -e PCA_STORAGE=memory production-change-agent:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:3000/api/health
+          curl -fsS http://127.0.0.1:3000/api/auth/demo-session | grep -q '"token"'
+          docker logs pca | grep -q '"event":"api_start"'
+          docker stop pca

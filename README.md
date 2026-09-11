@@ -265,6 +265,13 @@ walks the same architecture through an actual approved change.
   and a sentence carrying a credential is refused at intake; see `SPEC.md`
   §8 "Data policy".
 
+## Deployment
+
+`Dockerfile` builds the reproducible artifact; `docs/DEPLOYMENT.md` is the
+security baseline a deployment must meet, most of it enforced by the server
+at startup (no demo mode, a signed-token secret, an explicit production
+allow-list, an encrypted and authenticated Mongo URI).
+
 ## Documentation
 
 Read in this order:
