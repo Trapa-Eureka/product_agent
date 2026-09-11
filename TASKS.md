@@ -764,6 +764,15 @@ Complete. Terminal statuses: after merging the notification, a proposal whose st
 
 9 new tests in `packages/realtime-client` (one existing test rewritten to the new contract): APPLIED removes the proposal and a second read brings version 2 with the closed record never shown as open; REJECTED and FAILED remove without a read; APPROVED stays; a failed read keeps holding, schedules a 500 ms retry, holds a job event that arrives meanwhile, and applies snapshot then held after the retry; consecutive failures back off 500 → 1000 and reset after success; manual recover runs now and cancels the retry; a socket drop cancels the retry and the reconnect recovers once from scratch; `close()` cancels the retry. 1 new web spec: the error message shows after a failed read and clears once a manual recovery succeeds. `pnpm run verify` passes (9/9).
 
+## TASK-911 A scene move must stale the published call sheets of the days it changes — DONE
+
+Code review finding #13 (Medium). The orchestrated `SCHEDULE_CHANGED` path adds `MARK_CALL_SHEET_STALE` for every published sheet of the source and target days, but an MCP caller could submit a bare `MOVE_SCENES` and simulation, validation, approval, apply, and verification all reported it valid while both days' call sheets stayed `PUBLISHED` — crew-facing documents describing a day the plan no longer matched.
+
+**Status**  
+Complete, as explicit operations plus a validation rule rather than an implied write. `simulateProposal` now collects the source and target days of every applied `MOVE_SCENES` and reports `CALL_SHEET_PUBLISHED_FOR_CHANGED_SHOOT_DAY` (new conflict code) on each call sheet of those days that is still `PUBLISHED` in the would-be state, with the date and the operation to add in the detail; the proposal is invalid until the marks are there. Reading the post-state means the mark may appear anywhere in the proposal and a sheet already in `DRAFT` needs none; a move that could not apply asks for nothing. The move does not imply the mark on purpose: the digest a coordinator approves covers the operations, so a write that changes a call sheet must be one of them — the same principle as "recording the fact alone is a valid operation but an invalid proposal". Because approval re-simulates, a stored proposal created before this rule is also refused at approval if it lacks the marks. DOMAIN.md (operations) and MCP.md (`simulate_proposal`) state the rule.
+
+4 new domain tests (bare move invalid naming both sheets while Sarah's conflicts still resolve; marking one day leaves the other as the sole conflict; an already-draft sheet needs no mark and the mark may precede the move; a move that could not apply asks for no marks) and 1 MCP contract test reproducing the review's case (Scene 18 moved by hand → invalid with the two sheets named). Three existing tests that used bare moves to exercise other conflicts now carry the marks so they assert what they meant to. `pnpm run verify` passes (9/9).
+
 ---
 
 # Parallelization guidance

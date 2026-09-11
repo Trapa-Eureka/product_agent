@@ -266,6 +266,12 @@ is invalid: an approved plan must be a valid plan, not merely a better one.
 If `baseProductionVersion` is not the current version the tool returns
 `PRODUCTION_VERSION_MISMATCH` rather than simulating the wrong world.
 
+A `MOVE_SCENES` must be accompanied by `MARK_CALL_SHEET_STALE` for every
+`PUBLISHED` call sheet of the days it changes, source and target (TASK-911).
+A proposal that omits one is invalid with a
+`CALL_SHEET_PUBLISHED_FOR_CHANGED_SHOOT_DAY` conflict per missing sheet, whose
+`entityId` is the sheet to mark; the agent path adds these marks itself.
+
 ### `validate_proposal`
 
 Input:

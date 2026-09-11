@@ -209,6 +209,32 @@ describe("simulate_proposal", () => {
     expect((await store.productions.loadState(DEMO))?.production.version).toBe(1);
   });
 
+  it("TASK-911: a bare MOVE_SCENES that leaves the changed days' call sheets published is invalid", async () => {
+    // The review's reproduction: move Scene 18 by hand, no MARK_CALL_SHEET_STALE, and every sheet stayed published.
+    const result = await call("simulate_proposal", {
+      productionId: DEMO,
+      baseProductionVersion: 1,
+      operations: [
+        {
+          type: "MOVE_SCENES",
+          sceneIds: [scenes.s18],
+          fromShootDayId: shootDays.tuesday,
+          toShootDayId: shootDays.monday,
+        },
+      ],
+    });
+    expect(result["valid"]).toBe(false);
+    expect(
+      (result["conflicts"] as { code: string; entityId: string }[]).map((conflict) => [
+        conflict.code,
+        conflict.entityId,
+      ]),
+    ).toEqual([
+      ["CALL_SHEET_PUBLISHED_FOR_CHANGED_SHOOT_DAY", callSheets.monday],
+      ["CALL_SHEET_PUBLISHED_FOR_CHANGED_SHOOT_DAY", callSheets.tuesday],
+    ]);
+  });
+
   it("refuses a base version that is no longer current", async () => {
     const result = await call("simulate_proposal", {
       productionId: DEMO,

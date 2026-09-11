@@ -149,6 +149,8 @@ describe("describeProposal", () => {
         fromShootDayId: shootDays.friday,
         toShootDayId: shootDays.monday,
       },
+      { type: "MARK_CALL_SHEET_STALE", callSheetId: callSheets.friday },
+      { type: "MARK_CALL_SHEET_STALE", callSheetId: callSheets.monday },
     ];
     const simulation = simulateProposal(indexProduction(state), operations);
     expect(simulation.valid).toBe(false);
