@@ -7,7 +7,7 @@ import type {
   ProposalStatus,
 } from "@pca/contracts";
 import { applyApprovedProposalInputSchema } from "@pca/contracts";
-import type { IdempotencyRecord, ProductionState } from "@pca/domain";
+import type { ProductionState } from "@pca/domain";
 import {
   applyOperations,
   checkWriteAllowed,
@@ -33,12 +33,12 @@ import { fail, succeed } from "../result";
  * 2. the pre-write gate (INV-5, INV-6): approval present, matching, fresh;
  *    proposal valid and un-tampered; production at the expected version;
  * 3. apply to a copy; any operation that cannot apply fails the whole thing;
- * 4. commit atomically with the version check the adapter enforces (INV-7);
- * 5. bookkeeping: idempotency record, proposal APPLIED, audit.
- *
- * Steps 4 and 5 are not one transaction in the file and memory stores. A crash
- * between them leaves the effects applied and the proposal still APPROVED;
- * verify_applied_proposal exists to notice exactly that.
+ * 4. commit the mutation, the idempotency record, the proposal's APPLIED
+ *    status, and its audit event as one atomic write (INV-7's version check
+ *    included) via `repositories.applyProposalTransaction` — TASK-901 (code
+ *    review #1, SEC-005, AUD-002): every adapter guarantees all four commit
+ *    together or none do, so a crash mid-write can no longer separate the
+ *    mutation from its bookkeeping.
  */
 
 export type ApplyApprovedProposalInput = {
@@ -252,7 +252,32 @@ export const createApplyApprovedProposal = (dependencies: {
       state,
       application.state,
     );
-    const outcome = await repositories.productions.commit(mutation);
+
+    // The idempotency record and audit event both need the post-commit
+    // version, but the commit is what produces it. `outcome.productionVersion`
+    // is only known once COMMITTED, so both are built from `mutation` and
+    // filled in with that version right before the single atomic call below.
+    const applied: Proposal = { ...proposal, status: "APPLIED" };
+    const outcome = await repositories.applyProposalTransaction({
+      mutation,
+      proposal: applied,
+      idempotencyRecord: {
+        key: idempotencyKey,
+        proposalId: proposal.id,
+        proposalDigest: proposal.digest,
+        productionVersionAfter: mutation.expectedVersion + 1,
+        affectedEntityIds,
+      },
+      auditEvent: auditEvent(ids, productionId, proposal.id, "PROPOSAL_APPLIED", appliedAt, input, {
+        approvalId: approval.id,
+        productionVersionBefore: state.production.version,
+        productionVersionAfter: mutation.expectedVersion + 1,
+        operationCount: application.applied.length,
+        skippedOperationCount: application.skipped.length,
+        affectedEntityIds,
+        idempotencyKey,
+      }),
+    });
     if (outcome.status === "VERSION_MISMATCH") {
       return fail(
         "PRODUCTION_VERSION_MISMATCH",
@@ -265,29 +290,6 @@ export const createApplyApprovedProposal = (dependencies: {
         },
       );
     }
-
-    const record: IdempotencyRecord = {
-      key: idempotencyKey,
-      proposalId: proposal.id,
-      proposalDigest: proposal.digest,
-      productionVersionAfter: outcome.productionVersion,
-      affectedEntityIds,
-    };
-    const applied: Proposal = { ...proposal, status: "APPLIED" };
-
-    await repositories.idempotency.save(productionId, record);
-    await repositories.proposals.save(applied);
-    await repositories.auditEvents.append(
-      auditEvent(ids, productionId, proposal.id, "PROPOSAL_APPLIED", appliedAt, input, {
-        approvalId: approval.id,
-        productionVersionBefore: state.production.version,
-        productionVersionAfter: outcome.productionVersion,
-        operationCount: application.applied.length,
-        skippedOperationCount: application.skipped.length,
-        affectedEntityIds,
-        idempotencyKey,
-      }),
-    );
 
     return succeed({
       applied: true,

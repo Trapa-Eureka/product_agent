@@ -9,6 +9,7 @@ import type {
   ProposalStatus,
 } from "@pca/contracts";
 import type {
+  ApplyProposalCommit,
   ApprovalRepository,
   AuditEventRepository,
   ChangeRequestRepository,
@@ -148,6 +149,36 @@ export class MemoryStore implements RepositorySet {
     save: async (productionId: EntityId, record: IdempotencyRecord) => {
       this.#idempotency.set(scopedKey(productionId, record.key), copy(record));
     },
+  };
+
+  /**
+   * TASK-901 (code review #1 / SEC-005 / AUD-002): `#commit` and the three
+   * follow-up writes below run with no `await` between them, so nothing can
+   * observe the mutation without its idempotency/proposal/audit records —
+   * the same atomicity guarantee the file and Mongo adapters provide.
+   *
+   * An arrow-function field, not a class method, for the same reason as the
+   * file store: `guardRepositories`/`repositorySetOf` copy `RepositorySet`
+   * members out by property access, and only a field is an own enumerable
+   * property that keeps its `this` binding once copied.
+   */
+  readonly applyProposalTransaction = async (
+    commit: ApplyProposalCommit,
+  ): Promise<CommitOutcome> => {
+    const result = this.#commit(commit.mutation);
+    if (result.status === "VERSION_MISMATCH") {
+      return result;
+    }
+    this.#proposals.set(
+      scopedKey(commit.proposal.productionId, commit.proposal.id),
+      copy(commit.proposal),
+    );
+    this.#idempotency.set(
+      scopedKey(commit.mutation.productionId, commit.idempotencyRecord.key),
+      copy(commit.idempotencyRecord),
+    );
+    this.#auditEvents.push(copy(commit.auditEvent));
+    return result;
   };
 
   #assertStateIsolation(state: ProductionState): void {

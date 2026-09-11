@@ -69,7 +69,7 @@ export type Repositories = {
   readonly close: () => Promise<void>;
 };
 
-/** The six repositories of a store, without whatever else the adapter exposes (a `close`, a client). */
+/** The `RepositorySet` surface of a store, without whatever else the adapter exposes (a `close`, a client). */
 const repositorySetOf = (store: RepositorySet): RepositorySet => ({
   productions: store.productions,
   changeRequests: store.changeRequests,
@@ -77,6 +77,7 @@ const repositorySetOf = (store: RepositorySet): RepositorySet => ({
   approvals: store.approvals,
   auditEvents: store.auditEvents,
   idempotency: store.idempotency,
+  applyProposalTransaction: store.applyProposalTransaction,
 });
 
 export const createRepositories = async (

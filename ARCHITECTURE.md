@@ -571,6 +571,14 @@ to the environment and refuses for any other `PCA_STORAGE`; `scripts/seed.ts`
 is the one-command entry point, and the function it calls is what TASK-806's
 future `seed` CLI subcommand will call too.
 
+`RepositorySet.applyProposalTransaction` (TASK-901, post-review remediation
+in TASKS.md) is the one atomic write behind `apply_approved_proposal`: the
+version-checked mutation, the idempotency record, the proposal's `APPLIED`
+status, and the audit event commit as a single unit in every adapter — one
+Mongo transaction, one file-store `#mutate` cycle, one memory-store pass with
+no `await` between the four writes — rather than four sequential calls a
+partial failure could pull apart.
+
 ## 10. Queue/SQS
 
 Use asynchronous jobs for operations that may involve model calls or larger analysis.

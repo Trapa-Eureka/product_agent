@@ -662,6 +662,23 @@ TASK-101 (file store), TASK-302 (rule interpreter), TASK-110, TASK-207, TASK-501
 
 ---
 
+# Post-review remediation (2026-09-11)
+
+Three independent reviews of revision `c6ddb4ee9b4cbc55e826fd2703dbe003a2a3b626` — `docs/01_COMPREHENSIVE_CODE_REVIEW.md`, `docs/02_SECURITY_REVIEW.md`, `docs/03_FULL_SECURITY_ARCHITECTURE_AUDIT.md` — found substantial overlap: the same underlying defect is often finding #N in the code review, SEC-NNN in the security review, and AUD-NNN in the full audit. Each task below is filed once under the numbering scheme here (`TASK-9NN`) and cites every report finding it closes, rather than being fixed three times under three labels. Tasks are worked one at a time, in the order the reports were read (code review first, by severity; then security-review-only findings; then audit-only findings), with the human confirming before each next task starts.
+
+## TASK-901 Atomic apply-approved-proposal commit — DONE
+
+Code review finding #1 (Critical) / SEC-005 (High) / AUD-002 (Critical): the production mutation, idempotency record, proposal `APPLIED` status, and audit event were four separate writes. A failure after the first left the mutation committed with some or all bookkeeping missing, and a replay saw the advanced version before an idempotency record existed, returning `PRODUCTION_VERSION_MISMATCH` instead of recovering.
+
+**Status**  
+Complete. `RepositorySet` gained `applyProposalTransaction(commit)` (`packages/application/src/ports/repositories.ts`): one atomic operation that commits the version-checked mutation together with the idempotency record, the proposal's next status, and its audit event, returning the same `CommitOutcome` shape `productions.commit` already uses. All three adapters implement it as a genuine unit of work rather than a wrapper around four calls: the file store folds it into one `#mutate` read-modify-write-rename cycle (reusing the existing `commitInto`); the memory store runs it as one synchronous pass with no `await` between the mutation and the three follow-up writes; Mongo extended its existing `session.withTransaction` (refactored `#commit` to accept an in-transaction continuation) so the proposal/idempotency/audit writes commit inside the same transaction as the version-checked update, aborting together on a version mismatch. `apply-approved-proposal.ts` now builds the idempotency record and audit event from the mutation up front (the post-commit version is `expectedVersion + 1` whenever the outcome is `COMMITTED`, the same invariant `productions.commit` already guarantees) and makes the single atomic call instead of four sequential ones.
+
+Each method is declared as an arrow-function class field, not a class method: `guardRepositories` and bootstrap's `repositorySetOf` copy `RepositorySet` members out by property access (`Object.entries`/direct reference), and only a field is both an own enumerable property and carries its `this` binding when copied — a class method would silently lose its adapter instance the first time it was extracted this way. `guardPort`/`guardRepositories` (TASK-804's logging/error-wrapping layer) were extended to guard a `RepositorySet` member that is itself a function (not just nested port objects), so `applyProposalTransaction` gets the same `InfrastructureError` naming and `db_call` timing as every other repository call, verified live in the E2E run's log output (`memory.applyProposalTransaction`, one line per apply, replacing what were four).
+
+9 new tests: 3 in the shared repository contract suite (`packages/test-support/src/repository-contract.ts`, run against all three adapters — commits all four together, leaves all four untouched on a version mismatch, serializes concurrent applies so the loser leaves no partial bookkeeping) plus updates to two existing failure-injection tests that used to fault `productions.commit` to exercise the apply path's failure handling — they now fault `applyProposalTransaction` directly, since that is the call the use case actually makes. `pnpm run verify` passes (9/9 steps); `pnpm run test:integration` passes against a real Mongo replica set (`mongodb-memory-server`), proving the transaction actually rolls back atomically, not just that the code compiles against the port.
+
+---
+
 # Parallelization guidance
 
 After P0 contracts/domain stabilize:
