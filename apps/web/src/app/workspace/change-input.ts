@@ -28,6 +28,10 @@ export const EXAMPLE_SENTENCES = [
         [disabled]="submission.state() === 'submitting'"
         placeholder="e.g. Sarah cannot shoot Friday."
       ></textarea>
+      <p class="hint" id="pca-change-hint">
+        The sentence is kept with the production's records. Don't paste passwords, keys, or tokens;
+        a sentence that contains one is refused.
+      </p>
       <div class="examples">
         <span class="examples-label">Examples:</span>
         @for (example of examples; track example) {
@@ -54,6 +58,11 @@ export const EXAMPLE_SENTENCES = [
     label {
       font-size: 12px;
       color: var(--muted);
+    }
+    .hint {
+      font-size: 11px;
+      color: var(--muted);
+      margin: -4px 0 0;
     }
     textarea {
       width: 100%;

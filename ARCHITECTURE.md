@@ -920,6 +920,17 @@ Avoid deploying expensive resources merely for portfolio completeness. Infrastru
 - no hidden chain-of-thought logging;
 - audit structured actions/results instead.
 
+### Data at intake (TASK-922)
+
+The change sentence lives once, on the change request; the audit event
+that files it carries `changeSummary` (the engine's line, from
+`describeTypedChange`), `rawTextDigest`, and `rawTextLength` instead of the
+text (`submitChangeRequest`). `findCredential` (`packages/application/src/
+data-policy.ts`) refuses a sentence that plainly carries a credential at
+the use case and, before anything is enqueued, at both REST intake routes,
+naming the kind and never the value. Policy and retention: `SPEC.md` §8
+"Data policy".
+
 ### Identity (TASK-914)
 
 Who is acting is a verified fact, not a request field. The application owns

@@ -24,6 +24,7 @@ import {
   createGetRecoverySnapshot,
   createSubmitChangeRequest,
   describeJobMismatch,
+  findCredential,
 } from "@pca/application";
 import type { EntityId, Principal, PrincipalRole, ToolError } from "@pca/contracts";
 import {
@@ -147,6 +148,14 @@ export const unauthenticated = (reason: IdentityRefusal | "MISSING"): ToolError 
     NOT_YET_VALID: "The access token is not valid yet.",
   }[reason],
   nextStep: UNAUTHENTICATED_NEXT_STEP,
+});
+
+/** TASK-922: the kind is named, the value never echoed. */
+const credentialRefused = (kind: string): ToolError => ({
+  code: "INVALID_INPUT",
+  message: `The change text appears to contain a ${kind}; credentials are never stored with a production.`,
+  actual: kind,
+  nextStep: "Remove the credential from the sentence and submit it again.",
 });
 
 /** The least role a method needs; the decision route's `approver` is enforced in the use case. */
@@ -686,6 +695,12 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
       return;
     }
     const { text, change, jobId } = parsed.data;
+    // TASK-922: a credential never reaches the queue, the job, or the store.
+    const credential = findCredential(text);
+    if (credential !== null) {
+      sendError(response, credentialRefused(credential), call.correlationId);
+      return;
+    }
     let run = jobId === undefined ? null : await tracker.get(jobId);
     if (jobId !== undefined) {
       // TASK-919: resuming continues one's own analysis, waiting at resolving.
@@ -729,6 +744,11 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
     if (!parsed.success) {
       const { message, path } = issueMessage(parsed.error);
       sendError(response, invalidInput(message, path), call.correlationId);
+      return;
+    }
+    const credential = findCredential(parsed.data.rawText);
+    if (credential !== null) {
+      sendError(response, credentialRefused(credential), call.correlationId);
       return;
     }
     const result = await submit({

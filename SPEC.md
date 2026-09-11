@@ -258,6 +258,25 @@ replayed message.
 - no secrets in prompts/logs;
 - audit logging.
 
+### Data policy
+
+Implementation (TASK-922): the change sentence a user types is personal
+and possibly confidential production information. It is stored verbatim
+exactly once, on the change request, so the record of what was said
+survives; the audit event that files the request carries the engine's
+one-line account of the typed change, a SHA-256 digest of the sentence,
+and its length — enough to prove which sentence was submitted, never a
+second copy. A sentence that plainly carries a credential (an AWS key, a
+private key, a GitHub, Slack, or Google token, a JWT, or one of this
+product's own access tokens) is refused at every intake with
+`INVALID_INPUT` naming the kind and never echoing the value, before it
+reaches the queue, a job, or the store; the console says so beside the
+input. Retention is the life of the store: the file store keeps records
+until `pnpm run seed` resets the production or the operator deletes the
+file, and reads of a change request (its sentence included) need the
+`viewer` role on the production. Field-level access and encryption at rest
+are not provided; a deployment that needs them uses a managed database.
+
 ### Testability
 - no live AWS dependency for normal local tests;
 - deterministic fixture production;

@@ -47,6 +47,10 @@ export const describeAuditEvent = (event: AuditEvent): string => {
   const actor = actorLabel(event);
   switch (event.action) {
     case "CHANGE_REQUEST_SUBMITTED": {
+      // TASK-922: the event carries the engine's one-line account of the
+      // change, not the sentence; events recorded before that still quote it.
+      const summary = str(event, "changeSummary");
+      if (summary !== undefined) return `${actor} reported: ${summary}.`;
       const rawText = str(event, "rawText");
       return rawText === undefined
         ? `${actor} submitted a change.`

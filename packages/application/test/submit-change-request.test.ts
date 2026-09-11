@@ -5,7 +5,7 @@ import { DEMO_MOVIE_DATES, DEMO_MOVIE_IDS, createDemoMovie } from "@pca/fixtures
 import { createMemoryStore, type MemoryStore } from "@pca/memory-store";
 import { fixedClock, sequentialIds } from "@pca/test-support";
 
-import { createSubmitChangeRequest, type SubmitChangeRequest } from "../src";
+import { createSubmitChangeRequest, type SubmitChangeRequest, rawTextDigest } from "../src";
 
 const DEMO = DEMO_MOVIE_IDS.production;
 const NOW = "2026-09-10T11:03:00.000Z";
@@ -66,6 +66,21 @@ describe("submitChangeRequest", () => {
       expect(result.ok && result.value.correlationId).toBe("http-req-42");
     });
 
+    it("TASK-922: refuses a sentence that carries a credential, naming the kind and storing nothing", async () => {
+      const result = await submit({
+        productionId: DEMO,
+        rawText: `Sarah cannot shoot Friday; her key is AKIAIOSFODNN7EXAMPLE.`,
+        change: sarahOnFriday,
+        createdBy: "coordinator@example.test",
+      });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error).toMatchObject({ code: "INVALID_INPUT", actual: "AWS access key" });
+      expect(JSON.stringify(result.error)).not.toContain("AKIAIOSFODNN7EXAMPLE");
+      expect(await store.changeRequests.findById(DEMO, "CR-1")).toBeNull();
+      expect(await store.auditEvents.list(DEMO)).toEqual([]);
+    });
+
     it("writes one audit event filed under the entity the change is about", async () => {
       await submit({
         productionId: DEMO,
@@ -84,10 +99,13 @@ describe("submitChangeRequest", () => {
           entityType: "CAST_MEMBER",
           entityId: DEMO_MOVIE_IDS.cast.sarah,
           correlationId: "corr-1",
+          // TASK-922: no second copy of the sentence — a digest, its length, and the engine's line.
           metadata: {
             changeRequestId: "CR-1",
             changeType: "CAST_UNAVAILABLE",
-            rawText: "Sarah cannot shoot Friday.",
+            changeSummary: "Sarah unavailable Fri Sep 18",
+            rawTextDigest: rawTextDigest("Sarah cannot shoot Friday."),
+            rawTextLength: 26,
           },
           createdAt: NOW,
         },

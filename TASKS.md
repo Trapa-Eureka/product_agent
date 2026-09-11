@@ -891,28 +891,16 @@ Tests (integration, POSIX-only where modes are involved): a nested directory the
 
 Docs: `README.md` env table and limitations (single-user store); `ARCHITECTURE.md` §9.
 
-## TASK-922 Raw change text: no duplication, retention policy — TODO
+## TASK-922 Raw change text: no duplication, retention policy — DONE
 
-**Goal**  
-`rawText` lives once on the change request; audit metadata carries a digest and length; retention/redaction is documented.
+SEC-011 (Medium) / AUD-017. The full sentence a user typed was stored twice — as `ChangeRequest.rawText` and again in the audit event's metadata — returned by both the read and audit routes, and rendered in two views, with no data classification, no credential check, and no stated retention.
 
-**Context**  
-SEC-011 (Medium) / AUD-017.
+**Status**  
+Complete. The sentence is stored once, on the change request. The audit event that files it now carries `changeSummary` — the engine's one-line account of the typed change from the new `describeTypedChange` ("Sarah unavailable Fri Sep 18", "Warehouse unavailable Fri Sep 18", "Scene 18 needs red car (prop)") — plus `rawTextDigest` (SHA-256) and `rawTextLength`, so the trail can prove which sentence was submitted without holding a copy; the Audit view reads the summary and still quotes older events that hold the text. `findCredential` (`packages/application/src/data-policy.ts`) refuses a sentence that plainly carries a credential — AWS access key, private key, GitHub/Slack/Google token, JWT, or one of this product's own `pca1.` tokens — with `INVALID_INPUT` naming the kind and never echoing the value; it runs in `submitChangeRequest` (so the orchestrated path is covered) and, before anything is enqueued or tracked, at both REST intake routes. The console's change input says the sentence is kept with the production and not to paste passwords, keys, or tokens. `SPEC.md` §8 gains a "Data policy" section: what is stored, where, who may read it, retention (the life of the store; `seed` or deleting the file), and what is not provided (field-level access, encryption at rest).
 
-**Dependencies**  
-None.
+Tests: application — every credential pattern named without echo, ordinary sentences (including ones full of entity IDs) pass, the digest is stable and one-way; the use case refuses a credential storing nothing and files the audit event with summary, digest, and length. API contract — both intake routes answer 400 naming the kind, the body never contains the secret, nothing is enqueued, tracked, or stored; a normal submission's audit event carries exactly the new metadata and no sentence. Web — the input hint; the audit line for the new metadata and for a legacy event. E2E audit lines now read the engine's summary. `pnpm run verify` passes (9/9).
 
-**Allowed scope**  
-`packages/application/src/use-cases/submit-change-request.ts`, audit contract, `apps/web` audit formatting, docs.
-
-**Acceptance criteria**  
-Audit event metadata has `rawTextDigest`, not `rawText`; UI warns not to paste secrets; high-confidence credential patterns are rejected at intake with a typed error.
-
-**Tests**  
-Unit: audit metadata shape; intake rejects a string containing an AWS-style key; web: warning text present.
-
-**Definition of Done**  
-Acceptance met, verify green, `SPEC.md` data policy section.
+Docs: `SPEC.md` §8 "Data policy"; `README.md` limitations; `ARCHITECTURE.md` §15; `DESIGN.md` §7; `TESTING.md`.
 
 ## TASK-923 Queue and JobRun state persist when Mongo is selected — TODO
 
