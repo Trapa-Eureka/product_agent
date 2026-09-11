@@ -5,11 +5,9 @@ import {
   auditEventSchema,
   changeRequestSchema,
   entityIdSchema,
-  idempotencyKeySchema,
   productionStateSchema,
-  productionVersionSchema,
-  proposalDigestSchema,
   proposalSchema,
+  storedIdempotencyRecordSchema,
 } from "@pca/contracts";
 
 /**
@@ -20,14 +18,8 @@ import {
  * not three layers later as a missing scene.
  */
 
-const idempotencyRecordSchema = z.strictObject({
-  key: idempotencyKeySchema,
-  productionId: entityIdSchema,
-  proposalId: entityIdSchema,
-  proposalDigest: proposalDigestSchema,
-  productionVersionAfter: productionVersionSchema,
-  affectedEntityIds: z.array(entityIdSchema),
-});
+/** TASK-926: one schema for the persisted idempotency row, shared with Mongo. */
+const idempotencyRecordSchema = storedIdempotencyRecordSchema;
 
 /** Bumped only when the layout changes in a way an older file cannot satisfy. */
 export const FILE_FORMAT_VERSION = 1;

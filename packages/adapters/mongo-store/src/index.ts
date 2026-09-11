@@ -16,10 +16,18 @@ import type {
   ShootDay,
   Task,
 } from "@pca/contracts";
-import { productionStateSchema } from "@pca/contracts";
+import {
+  approvalSchema,
+  auditEventSchema,
+  changeRequestSchema,
+  productionStateSchema,
+  proposalSchema,
+  storedIdempotencyRecordSchema,
+} from "@pca/contracts";
 import type { JobRunRepository } from "@pca/application";
 
 import { createMongoJobRunRepository, type JobRunRow } from "./job-runs";
+import { parseRow, validated } from "./rows";
 import type {
   ApplyProposalCommit,
   ApprovalRepository,
@@ -325,24 +333,34 @@ export class MongoStore implements RepositorySet {
    */
   readonly applyProposalTransaction = (commit: ApplyProposalCommit): Promise<CommitOutcome> =>
     this.#commit(commit.mutation, async (session) => {
-      await this.#collection<EntityRow<Proposal>>("proposals").replaceOne(
-        { _id: rowId(commit.proposal.productionId, commit.proposal.id) },
-        toRow(commit.proposal),
-        { upsert: true, session },
-      );
-      await this.#collection<Document>("idempotency").replaceOne(
-        { productionId: commit.mutation.productionId, key: commit.idempotencyRecord.key },
+      const proposal = validated(proposalSchema, "proposals", commit.proposal.id, commit.proposal);
+      const idempotency = validated(
+        storedIdempotencyRecordSchema,
+        "idempotency",
+        commit.idempotencyRecord.key,
         {
           productionId: commit.mutation.productionId,
           ...commit.idempotencyRecord,
           affectedEntityIds: [...commit.idempotencyRecord.affectedEntityIds],
         },
+      );
+      const audit = validated(
+        auditEventSchema,
+        "auditEvents",
+        commit.auditEvent.id,
+        commit.auditEvent,
+      );
+      await this.#collection<EntityRow<Proposal>>("proposals").replaceOne(
+        { _id: rowId(proposal.productionId, proposal.id) },
+        toRow(proposal),
         { upsert: true, session },
       );
-      await this.#collection<AuditEvent>("auditEvents").insertOne(
-        { ...commit.auditEvent },
-        { session },
+      await this.#collection<Document>("idempotency").replaceOne(
+        { productionId: idempotency.productionId, key: idempotency.key },
+        idempotency,
+        { upsert: true, session },
       );
+      await this.#collection<AuditEvent>("auditEvents").insertOne({ ...audit }, { session });
     });
 
   /**
@@ -364,7 +382,7 @@ export class MongoStore implements RepositorySet {
         { productionId, proposalId },
         { sort: { _id: 1 }, ...(session === undefined ? {} : { session }) },
       );
-      return row === null ? null : fromRow<Approval>(row);
+      return row === null ? null : parseRow(approvalSchema, "approvals", row);
     };
 
     try {
@@ -375,16 +393,31 @@ export class MongoStore implements RepositorySet {
             await session.abortTransaction();
             return { status: "ALREADY_DECIDED", approval: existing };
           }
-          await approvals.insertOne(toRow(commit.approval), { session });
+          const approval = validated(
+            approvalSchema,
+            "approvals",
+            commit.approval.id,
+            commit.approval,
+          );
+          const proposal = validated(
+            proposalSchema,
+            "proposals",
+            commit.proposal.id,
+            commit.proposal,
+          );
+          const audit = validated(
+            auditEventSchema,
+            "auditEvents",
+            commit.auditEvent.id,
+            commit.auditEvent,
+          );
+          await approvals.insertOne(toRow(approval), { session });
           await this.#collection<EntityRow<Proposal>>("proposals").replaceOne(
-            { _id: rowId(commit.proposal.productionId, commit.proposal.id) },
-            toRow(commit.proposal),
+            { _id: rowId(proposal.productionId, proposal.id) },
+            toRow(proposal),
             { upsert: true, session },
           );
-          await this.#collection<AuditEvent>("auditEvents").insertOne(
-            { ...commit.auditEvent },
-            { session },
-          );
+          await this.#collection<AuditEvent>("auditEvents").insertOne({ ...audit }, { session });
           return { status: "RECORDED" };
         }),
       );
@@ -475,9 +508,15 @@ export class MongoStore implements RepositorySet {
 
   readonly changeRequests: ChangeRequestRepository = {
     save: async (changeRequest) => {
+      const record = validated(
+        changeRequestSchema,
+        "changeRequests",
+        changeRequest.id,
+        changeRequest,
+      );
       await this.#collection<EntityRow<ChangeRequest>>("changeRequests").replaceOne(
-        { _id: rowId(changeRequest.productionId, changeRequest.id) },
-        toRow(changeRequest),
+        { _id: rowId(record.productionId, record.id) },
+        toRow(record),
         { upsert: true },
       );
     },
@@ -486,12 +525,13 @@ export class MongoStore implements RepositorySet {
         _id: rowId(productionId, changeRequestId),
         productionId,
       });
-      return row === null ? null : fromRow<ChangeRequest>(row);
+      return row === null ? null : parseRow(changeRequestSchema, "changeRequests", row);
     },
   };
 
   readonly proposals: ProposalRepository = {
     save: async (proposal) => {
+      validated(proposalSchema, "proposals", proposal.id, proposal);
       await this.#collection<EntityRow<Proposal>>("proposals").replaceOne(
         { _id: rowId(proposal.productionId, proposal.id) },
         toRow(proposal),
@@ -503,18 +543,19 @@ export class MongoStore implements RepositorySet {
         _id: rowId(productionId, proposalId),
         productionId,
       });
-      return row === null ? null : fromRow<Proposal>(row);
+      return row === null ? null : parseRow(proposalSchema, "proposals", row);
     },
     listByStatus: async (productionId: EntityId, status: ProposalStatus) => {
       const rows = await this.#collection<EntityRow<Proposal>>("proposals")
         .find({ productionId, status }, { sort: { _id: 1 } })
         .toArray();
-      return rows.map((row) => fromRow<Proposal>(row));
+      return rows.map((row) => parseRow(proposalSchema, "proposals", row));
     },
   };
 
   readonly approvals: ApprovalRepository = {
     save: async (approval) => {
+      validated(approvalSchema, "approvals", approval.id, approval);
       await this.#collection<EntityRow<Approval>>("approvals").replaceOne(
         { _id: rowId(approval.productionId, approval.id) },
         toRow(approval),
@@ -526,14 +567,14 @@ export class MongoStore implements RepositorySet {
         _id: rowId(productionId, approvalId),
         productionId,
       });
-      return row === null ? null : fromRow<Approval>(row);
+      return row === null ? null : parseRow(approvalSchema, "approvals", row);
     },
     findByProposalId: async (productionId, proposalId) => {
       const row = await this.#collection<EntityRow<Approval>>("approvals").findOne(
         { productionId, proposalId },
         { sort: { _id: 1 } },
       );
-      return row === null ? null : fromRow<Approval>(row);
+      return row === null ? null : parseRow(approvalSchema, "approvals", row);
     },
   };
 
@@ -544,7 +585,8 @@ export class MongoStore implements RepositorySet {
    */
   readonly auditEvents: AuditEventRepository = {
     append: async (event) => {
-      await this.#collection<AuditEvent>("auditEvents").insertOne({ ...event });
+      const record = validated(auditEventSchema, "auditEvents", event.id, event);
+      await this.#collection<AuditEvent>("auditEvents").insertOne({ ...record });
     },
     list: async (productionId, options) => {
       const cursor = this.#collection<AuditEvent>("auditEvents").find(
@@ -555,7 +597,7 @@ export class MongoStore implements RepositorySet {
         cursor.limit(options.limit);
       }
       const rows = await cursor.toArray();
-      return rows.map((row) => fromRow<AuditEvent>(row));
+      return rows.map((row) => parseRow(auditEventSchema, "auditEvents", row));
     },
   };
 
@@ -565,13 +607,22 @@ export class MongoStore implements RepositorySet {
       if (row === null) {
         return null;
       }
-      const { _id: _ignored, productionId: _scope, ...record } = row;
-      return record as IdempotencyRecord;
+      const { productionId: _scope, ...record } = parseRow(
+        storedIdempotencyRecordSchema,
+        "idempotency",
+        row,
+      );
+      return record;
     },
     save: async (productionId: EntityId, record: IdempotencyRecord) => {
+      const stored = validated(storedIdempotencyRecordSchema, "idempotency", record.key, {
+        productionId,
+        ...record,
+        affectedEntityIds: [...record.affectedEntityIds],
+      });
       await this.#collection<Document>("idempotency").replaceOne(
-        { productionId, key: record.key },
-        { productionId, ...record, affectedEntityIds: [...record.affectedEntityIds] },
+        { productionId, key: stored.key },
+        stored,
         { upsert: true },
       );
     },

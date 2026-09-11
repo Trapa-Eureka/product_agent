@@ -935,28 +935,16 @@ Tests: the whole gate on the new major — `pnpm run verify` passes (9/9).
 
 Docs: `TESTING.md` §12.
 
-## TASK-926 Mongo validates workflow documents on read and write — TODO
+## TASK-926 Mongo validates workflow documents on read and write — DONE
 
-**Goal**  
-Change requests, proposals, approvals, audit events, idempotency and job-run rows are parsed with their strict schemas; failures become `STORE_CORRUPT` without echoing document content.
+SEC-015 (Low) / AUD-020. The Mongo adapter parsed production state with `productionStateSchema` but returned change requests, proposals, approvals, audit events, idempotency records, and (since TASK-923) job runs through `fromRow<T>` casts, so a partial migration, an operator's edit, or an older writer could hand a malformed authorization record to a guard as if TypeScript had checked it — unlike the file store, which validates its whole database on every read and write.
 
-**Context**  
-SEC-015 (Low) / AUD-020. `fromRow<T>` casts.
+**Status**  
+Complete. `parseRow` and `validated` (`packages/adapters/mongo-store/src/rows.ts`) are applied at every workflow read and write: `changeRequests`, `proposals` (`findById`, `listByStatus`), `approvals` (both finders), `auditEvents.list`, `idempotency.find`, and the job-run repository parse on read; every `save`/`append`, the two transactions (`applyProposalTransaction`, `recordProposalDecision`), and the job-run `save`/`update` validate before writing. A malformed row is `STORE_CORRUPT` naming the collection, the row `_id`, and the failing path with the schema's message — never a stored value; a record the contract would refuse is `STORE_INVALID_WRITE` and nothing is written. The persisted idempotency row now has one schema for both stores, `storedIdempotencyRecordSchema` in `@pca/contracts` (the file store's local copy became an alias). The helpers depend on a structural `Schema<T>` slice of Zod, so the adapter gained no dependency.
 
-**Dependencies**  
-None.
+Tests (integration, mongodb-memory-server): an approval inserted directly with a nonsense `decision` makes `findByProposalId` throw `STORE_CORRUPT: approvals row PROD-DEMO::A-9 … at "decision"` without the value; saving an approval with a 201-character `approvedBy` and appending an audit event with an empty action both throw `STORE_INVALID_WRITE` naming the row and leave nothing stored; a malformed idempotency row and a malformed job-run row are refused on read the same way. The repository contract and golden scenarios still pass on Mongo. `pnpm run verify` passes (9/9).
 
-**Allowed scope**  
-`packages/adapters/mongo-store`, an idempotency-row schema in contracts.
-
-**Acceptance criteria**  
-Every read path parses; every write validates; malformed row → `STORE_CORRUPT` with collection + id only.
-
-**Tests**  
-Integration: insert a malformed approval directly; read yields `STORE_CORRUPT`, message has no field values.
-
-**Definition of Done**  
-Acceptance met, verify green.
+Docs: `ARCHITECTURE.md` §9.
 
 ## TASK-927 CI least privilege and pinned actions — TODO
 

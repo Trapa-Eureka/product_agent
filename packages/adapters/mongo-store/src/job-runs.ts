@@ -4,6 +4,8 @@ import type { JobRunRepository } from "@pca/application";
 import type { JobRun } from "@pca/contracts";
 import { jobRunSchema } from "@pca/contracts";
 
+import { parseRow, validated } from "./rows";
+
 /**
  * Job runs in Mongo (TASK-923, AUD-009).
  *
@@ -19,16 +21,13 @@ type JobRunRow = JobRun & { readonly _id: string; readonly _rev: number };
 
 const UPDATE_ATTEMPTS = 10;
 
-const fromRow = (row: Document): JobRun => {
-  const { _id: _id, _rev: _rev, ...run } = row;
-  return jobRunSchema.parse(run);
-};
+const fromRow = (row: Document): JobRun => parseRow(jobRunSchema, "jobRuns", row);
 
 export const createMongoJobRunRepository = (
   collection: Collection<JobRunRow>,
 ): JobRunRepository => ({
   async save(run) {
-    const row = { ...run, _id: run.id };
+    const row = { ...validated(jobRunSchema, "jobRuns", run.id, run), _id: run.id };
     await collection.updateOne({ _id: run.id }, { $set: row, $inc: { _rev: 1 } }, { upsert: true });
   },
 
@@ -54,7 +53,8 @@ export const createMongoJobRunRepository = (
     for (let attempt = 1; attempt <= UPDATE_ATTEMPTS; attempt += 1) {
       const current = await collection.findOne({ _id: jobId });
       if (current === null) return null;
-      const { run, result } = transform(fromRow(current));
+      const { run: next, result } = transform(fromRow(current));
+      const run = validated(jobRunSchema, "jobRuns", jobId, next);
       const replaced = await collection.replaceOne(
         { _id: jobId, _rev: current._rev },
         { ...run, _rev: current._rev + 1 },

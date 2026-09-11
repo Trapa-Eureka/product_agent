@@ -630,6 +630,18 @@ atomic, so a reader sees a whole database, before or after, never a torn one,
 and a second instance sees the first one's writes because every read goes
 through to the file rather than a cache.
 
+Mongo validates what it reads and writes (TASK-926, SEC-015 / AUD-020):
+production state was already parsed with `productionStateSchema`; now
+every change request, proposal, approval, audit event, idempotency row, and
+job run is parsed with its strict contract schema on read (`parseRow`,
+`packages/adapters/mongo-store/src/rows.ts`) and validated on write
+(`validated`), inside the transactions too. A malformed row surfaces as
+`STORE_CORRUPT` naming the collection, the row ID, and the path — never a
+value — and a record the contract would refuse is `STORE_INVALID_WRITE`
+with nothing written, the same two errors the file store raises. The
+persisted idempotency row has one schema for both stores,
+`storedIdempotencyRecordSchema` in `@pca/contracts`.
+
 The data file is owner-only (TASK-921, SEC-010 / AUD-017): it holds cast
 and location schedules, human-entered change text, identities, approvals,
 and the audit trail, so the store creates its directory `0700` and its
