@@ -59,6 +59,14 @@ export const proposalDigestSchema = z.string().regex(/^[a-f0-9]{64}$/, {
 /** Ties an HTTP request, agent job, MCP call, and proposal together in logs. */
 export const correlationIdSchema = z.string().min(1).max(128);
 
+/**
+ * Who acted: the persisted `createdBy`/`approvedBy`/`actorId` fields all share
+ * this limit, so the transport that admits an identity (an HTTP header, an
+ * environment variable) validates against the same rule the store will
+ * enforce, instead of writing a record every later read rejects (TASK-906).
+ */
+export const actorIdSchema = z.string().min(1).max(200);
+
 /** Free-text meant for a human reader. Never empty, so the UI never renders a blank reason. */
 export const explanationSchema = z.string().min(1).max(2000);
 
@@ -84,4 +92,5 @@ export type ProductionVersion = z.infer<typeof productionVersionSchema>;
 export type IdempotencyKey = z.infer<typeof idempotencyKeySchema>;
 export type ProposalDigest = z.infer<typeof proposalDigestSchema>;
 export type CorrelationId = z.infer<typeof correlationIdSchema>;
+export type ActorId = z.infer<typeof actorIdSchema>;
 export type DateRange = z.infer<typeof dateRangeSchema>;
