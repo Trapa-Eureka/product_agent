@@ -782,6 +782,15 @@ Complete, with producer and contract sharing the limits. `@pca/contracts` export
 
 Tests: 4 domain (a 300-character title clips in the name and appears whole in the detail; a 200-character cast name clips in the operation check and both places in the availability check, all five names within the limit; an invariant detail with 60 violations is cut at exactly 2,000 ending in an ellipsis; `clip` boundaries), 1 contracts boundary (120 accepted, 121 refused), 1 MCP contract (a proposal with a 300-character title runs create → approve → apply and `verify_applied_proposal` returns success rather than `INTERNAL_ERROR`). One existing detail assertion updated for the title now quoted. `pnpm run verify` passes (9/9).
 
+## TASK-913 Web schedule and audit pages: guarded loads, error state, one read — DONE
+
+Code review findings #15 and #16 (Medium). #15: both pages launched their requests from an `effect` with no catch and no ownership check, so a failure became an unhandled rejection with the page stuck on "Loading…", and switching productions while a slow answer was in flight let the previous production's rows land under the new header. #16: the schedule page followed `get_schedule` with one `get_scene` per distinct scene, each of which loaded and indexed the whole production again — N+1 full snapshot reads on the page meant to show the whole schedule, and `Promise.all` let one missing scene fail the lot.
+
+**Status**  
+Complete. Server: `get_schedule` gained `includeScenes`; when set, the handler resolves every distinct scene the returned days name — in day order, normalized exactly like `get_scene` through a shared `normalizeScene` — from the index it already built, so the whole page is one production read. A scene ID a day names that cannot be resolved is left out rather than failing the call (the caller shows it by ID; INV-3 reports the corruption). REST passes `?includeScenes=true` through. Web: a `PageLoad<T>` state (`loading` | `ready` | `error`) replaces the nullable rows, and a `latestOnly()` ticket guard makes only the newest request able to write, so a straggling answer about a production the page has left is dropped whether it succeeds or fails. Failures render the server's `ToolError` — code, message, next step — with a Retry button, the same shape the header and the change input already use; `toToolError` moved to the API client so the store and both pages share it. The schedule page makes one request and never calls `get_scene`. MCP.md documents the option.
+
+Tests: MCP contract (`includeScenes` returns the four demo scenes in day order, normalized, with exactly one `loadState` call counted on the store; the plain call has no `scenes`); REST contract (`?includeScenes=true` carries the day's scenes, plain call does not); web — schedule page renders from the one request and asserts `get_scene` is never called, shows the error with next step and retries to a rendered page, and drops a late answer from the previous production; audit page shows the error, ignores a late answer from the previous production, and retries; `latestOnly` unit. `pnpm run verify` passes (9/9).
+
 ---
 
 # Parallelization guidance

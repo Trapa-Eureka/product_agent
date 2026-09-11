@@ -324,7 +324,11 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
     "/schedule",
     tool("get_schedule", (request, productionId) => ({
       productionId,
-      ...optional({ date: query(request, "date"), sceneId: query(request, "sceneId") }),
+      ...optional({
+        date: query(request, "date"),
+        sceneId: query(request, "sceneId"),
+        includeScenes: query(request, "includeScenes") === "true" ? true : undefined,
+      }),
     })),
   );
   scoped.get(

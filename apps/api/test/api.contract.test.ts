@@ -205,6 +205,16 @@ describe("REST API", () => {
       expect(availability.status).toBe(200);
       const schedule = await api("GET", `/productions/${DEMO}/schedule?date=${friday}`);
       expect(schedule.status).toBe(200);
+      expect("scenes" in (schedule.body as object)).toBe(false);
+      const withScenes = await api(
+        "GET",
+        `/productions/${DEMO}/schedule?date=${friday}&includeScenes=true`,
+      );
+      expect(
+        (withScenes.body as { scenes: { scene: { id: string } }[] }).scenes.map(
+          (entry) => entry.scene.id,
+        ),
+      ).toEqual([scenes.s07, scenes.s12]);
       const sheet = await api("GET", `/productions/${DEMO}/call-sheets/${shootDays.friday}`);
       expect(sheet.status).toBe(200);
       const tasks = await api("GET", `/productions/${DEMO}/tasks`);

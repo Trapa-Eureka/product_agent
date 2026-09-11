@@ -2,7 +2,7 @@ import { Injectable, computed, inject, signal } from "@angular/core";
 
 import type { McpToolOutput, ToolError } from "@pca/contracts";
 
-import { ApiError, ProductionApi } from "../api/production-api";
+import { ProductionApi, toToolError } from "../api/production-api";
 import { RealtimeService } from "../realtime/realtime.service";
 
 /**
@@ -55,14 +55,7 @@ export class ProductionStore {
     } catch (error) {
       this.production.set(null);
       this.loadState.set("error");
-      this.error.set(
-        error instanceof ApiError
-          ? error.error
-          : {
-              code: "INTERNAL_ERROR",
-              message: error instanceof Error ? error.message : String(error),
-            },
-      );
+      this.error.set(toToolError(error));
     }
   }
 }
