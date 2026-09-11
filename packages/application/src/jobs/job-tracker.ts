@@ -52,6 +52,8 @@ export interface JobTracker {
   ): Promise<JobRun>;
   get(jobId: EntityId): Promise<JobRun | null>;
   listByProduction(productionId: EntityId): Promise<JobRun[]>;
+  /** Every run not yet completed or failed, across productions (TASK-931 readiness). */
+  listUnfinished(): Promise<JobRun[]>;
   onEvent(listener: JobEventListener): () => void;
 }
 
@@ -119,6 +121,7 @@ export const createJobTracker = (dependencies: {
       commit(jobId, (run) => noteJobRun(run, message, clock.now(), options)),
     get: (jobId) => repository.findById(jobId),
     listByProduction: (productionId) => repository.listByProduction(productionId),
+    listUnfinished: () => repository.listUnfinished(),
     onEvent: (listener) => {
       listeners.add(listener);
       return () => {

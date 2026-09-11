@@ -42,6 +42,7 @@ operator's. "Refused" means the server does not start.
 | File store | Only for a single operator; `PCA_DATA_FILE_PERMISSIONS=refuse` so a loose file stops startup | Symlinks refused; loose file tightened or refused |
 | Process | Run the image as shipped (non-root, read-only root filesystem if the platform allows, `/data` as the only writable volume) | Image default |
 | Headers | The proxy or static host serving the console sets the CSP and companion headers in ARCHITECTURE.md §6 | API answers hardened by default |
+| Readiness | Gate traffic on `GET /api/ready` (503 until the store answers); alert on rising `queue.deadLettered`, `jobs.inFlight`, or `rateLimit.rejectedRequests` | Route |
 | Logs | Ship stderr (JSON lines) to the log store; `job_infrastructure_failure`, `model_output_rejected`, `store_*` warnings, and `auth_demo_mode` are the lines to alert on | — |
 | Backups | Back up the database (or `/data`) on the platform's schedule; the audit trail is the record of every consequential change | — |
 | Updates | Merge Dependabot's action and dependency pull requests after CI; `pnpm audit` fails the build on a known advisory | CI |

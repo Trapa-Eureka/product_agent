@@ -107,6 +107,7 @@ const main = async (): Promise<void> => {
     context,
     limits,
     tlsTerminated: isTrueEnv(process.env["PCA_TLS_TERMINATED"]),
+    probeStore: storage.probe,
     identity: auth.identity,
     ...(auth.demoSession === undefined ? {} : { demoSession: auth.demoSession }),
     makerChecker: auth.makerChecker,

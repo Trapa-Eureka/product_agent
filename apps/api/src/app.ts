@@ -12,6 +12,7 @@ import type {
   IdentityPort,
   IdentityRefusal,
   JobTracker,
+  StoreProbe,
   QueuePort,
   RepositorySet,
   UseCaseResult,
@@ -103,6 +104,8 @@ export type ApiDependencies = {
   };
   /** The service is reached over TLS; answers then carry HSTS (TASK-928). */
   readonly tlsTerminated?: boolean;
+  /** Store reachability for `/ready` (TASK-931); a memory store that is always ready by default. */
+  readonly probeStore?: StoreProbe;
   readonly logger?: ApiLogger;
   /** Tool handlers to run; defaults to the full MCP set over the same repositories. */
   readonly handlers?: ToolHandlers;
@@ -283,23 +286,54 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
     limit: dependencies.limits?.writesPerMinute ?? DEFAULT_WRITES_PER_MINUTE,
     windowMs: MINUTE_MS,
   };
-  router.use(
-    rateLimit(
-      createRateLimiter(requestRule),
-      requestRule,
-      clientAddressOf,
-      "requests from this client",
-    ),
-  );
+  const requestLimiter = createRateLimiter(requestRule);
+  const writeLimiter = createRateLimiter(writeRule);
+  router.use(rateLimit(requestLimiter, requestRule, clientAddressOf, "requests from this client"));
   const writeLimit = rateLimit(
-    createRateLimiter(writeRule),
+    writeLimiter,
     writeRule,
     (_request, response) => (response.locals["call"] as Call).principal.subject,
     "writes by this principal",
   );
 
+  // Liveness: the process answers.
   router.get("/health", (_request, response) => {
     response.json({ status: "ok", time: clock.now() });
+  });
+
+  // Readiness (TASK-931, AUD-021): can it do its job, and how loaded is it?
+  // Counters only — no IDs, no URIs, no paths — so it can sit in front of
+  // the token check like /health; 503 when the store cannot be reached.
+  const probeStore: StoreProbe =
+    dependencies.probeStore ?? (() => Promise.resolve({ kind: "memory", ok: true }));
+  router.get("/ready", async (_request, response) => {
+    const [store, queueStats, unfinished] = await Promise.all([
+      probeStore().catch((): Awaited<ReturnType<StoreProbe>> => ({
+        kind: "memory",
+        ok: false,
+        detail: "The store probe threw.",
+      })),
+      queue.stats(),
+      tracker.listUnfinished(),
+    ]);
+    const waitingOnHuman = unfinished.filter(
+      (run) => run.stage === "resolving" || run.stage === "awaiting_approval",
+    ).length;
+    response.status(store.ok ? 200 : 503).json({
+      status: store.ok ? "ready" : "not_ready",
+      time: clock.now(),
+      store,
+      queue: queueStats,
+      jobs: {
+        unfinished: unfinished.length,
+        waitingOnHuman,
+        inFlight: unfinished.length - waitingOnHuman,
+      },
+      rateLimit: {
+        rejectedRequests: requestLimiter.rejected(),
+        rejectedWrites: writeLimiter.rejected(),
+      },
+    });
   });
 
   // Demo mode's front door (TASK-914): the one route that hands out a token,

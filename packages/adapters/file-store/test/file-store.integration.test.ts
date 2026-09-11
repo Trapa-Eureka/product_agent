@@ -447,3 +447,15 @@ describe("file store permissions (TASK-921, SEC-010 / AUD-017)", () => {
     },
   );
 });
+
+describe("file store probe (TASK-931)", () => {
+  it("reports reachability and whether a writer holds the lock, without reading the database", async () => {
+    const filePath = join(await mkdtemp(join(tmpdir(), "pca-probe-")), "data.json");
+    const store = createFileStore({ filePath });
+    expect(await store.probe()).toEqual({ kind: "file", ok: true, lockHeld: false });
+    await writeFile(store.lockPath, JSON.stringify({ pid: 999999 }), "utf8");
+    expect(await store.probe()).toEqual({ kind: "file", ok: true, lockHeld: true });
+    const asDirectory = createFileStore({ filePath: join(filePath, "..") });
+    expect((await asDirectory.probe()).ok).toBe(false);
+  });
+});

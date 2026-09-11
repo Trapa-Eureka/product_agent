@@ -33,6 +33,8 @@ export type RateLimiter = {
   hit(key: string): RateLimitDecision;
   /** Keys currently tracked; bounded by the sweep below. */
   size(): number;
+  /** Refusals since the process started (TASK-931 readiness). */
+  rejected(): number;
 };
 
 type Window = { startedAt: number; count: number };
@@ -45,6 +47,7 @@ export const createRateLimiter = (
   now: () => number = () => Date.now(),
 ): RateLimiter => {
   const windows = new Map<string, Window>();
+  let rejections = 0;
 
   const sweep = (at: number): void => {
     for (const [key, window] of windows) {
@@ -62,6 +65,7 @@ export const createRateLimiter = (
         return { allowed: true, remaining: rule.limit - 1 };
       }
       if (window.count >= rule.limit) {
+        rejections += 1;
         const retryAfterMs = window.startedAt + rule.windowMs - at;
         return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil(retryAfterMs / 1000)) };
       }
@@ -69,6 +73,7 @@ export const createRateLimiter = (
       return { allowed: true, remaining: rule.limit - window.count };
     },
     size: () => windows.size,
+    rejected: () => rejections,
   };
 };
 

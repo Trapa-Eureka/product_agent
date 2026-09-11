@@ -1057,6 +1057,18 @@ Capture latency for:
 
 This creates a natural performance-debugging story similar to real production engineering.
 
+Readiness (TASK-931, AUD-021): `/api/health` is liveness — the process
+answers — and `/api/ready` is readiness: whether it can do its job, and how
+loaded it is. It returns 200 `ready` or 503 `not_ready` with counters only,
+never an ID, URI, or path, so it sits in front of the token check like
+health: the store probe (`StoreProbe`, a `stat` for the file store with
+whether a writer holds the lock, a `ping` for Mongo, always ready for
+memory), the queue's depth (`QueuePort.stats`: queued, running, waiting on a
+retry, dead-lettered, retained), the job-run backlog (unfinished, split into
+in flight and waiting on a human), and the rate limiter's refusal counters.
+An orchestrator gates traffic on `/ready`; an alert on a rising
+`rejectedRequests` or `deadLettered` is the saturation signal.
+
 Implementation (TASK-804): correlation IDs for HTTP, the agent job/queue
 message/job event, and the MCP call context were already contract-enforced
 and threaded end to end before this task (`X-Correlation-Id`,

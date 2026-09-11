@@ -162,6 +162,10 @@ its documented maximum → `INVALID_INPUT`; TASK-919: a decision or apply
 through another proposal's job → `JOB_MISMATCH` with nothing changed, a
 replayed apply answered with the run and not enqueued twice, a job resumed
 by another principal → 403 and a job not at `resolving` → `JOB_MISMATCH`;
+TASK-931: `/ready` without a token reports store, queue, job backlog, and
+rate-limit counters, follows a submitted change from queued to waiting on a
+human, and answers 503 `not_ready` when the store probe fails while
+`/health` stays 200;
 TASK-928: every answer — a read, an error, an unauthenticated refusal, a
 404 — carries the CSP, `nosniff`, `DENY`, `no-referrer`, same-origin
 resource policy, and `no-store`, and HSTS only when `tlsTerminated` is set;

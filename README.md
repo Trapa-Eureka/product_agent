@@ -146,6 +146,7 @@ pnpm run verify
 ```bash
 PCA_DEMO_MODE=true PCA_STORAGE=memory PCA_API_PORT=3000 pnpm exec tsx apps/api/src/main.ts
 # REST under http://127.0.0.1:3000/api, WebSocket on ws://127.0.0.1:3000/ws
+# GET /api/health is liveness; GET /api/ready is readiness with load counters (503 until the store answers)
 ```
 
 `PCA_DEMO_MODE=true` makes the server hand anyone who asks

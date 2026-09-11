@@ -990,28 +990,16 @@ Tests: bootstrap unit — the five accepted URI forms; a plain, an anonymous, an
 
 Docs: `docs/DEPLOYMENT.md` (new); `README.md` "Deployment".
 
-## TASK-931 Readiness and saturation health checks — TODO
+## TASK-931 Readiness and saturation health checks — DONE
 
-**Goal**  
-`/health` stays liveness; new `/ready` reports store reachability, queue depth, job-run backlog, lock state, and rate-limit rejections.
+AUD-021 (Low). `/health` said only that the process answered; nothing said whether the store could be reached, how deep the queue was, how many runs were stuck, whether a writer held the file lock, or how often the rate limiter was refusing — so an orchestrator could route traffic to an instance that could not serve it, and saturation had no signal.
 
-**Context**  
-AUD-021 (Low).
+**Status**  
+Complete. `/api/health` stays liveness. `/api/ready` (`apps/api/src/app.ts`, in front of the token check like health, counters only) answers 200 `ready` or 503 `not_ready` with: `store` from a `StoreProbe` (new application port, `ports/health.ts`) — the file store `stat`s the data file and reports `lockHeld` from the lock file's existence without reading the database, Mongo sends one `ping`, memory is always ready, and a probe that throws is reported as not ok; `queue` from the new `QueuePort.stats()` (queued, running, waiting on a retry, dead-lettered, retained); `jobs` from the tracker's new `listUnfinished()` (unfinished, split into `inFlight` and `waitingOnHuman`); and `rateLimit` refusal counters (`RateLimiter.rejected()`, requests and writes). No answer names an ID, URI, or path; a failing probe's `detail` is one fixed sentence. `createRepositories` exposes `probe` per storage kind and the API entry point passes it.
 
-**Dependencies**  
-TASK-917.
+Tests: API contract — the idle shape; a submitted change seen as queued and in flight, then, after the drain, as waiting on a human; the answer free of IDs and paths; a failing probe → 503 `not_ready` while `/health` stays 200. Memory queue — `stats` across queued, waiting-on-retry, and retained. File store — reachable with `lockHeld` false, then true once a lock file exists, and not ok when the path is a directory. Mongo — ping ok, not ok after close, no URI in the answer. `pnpm run verify` passes (9/9).
 
-**Allowed scope**  
-`apps/api`, adapters expose cheap probes, docs.
-
-**Acceptance criteria**  
-`/ready` 503 when the store is unreachable; counters exposed as JSON; no secrets in output.
-
-**Tests**  
-API contract for both states.
-
-**Definition of Done**  
-Acceptance met, verify green.
+Docs: `ARCHITECTURE.md` §16; `docs/DEPLOYMENT.md` (readiness row); `README.md`; `TESTING.md`.
 
 ## TASK-932 Full-entropy identifiers for operational records — TODO
 

@@ -24,7 +24,7 @@ import {
   proposalSchema,
   storedIdempotencyRecordSchema,
 } from "@pca/contracts";
-import type { JobRunRepository } from "@pca/application";
+import type { JobRunRepository, StoreHealth } from "@pca/application";
 
 import { createMongoJobRunRepository, type JobRunRow } from "./job-runs";
 import { parseRow, validated } from "./rows";
@@ -160,6 +160,16 @@ export class MongoStore implements RepositorySet {
 
   get databaseName(): string {
     return this.#db.databaseName;
+  }
+
+  /** Readiness probe (TASK-931): one `ping`; never the URI in the answer. */
+  async probe(): Promise<StoreHealth> {
+    try {
+      await this.#db.command({ ping: 1 });
+      return { kind: "mongo", ok: true };
+    } catch {
+      return { kind: "mongo", ok: false, detail: "The database did not answer a ping." };
+    }
   }
 
   /** Job runs, durable with the rest of the store (TASK-923). */
