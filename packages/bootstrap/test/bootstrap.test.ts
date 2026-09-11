@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { LogFields, LogLevel } from "@pca/application";
+import { guardModelPort, isGuardedModelPort } from "@pca/application";
 import { createDemoMovie } from "@pca/fixtures";
 
 import {
@@ -158,6 +159,12 @@ describe("model selection", () => {
   it("defaults to the rule-based adapter, which needs no network", () => {
     expect(selectModel({})).toBe("rules");
     expect(typeof createModel("rules").interpretChange).toBe("function");
+  });
+
+  it("hands out the one guarded port, so nothing downstream can guard again (TASK-936)", () => {
+    const model = createModel("rules");
+    expect(isGuardedModelPort(model)).toBe(true);
+    expect(() => guardModelPort(model)).toThrow(/already guarded/u);
   });
 
   it("refuses an unknown model kind, and names the deferred ones honestly", () => {

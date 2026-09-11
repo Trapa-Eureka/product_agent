@@ -15,7 +15,6 @@ import {
 } from "@pca/test-support";
 
 import {
-  InfrastructureError,
   bindQueueToJobTracker,
   createApplyApprovedProposal,
   createApplyProposalJobHandler,
@@ -26,7 +25,9 @@ import {
   createSimulateProposal,
   createSubmitChangeRequest,
   createVerifyAppliedProposal,
+  guardModelPort,
   guardRepositories,
+  InfrastructureError,
   type RepositorySet,
 } from "../src";
 
@@ -450,9 +451,8 @@ describe("failure injection", () => {
     it("a provider that hangs becomes an INTERNAL_ERROR with the correlation ID and a retry hint, never a prompt", async () => {
       const interpret = createInterpretChange({
         repositories: store,
-        model: createFakeModelAdapter({ misbehave: "hang" }),
+        model: guardModelPort(createFakeModelAdapter({ misbehave: "hang" }), { timeoutMs: 20 }),
         clock,
-        modelTimeoutMs: 20,
       });
       const result = await interpret({
         productionId: DEMO,
@@ -472,7 +472,7 @@ describe("failure injection", () => {
     it("a provider that answers with something ungrounded is refused the same way", async () => {
       const interpret = createInterpretChange({
         repositories: store,
-        model: createFakeModelAdapter({ misbehave: "hallucinate" }),
+        model: guardModelPort(createFakeModelAdapter({ misbehave: "hallucinate" })),
         clock,
       });
       const result = await interpret({
@@ -490,7 +490,7 @@ describe("failure injection", () => {
     it("the healthy rule adapter still interprets the same sentence, so the failure was the provider's", async () => {
       const interpret = createInterpretChange({
         repositories: store,
-        model: createRuleModelAdapter(),
+        model: guardModelPort(createRuleModelAdapter()),
         clock,
       });
       const result = await interpret({

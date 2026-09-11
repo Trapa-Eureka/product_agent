@@ -1045,28 +1045,16 @@ Tests: `packages/test-support/src/queue-contract.ts`. A negative check (the adap
 
 Docs: `ARCHITECTURE.md` §10.
 
-## TASK-936 One model-guard boundary — TODO
+## TASK-936 One model-guard boundary — DONE
 
-**Goal**  
-`guardModelPort` is applied once at the composition root; use cases accept an already-guarded port.
+Code review #20 (Low). `@pca/bootstrap`'s `createModel` returned a guarded model, `createRunChangeAgent` guarded it again, and `createInterpretChange` guarded that once more: three layers each parsing, grounding, timing, and (with a logger) logging every model call, with the comments admitting to two and `apps/api/src/main.ts` working around the doubling by logging at only one layer. Which layer owned the trust boundary was unclear.
 
-**Context**  
-Code review #20 (Low).
+**Status**  
+Complete. `guardModelPort` returns a `GuardedModelPort`, a brand (`MODEL_GUARDED` symbol) only it sets; `isGuardedModelPort` reads it, and guarding a guarded port is refused with an error naming the composition root. `createInterpretChange` and `createRunChangeAgent` accept `GuardedModelPort` and guard nothing; their `modelTimeoutMs` option is gone, because the time budget, logger, and concurrency cap belong to the one guard. `createModel`/`createModelFromEnv` return `GuardedModelPort`; `apps/api/src/main.ts` passes its logger there (the `model_call` lines now come from the root guard, not an inner one), and the E2E harness guards its rule adapter the same way. Tests that build a use case guard their fake or rule adapter themselves.
 
-**Dependencies**  
-None.
+Tests: `packages/application/test/model-guard-boundary.test.ts` counts what reaches the provider against the `model_call` lines the guard writes through a full `runChangeAgent` pass and expects them equal, operation by operation, and proves the brand and the refusal; `packages/bootstrap/test/bootstrap.test.ts` proves `createModel` hands out a guarded port that cannot be guarded again. A negative check (the inner re-guard restored with the refusal disabled) failed the counting test with twice the `model_call` lines. `pnpm run verify` passes (9/9).
 
-**Allowed scope**  
-`packages/bootstrap`, `run-change-agent.ts`, `interpret-change.ts`, tests.
-
-**Acceptance criteria**  
-Exactly one guard layer per call, proven by a test counting validations; all composition roots pass through it.
-
-**Tests**  
-Unit counting guard invocations.
-
-**Definition of Done**  
-Acceptance met, verify green.
+Docs: `ARCHITECTURE.md` §7 (model guard) and §16; `TESTING.md` §5.
 
 ## TASK-937 Unused domain helpers are wired or removed — TODO
 

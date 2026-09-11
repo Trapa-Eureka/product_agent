@@ -311,6 +311,21 @@ export type ModelGuardOptions = {
 
 export const DEFAULT_MAX_CONCURRENT_MODEL_CALLS = 4;
 
+/**
+ * One guard boundary (TASK-936, code review #20). A model reaches a use case
+ * only as a `GuardedModelPort`: the brand is set by `guardModelPort` and by
+ * nothing else, so the type system says where validation happens — once, at
+ * the composition root — and a use case cannot be handed a raw provider.
+ * Guarding a guarded port is refused, so there is never a second layer
+ * parsing, grounding, timing, and logging the same call.
+ */
+export const MODEL_GUARDED: unique symbol = Symbol("pca.modelGuarded");
+
+export type GuardedModelPort = ModelPort & { readonly [MODEL_GUARDED]: true };
+
+export const isGuardedModelPort = (port: ModelPort): port is GuardedModelPort =>
+  (port as Partial<GuardedModelPort>)[MODEL_GUARDED] === true;
+
 /** A counting semaphore: `acquire` resolves to the release function. */
 const createSemaphore = (slots: number): (() => Promise<() => void>) => {
   let free = slots;
@@ -436,9 +451,18 @@ const parseOr = <T>(
  * anything downstream sees them. Adapters stay simple; the guarantee lives
  * here once.
  */
-export const guardModelPort = (port: ModelPort, options: ModelGuardOptions = {}): ModelPort => {
+export const guardModelPort = (
+  port: ModelPort,
+  options: ModelGuardOptions = {},
+): GuardedModelPort => {
+  if (isGuardedModelPort(port)) {
+    throw new Error(
+      "This model port is already guarded. guardModelPort is applied once, at the composition root (createModel in @pca/bootstrap, or the test that builds the port), and use cases take the guarded port; set timeoutMs, logger, and maxConcurrent there.",
+    );
+  }
   const acquire = createSemaphore(options.maxConcurrent ?? DEFAULT_MAX_CONCURRENT_MODEL_CALLS);
   return {
+    [MODEL_GUARDED]: true,
     interpretChange: async (input, call) => {
       const raw: unknown = await callProvider(
         "interpretChange",

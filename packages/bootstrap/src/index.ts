@@ -1,9 +1,9 @@
 import type {
   Clock,
+  GuardedModelPort,
   IdentityPort,
   JobRunRepository,
   Logger,
-  ModelPort,
   PortGuardOptions,
   QueuePolicy,
   QueuePort,
@@ -249,8 +249,12 @@ export type ModelOptions = {
   readonly logger?: Logger;
 };
 
-/** Every model is handed out behind the guard; no caller can reach an unguarded provider. */
-export const createModel = (kind: ModelKind, options: ModelOptions = {}): ModelPort => {
+/**
+ * The one model-guard boundary (TASK-936): every model is handed out as a
+ * `GuardedModelPort`, so no caller can reach an unguarded provider and no use
+ * case guards again. Time budget, logger, and concurrency are set here.
+ */
+export const createModel = (kind: ModelKind, options: ModelOptions = {}): GuardedModelPort => {
   switch (kind) {
     case "rules":
       return guardModelPort(createRuleModelAdapter(), options);
@@ -266,7 +270,7 @@ export const createModel = (kind: ModelKind, options: ModelOptions = {}): ModelP
 export const createModelFromEnv = (
   env: Environment = process.env,
   options: ModelOptions = {},
-): ModelPort => createModel(selectModel(env), options);
+): GuardedModelPort => createModel(selectModel(env), options);
 
 export type QueueKind = "memory" | "sqs";
 

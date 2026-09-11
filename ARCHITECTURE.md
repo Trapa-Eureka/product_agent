@@ -520,6 +520,14 @@ answer is schema-validated and grounded before anything downstream sees it:
 - a malformed answer, a provider exception, and a missed time budget become
   `ModelError`s with a stable code and no prompt text.
 
+The guard is one boundary, applied once (TASK-936): `guardModelPort` returns
+a `GuardedModelPort`, a brand only it sets, and `createInterpretChange` and
+`createRunChangeAgent` accept that type and nothing else, so a use case cannot
+be handed a raw provider and never validates a second time. The composition
+root — `createModel` in `@pca/bootstrap`, or the test that builds the port —
+is where the time budget, logger, and concurrency cap are set; guarding a
+guarded port is refused with an error that says so.
+
 Adapters therefore stay simple. The rule-based adapter, a local Ollama, and
 Bedrock all sit behind the same guard, and the guarantee is tested once.
 
@@ -1119,13 +1127,13 @@ before this task and needed no change. Every real entry point
 `apps/api/e2e/server.ts`) now passes its own logger down into all of these,
 so a live run actually produces the lines, not just the capability to.
 
-One thing this surfaced: `apps/api/src/main.ts` already guarded its model
-twice — once in `@pca/bootstrap`'s `createModel`, again inside
-`createRunChangeAgent`'s own `guardModelPort` call, harmless before because
-neither layer logged. Passing a logger to both would have doubled every
-`model_call` line, so `main.ts` deliberately logs only at the inner,
-actually-used layer; the outer double-guard itself is untouched, a
-pre-existing redundancy outside this task's scope.
+One thing this surfaced: `apps/api/src/main.ts` guarded its model twice —
+once in `@pca/bootstrap`'s `createModel`, again inside
+`createRunChangeAgent`'s own `guardModelPort` call — so the logger could go to
+only one layer or every `model_call` line would double. TASK-936 removed the
+inner layers (§7): the guard is applied once at the composition root, the use
+cases take the `GuardedModelPort`, and `main.ts` passes its logger to
+`createModelFromEnv`, where every `model_call` line now comes from.
 
 ## 17. Architecture rule of thumb
 

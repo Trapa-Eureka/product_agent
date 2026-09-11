@@ -8,8 +8,8 @@ import type {
 import type { ProductionState } from "@pca/domain";
 import { indexProduction } from "@pca/domain";
 
-import type { Clock, ModelPort, RepositorySet } from "../ports";
-import { ModelError, guardModelPort } from "../ports";
+import type { Clock, GuardedModelPort, RepositorySet } from "../ports";
+import { ModelError } from "../ports";
 import { firstMissingReference } from "../references";
 import type { UseCaseResult } from "../result";
 import { fail, succeed } from "../result";
@@ -84,16 +84,11 @@ export const interpretationContextFor = (
 
 export const createInterpretChange = (dependencies: {
   readonly repositories: RepositorySet;
-  readonly model: ModelPort;
+  /** Guarded once, at the composition root (TASK-936); the type refuses a raw provider. */
+  readonly model: GuardedModelPort;
   readonly clock: Clock;
-  readonly modelTimeoutMs?: number;
 }): InterpretChange => {
-  const { repositories, clock } = dependencies;
-  // Guarding here as well means a caller cannot hand in an unguarded provider.
-  const model = guardModelPort(
-    dependencies.model,
-    dependencies.modelTimeoutMs === undefined ? {} : { timeoutMs: dependencies.modelTimeoutMs },
-  );
+  const { repositories, clock, model } = dependencies;
 
   return async (input) => {
     const trace = input.correlationId === undefined ? {} : { correlationId: input.correlationId };
