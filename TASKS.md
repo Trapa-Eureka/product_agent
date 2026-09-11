@@ -1001,28 +1001,16 @@ Tests: API contract — the idle shape; a submitted change seen as queued and in
 
 Docs: `ARCHITECTURE.md` §16; `docs/DEPLOYMENT.md` (readiness row); `README.md`; `TESTING.md`.
 
-## TASK-932 Full-entropy identifiers for operational records — TODO
+## TASK-932 Full-entropy identifiers for operational records — DONE
 
-**Goal**  
-Proposal, approval, job, and audit IDs use untruncated random identifiers.
+AUD-025 (Low). `randomIdFactory` took a UUID v4, stripped its hyphens, and kept the first 12 hex characters: 48 bits for every proposal, approval, audit event, change request, job, and correlation ID — records that live for the life of the store and are quoted in tokens, logs, and audit lines.
 
-**Context**  
-AUD-025 (Low).
+**Status**  
+Complete. `randomIdFactory` (`packages/application/src/ports/clock.ts`) now emits `<prefix>-<UUID v4>` untruncated: 122 random bits, 36 characters, well inside `entityIdSchema`'s 128 and `correlationIdSchema`'s limit. Every real entry point (API, MCP server, E2E server, the memory queue's default) already used the factory, so nothing else changed; fixtures and tests use fixed or sequential IDs. The web client's own idempotency key was already a full `crypto.randomUUID()`.
 
-**Dependencies**  
-None.
+Tests: application — the shape is `<prefix>-<uuid v4>` (version and variant nibbles checked) and never shorter; every prefix in use satisfies the entity and correlation ID contracts; ten thousand draws never repeat. `pnpm run verify` passes (9/9).
 
-**Allowed scope**  
-ID generation in application/domain, `entityIdSchema` length if needed, fixtures.
-
-**Acceptance criteria**  
-≥122 bits of entropy per generated ID; existing fixtures unaffected.
-
-**Tests**  
-Unit on format/length.
-
-**Definition of Done**  
-Acceptance met, verify green.
+Docs: `ARCHITECTURE.md` §15 "Identifiers".
 
 ## TASK-933 Angular program covers imported workspace sources — TODO
 
