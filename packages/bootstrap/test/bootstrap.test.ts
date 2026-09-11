@@ -41,7 +41,20 @@ describe("selectStorage", () => {
     expect(selectStorage({ PCA_STORAGE: "file", PCA_DATA_FILE: "/tmp/x.json" })).toEqual({
       kind: "file",
       filePath: "/tmp/x.json",
+      permissions: "tighten",
     });
+    // TASK-921: the permission policy is read here and refused when it is neither value.
+    expect(
+      selectStorage({ PCA_STORAGE: "file", PCA_DATA_FILE_PERMISSIONS: "refuse" }).kind === "file" &&
+        (
+          selectStorage({ PCA_STORAGE: "file", PCA_DATA_FILE_PERMISSIONS: "refuse" }) as {
+            permissions: string;
+          }
+        ).permissions,
+    ).toBe("refuse");
+    expect(() =>
+      selectStorage({ PCA_STORAGE: "file", PCA_DATA_FILE_PERMISSIONS: "loose" }),
+    ).toThrow(/PCA_DATA_FILE_PERMISSIONS/u);
     expect(
       selectStorage({
         PCA_STORAGE: "mongo",
@@ -66,7 +79,11 @@ describe("createRepositories", () => {
 
   it("builds a working file store at the given path", async () => {
     const filePath = join(await mkdtemp(join(tmpdir(), "pca-bootstrap-")), "data.json");
-    const { repositories, close } = await createRepositories({ kind: "file", filePath });
+    const { repositories, close } = await createRepositories({
+      kind: "file",
+      filePath,
+      permissions: "tighten",
+    });
     await repositories.productions.save(createDemoMovie());
     expect((await repositories.productions.loadState("PROD-DEMO"))?.production.name).toBe(
       "Demo Movie",
@@ -95,7 +112,11 @@ describe("resetDemoMovie (TASK-801)", () => {
     const result = await resetDemoMovie(env);
     expect(result).toEqual({ filePath, productionId: "PROD-DEMO" });
 
-    const { repositories, close } = await createRepositories({ kind: "file", filePath });
+    const { repositories, close } = await createRepositories({
+      kind: "file",
+      filePath,
+      permissions: "tighten",
+    });
     expect((await repositories.productions.loadState("PROD-DEMO"))?.scenes).toHaveLength(4);
     await close();
   });
@@ -104,7 +125,11 @@ describe("resetDemoMovie (TASK-801)", () => {
     const filePath = join(await mkdtemp(join(tmpdir(), "pca-bootstrap-")), "data.json");
     const env = { PCA_STORAGE: "file", PCA_DATA_FILE: filePath };
 
-    const { repositories, close } = await createRepositories({ kind: "file", filePath });
+    const { repositories, close } = await createRepositories({
+      kind: "file",
+      filePath,
+      permissions: "tighten",
+    });
     await repositories.productions.save(createDemoMovie());
     await repositories.auditEvents.append({
       id: "AE-STALE",
@@ -117,7 +142,7 @@ describe("resetDemoMovie (TASK-801)", () => {
 
     await resetDemoMovie(env);
 
-    const reopened = await createRepositories({ kind: "file", filePath });
+    const reopened = await createRepositories({ kind: "file", filePath, permissions: "tighten" });
     expect(await reopened.repositories.auditEvents.list("PROD-DEMO")).toEqual([]);
     await reopened.close();
   });

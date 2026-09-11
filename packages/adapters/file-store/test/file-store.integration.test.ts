@@ -1,5 +1,14 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -353,4 +362,88 @@ describe("file store specifics", () => {
       expect(await store.productions.loadState(DEMO)).toBeNull();
     });
   });
+});
+
+describe("file store permissions (TASK-921, SEC-010 / AUD-017)", () => {
+  const posix = process.platform !== "win32";
+  const modeOf = async (path: string) => ((await stat(path)).mode & 0o777).toString(8);
+
+  it.skipIf(!posix)("creates the data directory 0700 and the data file 0600", async () => {
+    const filePath = join(await mkdtemp(join(tmpdir(), "pca-perm-")), "owned", "data.json");
+    await createFileStore({ filePath }).productions.save(createDemoMovie());
+    expect(await modeOf(join(filePath, ".."))).toBe("700");
+    expect(await modeOf(filePath)).toBe("600");
+  });
+
+  it.skipIf(!posix)("tightens a loose existing data file on first use and says so", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "pca-perm-"));
+    const filePath = join(directory, "data.json");
+    await writeFile(filePath, JSON.stringify({ formatVersion: 1 }), {
+      encoding: "utf8",
+      mode: 0o644,
+    });
+    await chmod(filePath, 0o644);
+    const warnings: string[] = [];
+    const store = createFileStore({
+      filePath,
+      logger: { log: (_level, event) => warnings.push(event) },
+    });
+    await store.productions.loadState("PROD-DEMO").catch(() => undefined);
+    expect(await modeOf(filePath)).toBe("600");
+    expect(warnings).toContain("store_file_permissions_tightened");
+  });
+
+  it.skipIf(!posix)(
+    "refuses a loose existing data file when told to, touching nothing",
+    async () => {
+      const directory = await mkdtemp(join(tmpdir(), "pca-perm-"));
+      const filePath = join(directory, "data.json");
+      await writeFile(filePath, JSON.stringify({ formatVersion: 1 }), "utf8");
+      await chmod(filePath, 0o644);
+      const store = createFileStore({ filePath, permissions: "refuse" });
+      await expect(store.verify()).rejects.toThrow(
+        /STORE_UNSAFE_PERMISSIONS: .*data\.json is mode 644/u,
+      );
+      await expect(store.productions.save(createDemoMovie())).rejects.toThrow(
+        /STORE_UNSAFE_PERMISSIONS/u,
+      );
+      expect(await modeOf(filePath)).toBe("644");
+    },
+  );
+
+  it("refuses a data file that is a symbolic link, before reading or writing anything", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "pca-perm-"));
+    const target = join(directory, "elsewhere.json");
+    await writeFile(target, JSON.stringify({ formatVersion: 1 }), "utf8");
+    const filePath = join(directory, "data.json");
+    await symlink(target, filePath);
+    const store = createFileStore({ filePath });
+    await expect(store.verify()).rejects.toThrow(
+      /STORE_UNSAFE_PATH: .*data\.json \(the data file\)/u,
+    );
+    await expect(store.productions.loadState("PROD-DEMO")).rejects.toThrow(/STORE_UNSAFE_PATH/u);
+    expect(await readFile(target, "utf8")).toBe(JSON.stringify({ formatVersion: 1 }));
+  });
+
+  it.skipIf(!posix)(
+    "warns about a loose directory it did not create, and never chmods it",
+    async () => {
+      const directory = await mkdtemp(join(tmpdir(), "pca-perm-"));
+      await chmod(directory, 0o755);
+      const warnings: string[] = [];
+      const store = createFileStore({
+        filePath: join(directory, "data.json"),
+        logger: { log: (_level, event) => warnings.push(event) },
+      });
+      await store.productions.save(createDemoMovie());
+      expect(warnings).toContain("store_directory_permissions");
+      expect(await modeOf(directory)).toBe("755");
+      await expect(
+        createFileStore({
+          filePath: join(directory, "other.json"),
+          permissions: "refuse",
+        }).verify(),
+      ).rejects.toThrow(/STORE_UNSAFE_PERMISSIONS: .*data directory should be 0700/u);
+    },
+  );
 });

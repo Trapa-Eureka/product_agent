@@ -880,28 +880,16 @@ Tests: application — each forbidden phrase rejected with its label; "no confli
 
 Docs: `ARCHITECTURE.md` §7; `DESIGN.md` §4; `TESTING.md`.
 
-## TASK-921 Restrictive file-store permissions — TODO
+## TASK-921 Restrictive file-store permissions — DONE
 
-**Goal**  
-The data directory is `0700`, data/temp/lock files `0600`, verified at startup.
+SEC-010 (Medium) / AUD-017. The default store wrote the entire database — schedules, raw change text, identities, approvals, audit records — to a temporary file with no explicit mode and renamed it into place, and created its directory with default permissions. Under a `022` umask that is a `0755` directory and a `0644` file any local user can read.
 
-**Context**  
-SEC-010 (Medium) / AUD-017. Files are created with ambient umask.
+**Status**  
+Complete. `FileStore.verify()` (`packages/adapters/file-store/src/index.ts`) runs once per instance before the first read or write, and `createRepositories` calls it at startup. It creates the directory `0700`; refuses a data file, lock file, or directory entry that is a symbolic link (`STORE_UNSAFE_PATH` — a link could point the store at, or leak it to, a path the operator never chose); tightens an existing loose data file to `0600` and logs `store_file_permissions_tightened`, or throws `STORE_UNSAFE_PERMISSIONS` under `permissions: "refuse"` (`PCA_DATA_FILE_PERMISSIONS=refuse`); and warns about a loose directory it did not create without ever chmodding it (`/tmp` is not ours). The temporary file is written with `mode: 0o600` and the lock opened with `0o600`, so both are owner-only from their first byte — never fixed up after a readable window. Windows has no mode bits; the checks are a no-op there.
 
-**Dependencies**  
-TASK-903.
+Tests (integration, POSIX-only where modes are involved): a nested directory the store creates is `700` and the data file `600`; a `644` existing file is tightened on first use with the warning logged; under `refuse` both `verify()` and a save throw and the mode is untouched; a symlinked data file is refused before anything is read or written and the link's target is left as it was; a loose directory the store did not create is warned about, never chmodded, and refused under `refuse`. `pnpm run verify` passes (9/9).
 
-**Allowed scope**  
-`packages/adapters/file-store`, docs.
-
-**Acceptance criteria**  
-Explicit modes on mkdir/open; startup warns and tightens (or refuses, configurable) when an existing file is group/world-readable; symlinked data path refused.
-
-**Tests**  
-Integration: created file mode is `0600` (POSIX); loose existing file is tightened; symlink refused.
-
-**Definition of Done**  
-Acceptance met, verify green, `README.md` states the adapter is single-user.
+Docs: `README.md` env table and limitations (single-user store); `ARCHITECTURE.md` §9.
 
 ## TASK-922 Raw change text: no duplication, retention policy — TODO
 

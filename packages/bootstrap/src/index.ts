@@ -39,7 +39,12 @@ import { createRuleModelAdapter } from "@pca/rule-model";
 export type StorageKind = "file" | "memory" | "mongo";
 
 export type StorageSelection =
-  | { readonly kind: "file"; readonly filePath: string }
+  | {
+      readonly kind: "file";
+      readonly filePath: string;
+      /** TASK-921: what to do with a loose existing data file. Default tighten. */
+      readonly permissions: "tighten" | "refuse";
+    }
   | { readonly kind: "memory" }
   | { readonly kind: "mongo"; readonly uri: string; readonly databaseName: string | undefined };
 
@@ -57,8 +62,15 @@ export const selectStorage = (env: Environment): StorageSelection => {
   }
   const kind = raw as StorageKind;
   switch (kind) {
-    case "file":
-      return { kind, filePath: env["PCA_DATA_FILE"] ?? defaultDataFilePath() };
+    case "file": {
+      const raw = env["PCA_DATA_FILE_PERMISSIONS"]?.trim() ?? "tighten";
+      if (raw !== "tighten" && raw !== "refuse") {
+        throw new Error(
+          `PCA_DATA_FILE_PERMISSIONS="${raw}" must be "tighten" (chmod a loose data file to 0600) or "refuse" (fail startup instead).`,
+        );
+      }
+      return { kind, filePath: env["PCA_DATA_FILE"] ?? defaultDataFilePath(), permissions: raw };
+    }
     case "memory":
       return { kind };
     case "mongo":
@@ -94,16 +106,21 @@ export const createRepositories = async (
   options: PortGuardOptions = {},
 ): Promise<Repositories> => {
   switch (selection.kind) {
-    case "file":
+    case "file": {
+      const store = createFileStore({
+        filePath: selection.filePath,
+        permissions: selection.permissions,
+        ...(options.logger === undefined ? {} : { logger: options.logger }),
+      });
+      // TASK-921: a symlinked or, when so configured, loose data file is a
+      // startup failure, not a surprise on the first request.
+      await store.verify();
       return {
-        repositories: guardRepositories(
-          "file",
-          repositorySetOf(createFileStore({ filePath: selection.filePath })),
-          options,
-        ),
+        repositories: guardRepositories("file", repositorySetOf(store), options),
         selection,
         close: () => Promise.resolve(),
       };
+    }
     case "memory":
       return {
         repositories: guardRepositories("memory", repositorySetOf(createMemoryStore()), options),
