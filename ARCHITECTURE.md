@@ -759,6 +759,20 @@ durable — a durable queue is the deferred SQS adapter — so at startup
 check the proposal first), and keeps the runs waiting on a human
 (`resolving`, `awaiting_approval`), which the next request continues.
 
+What a run says when infrastructure fails (TASK-924, AUD-011): a thrown
+error is an infrastructure fault by convention, and its text — a driver's
+message, a host, a file path, the boundary that failed — belongs in the
+operator's log, not in a job run a coordinator reads. The queue therefore
+carries two texts on a transition: `reason`, the raw
+`describeFailure` line for operators (also the record's `lastError`), and
+`userReason`, `describeFailureForUser`'s one fixed sentence plus the
+correlation ID. `bindQueueToJobTracker` writes `userReason` into the run
+and logs `reason` once as `job_infrastructure_failure` with the job,
+queue-job, production, and correlation IDs. A handler's own verdict (a
+`FAILED` outcome, a use-case error) is domain text and reaches the run as
+it is — "Proposal P-1 is invalid: …" is for the coordinator; "socket hang
+up" is not.
+
 ## 11. Realtime/WebSocket
 
 WebSocket publishes job state and user-visible events.

@@ -4,7 +4,13 @@ import { createMemoryStore } from "@pca/memory-store";
 import { withFault, withRepositoryFault } from "@pca/test-support";
 
 import type { LogFields, LogLevel } from "../src";
-import { InfrastructureError, describeFailure, guardPort, guardRepositories } from "../src";
+import {
+  InfrastructureError,
+  describeFailure,
+  describeFailureForUser,
+  guardPort,
+  guardRepositories,
+} from "../src";
 
 /** Collects log lines instead of printing them, so a test can assert on shape. */
 const recordingLogger = (): {
@@ -153,5 +159,23 @@ describe("guardPort / guardRepositories timing (TASK-804)", () => {
 
     expect(logger.lines).toHaveLength(1);
     expect(logger.lines[0]?.fields["boundary"]).toBe("memory.productions.loadState");
+  });
+});
+
+describe("describeFailureForUser (TASK-924)", () => {
+  it("says a fault happened and where to point an operator, never what the fault was", () => {
+    const fault = new InfrastructureError(
+      "mongo.productions.commit",
+      new Error("ECONNREFUSED 10.0.0.9:27017"),
+    );
+    const text = describeFailureForUser(fault, "corr-7");
+    expect(text).toBe(
+      "A storage or service fault interrupted this step (correlation corr-7). Retry; if it happens again, give the correlation ID to an operator.",
+    );
+    expect(text).not.toContain("mongo");
+    expect(text).not.toContain("10.0.0.9");
+    expect(describeFailureForUser(new Error("/var/data/pca/data.json: EACCES"))).not.toContain(
+      "/var",
+    );
   });
 });

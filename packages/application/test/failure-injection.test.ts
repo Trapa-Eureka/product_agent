@@ -171,7 +171,10 @@ describe("failure injection", () => {
         policy: { maxAttempts: 3, retryDelayMs: () => 0 },
       });
       const tracker = createJobTracker({ repository: createMemoryJobRunRepository(), clock, ids });
-      bindQueueToJobTracker(queue, tracker);
+      const logged: Record<string, unknown>[] = [];
+      bindQueueToJobTracker(queue, tracker, {
+        logger: { log: (_level, event, fields) => logged.push({ event, ...fields }) },
+      });
       queue.register("APPLY_PROPOSAL", createApplyProposalJobHandler({ tracker, apply, verify }));
       const run = await tracker.start({
         productionId: DEMO,
@@ -199,10 +202,23 @@ describe("failure injection", () => {
 
       const final = (await tracker.get(run.id)) as JobRun;
       expect(final.stage).toBe("completed");
+      // TASK-924: the run shows the fixed sentence and the correlation ID; the
+      // boundary and the cause go to the operator's log, once.
       const retry = final.history.find((event) => event.message?.startsWith("Retrying"));
       expect(retry?.message).toBe(
-        `Retrying (attempt 2): memory.applyProposalTransaction failed: socket hang up (correlation ${CORR})`,
+        `Retrying (attempt 2): A storage or service fault interrupted this step (correlation ${CORR}). Retry; if it happens again, give the correlation ID to an operator.`,
       );
+      expect(JSON.stringify(final)).not.toContain("socket hang up");
+      expect(JSON.stringify(final)).not.toContain("applyProposalTransaction");
+      expect(logged).toEqual([
+        expect.objectContaining({
+          event: "job_infrastructure_failure",
+          jobId: run.id,
+          correlationId: CORR,
+          attempt: 2,
+          reason: `memory.applyProposalTransaction failed: socket hang up (correlation ${CORR})`,
+        }),
+      ]);
       expect(retry?.correlationId).toBe(CORR);
       expect(faulty.failures()).toBe(1);
       expect((await store.productions.loadState(DEMO))?.production.version).toBe(2);
@@ -317,7 +333,7 @@ describe("failure injection", () => {
   });
 
   describe("queue retry", () => {
-    it("exhausted attempts dead-letter the job and fail the run with the boundary and correlation ID", async () => {
+    it("exhausted attempts dead-letter the job with the boundary, and fail the run with only the correlation ID", async () => {
       const queue = createMemoryQueue({
         clock,
         ids,
@@ -352,7 +368,12 @@ describe("failure injection", () => {
       );
       const final = (await tracker.get(run.id)) as JobRun;
       expect(final.stage).toBe("failed");
-      expect(final.message).toContain("mongo.changeRequests.save");
+      // TASK-924: the queue record keeps the boundary for operators; the run a
+      // coordinator reads says a fault happened and gives the correlation ID.
+      expect(final.message).toContain("Gave up after 2 attempts");
+      expect(final.message).toContain("A storage or service fault interrupted this step");
+      expect(final.message).not.toContain("mongo.changeRequests.save");
+      expect(final.message).not.toContain("write conflict");
       expect(final.message).toContain(CORR);
       expect(final.history.every((event) => event.correlationId === CORR)).toBe(true);
     });

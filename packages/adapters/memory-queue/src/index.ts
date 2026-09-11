@@ -18,6 +18,7 @@ import type {
 import {
   DEFAULT_QUEUE_POLICY,
   describeFailure,
+  describeFailureForUser,
   randomIdFactory,
   systemClock,
   timerScheduler,
@@ -120,6 +121,7 @@ export const createMemoryQueue = (options: MemoryQueueOptions = {}): MemoryQueue
     to: JobState,
     reason?: string,
     from: JobState | null = record.state,
+    userReason?: string,
   ): void => {
     record.state = to;
     record.updatedAt = clock.now();
@@ -134,6 +136,7 @@ export const createMemoryQueue = (options: MemoryQueueOptions = {}): MemoryQueue
       to,
       attempt: record.job.attempt,
       ...(reason === undefined ? {} : { reason }),
+      ...(reason === undefined ? {} : { userReason: userReason ?? reason }),
       occurredAt: record.updatedAt,
     };
     for (const listener of listeners) listener(event);
@@ -145,9 +148,9 @@ export const createMemoryQueue = (options: MemoryQueueOptions = {}): MemoryQueue
     }, delayMs);
   };
 
-  const requeue = (record: MutableRecord, reason: string): void => {
+  const requeue = (record: MutableRecord, reason: string, userReason?: string): void => {
     record.job = { ...record.job, attempt: record.job.attempt + 1 };
-    transition(record, "QUEUED", reason);
+    transition(record, "QUEUED", reason, record.state, userReason);
     const jobId = record.job.id;
     if (!started) {
       ready.push(jobId);
@@ -171,7 +174,7 @@ export const createMemoryQueue = (options: MemoryQueueOptions = {}): MemoryQueue
         return;
       case "RETRY":
         if (record.job.attempt < policy.maxAttempts) {
-          requeue(record, outcome.reason);
+          requeue(record, outcome.reason, outcome.userReason);
           return;
         }
         record.deadLettered = true;
@@ -180,6 +183,8 @@ export const createMemoryQueue = (options: MemoryQueueOptions = {}): MemoryQueue
           record,
           "FAILED",
           `Gave up after ${policy.maxAttempts} attempts. Last reason: ${outcome.reason}`,
+          record.state,
+          `Gave up after ${policy.maxAttempts} attempts. Last reason: ${outcome.userReason ?? outcome.reason}`,
         );
     }
   };
@@ -202,7 +207,12 @@ export const createMemoryQueue = (options: MemoryQueueOptions = {}): MemoryQueue
       outcome = await handler({ ...record.job });
     } catch (error) {
       // The reason names the boundary that failed and the request it failed in.
-      outcome = { kind: "RETRY", reason: describeFailure(error, record.job.correlationId) };
+      outcome = {
+        kind: "RETRY",
+        reason: describeFailure(error, record.job.correlationId),
+        // TASK-924: the run a coordinator reads gets the fixed sentence; the raw cause stays in `reason`.
+        userReason: describeFailureForUser(error, record.job.correlationId),
+      };
     }
     settle(record, outcome);
     return true;
