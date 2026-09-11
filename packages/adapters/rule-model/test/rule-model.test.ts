@@ -139,6 +139,89 @@ describe("ambiguity is returned, not guessed", () => {
   });
 });
 
+describe("date ranges (TASK-908: code review #9)", () => {
+  const fridayToTuesday = { start: friday, end: tuesday };
+
+  it.each([
+    ["Sarah cannot shoot 2026-09-18 to 2026-09-22", cast.sarah, fridayToTuesday],
+    ["Sarah is out September 18 through September 22.", cast.sarah, fridayToTuesday],
+    ["John is unavailable September 18–22", cast.john, fridayToTuesday],
+    ["Sarah cannot shoot Friday through Monday.", cast.sarah, { start: friday, end: monday }],
+    ["Sarah cannot shoot Friday until Tuesday.", cast.sarah, fridayToTuesday],
+  ])("%s keeps the whole range, not just its first day", (text, castId, unavailable) => {
+    expect(interpret(text)).toMatchObject({
+      kind: "RESOLVED",
+      change: { type: "CAST_UNAVAILABLE", castId, unavailable },
+    });
+  });
+
+  it("resolves a location range too", () => {
+    expect(interpret("The warehouse is closed 2026-09-18 - 2026-09-21")).toMatchObject({
+      kind: "RESOLVED",
+      change: {
+        type: "LOCATION_UNAVAILABLE",
+        locationId: locations.warehouse,
+        unavailable: { start: friday, end: monday },
+      },
+    });
+  });
+
+  it.each([
+    ["Sarah cannot shoot 2026-09-22 to 2026-09-18", "ends (2026-09-18) before it starts"],
+    ["Sarah cannot shoot 2026-13-45", "2026-13-45 is not a real date"],
+    ["Sarah cannot shoot 2026-09-18 to 2026-09-31", "2026-09-31 is not a real date"],
+    ["Sarah cannot shoot Friday through Wednesday", "No shoot day falls on a wednesday after"],
+  ])("%s is refused with the reason, never truncated", (text, reason) => {
+    const result = interpret(text);
+    expect(result.kind).toBe("UNSUPPORTED");
+    if (result.kind !== "UNSUPPORTED") return;
+    expect(result.reason).toContain(reason);
+  });
+
+  it("asks for dates when the first weekday of a range matches several shoot days", () => {
+    const result = interpret("Sarah cannot shoot Friday through Monday", {
+      shootDays: [...context.shootDays, { id: "SD-2026-09-25", date: "2026-09-25" }],
+    });
+    expect(result).toMatchObject({ kind: "UNSUPPORTED" });
+    if (result.kind !== "UNSUPPORTED") return;
+    expect(result.reason).toContain("More than one shoot day falls on a friday");
+  });
+});
+
+describe("positive availability is refused, never inverted (TASK-908: code review #9)", () => {
+  it.each([
+    "Sarah is available Friday.",
+    "Sarah is available again on Friday",
+    "The warehouse is available Friday.",
+    "John and Sarah are available Friday",
+    "Sarah can shoot Friday.",
+    "Sarah is free Friday",
+  ])("%s", (text) => {
+    const result = interpret(text);
+    expect(result.kind).toBe("UNSUPPORTED");
+    if (result.kind !== "UNSUPPORTED") return;
+    expect(result.reason).toContain("is available");
+    expect(result.reason).toContain("Only unavailability can be recorded");
+  });
+
+  it.each([
+    ["Sarah is not available Friday", cast.sarah],
+    ["Sarah isn't available Friday", cast.sarah],
+    ["John and Sarah aren't available Friday", cast.john],
+  ])("%s still resolves as unavailability", (text, castId) => {
+    const result = interpret(text);
+    // Two people → ambiguity; one → resolved. Either way, the negative reading held.
+    if (result.kind === "AMBIGUOUS") {
+      expect(result.options.every((o) => o.change.type === "CAST_UNAVAILABLE")).toBe(true);
+      return;
+    }
+    expect(result).toMatchObject({
+      kind: "RESOLVED",
+      change: { type: "CAST_UNAVAILABLE", castId },
+    });
+  });
+});
+
 describe("unsupported is honest", () => {
   it.each([
     ["Please reschedule everything.", "Availability sentences"],

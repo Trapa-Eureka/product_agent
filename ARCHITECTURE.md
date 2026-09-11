@@ -439,6 +439,16 @@ answer is schema-validated and grounded before anything downstream sees it:
 Adapters therefore stay simple. The rule-based adapter, a local Ollama, and
 Bedrock all sit behind the same guard, and the guarantee is tested once.
 
+The rule-based adapter reads intent, not just keywords (TASK-908, post-review
+remediation in TASKS.md): its unavailability pattern matches negative forms
+only, and a sentence that says someone is *available* is refused as
+UNSUPPORTED with a reason — there is no "available again" change type, and
+"is available" must never be recorded as its opposite. Date ranges ("2026-09-18
+to 2026-09-22", "September 18–22", "Friday through Monday") are parsed before
+single dates and kept whole, with both ends validated and an end before its
+start refused, where the first day alone used to be taken and the rest of the
+constraint silently dropped.
+
 ## 8. Change engine
 
 The change engine is deterministic.
