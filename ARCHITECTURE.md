@@ -580,7 +580,15 @@ until someone repaired the file by hand; a restart did not recover it.
 
 Entity rows in Mongo use a composite `_id` of `productionId::id`, so an entity
 ID that repeats across productions is two rows rather than a collision, and
-every read still filters by `productionId`. Audit rows keep Mongo's own
+every read still filters by `productionId`. Because entity IDs may themselves
+contain colons, each part is escaped before the separator is applied
+(`scopedRecordKey` in `@pca/application`, TASK-907): `%` first, then `:` as
+`%3A`, so `(A, B::P)` and `(A::B, P)` are two keys and an escape cannot be
+forged. `%` is outside the entity-ID alphabet, so an ID without a colon encodes
+to exactly the string rows were always written with — no migration. The memory
+store's maps use the same encoding; the file store, whose workflow arrays hold
+every production's records, compares `productionId` and `id` together instead
+of `id` alone. Audit rows keep Mongo's own
 ObjectId, which increases with insertion order, so "newest first" stays correct
 when two events share a timestamp.
 

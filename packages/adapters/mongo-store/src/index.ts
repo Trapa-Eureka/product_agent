@@ -31,7 +31,7 @@ import type {
   ProposalRepository,
   RepositorySet,
 } from "@pca/application";
-import { assertBelongsToProduction } from "@pca/application";
+import { assertBelongsToProduction, scopedRecordKey } from "@pca/application";
 import type { IdempotencyRecord, ProductionState } from "@pca/domain";
 import {
   MongoClient,
@@ -93,7 +93,12 @@ type EntityRow<T> = T & { _id: string };
 /** An untyped row whose `_id` is our composite string key, not an ObjectId. */
 type KeyedDocument = Document & { _id: string };
 
-const rowId = (productionId: EntityId, id: string): string => `${productionId}::${id}`;
+/**
+ * TASK-907 (code review #8 / AUD-005): the shared unambiguous encoding. An ID
+ * without a colon encodes to the very same `productionId::id` string rows
+ * were written with, so no migration; one with a colon no longer collides.
+ */
+const rowId = (productionId: EntityId, id: string): string => scopedRecordKey(productionId, id);
 
 const toRow = <T extends { id: EntityId; productionId: EntityId }>(record: T): EntityRow<T> => ({
   _id: rowId(record.productionId, record.id),

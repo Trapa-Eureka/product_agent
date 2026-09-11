@@ -728,6 +728,15 @@ Complete, at both ends of the path. The store: `FileStore.#write` parses the com
 
 4 new tests: file store — a 129-character correlation ID is refused with the field named, the production still loads, the record is absent, no stray files; API contract — an over-long correlation header yields 200 with a fresh `corr-` ID, an over-long actor header yields 400 `INVALID_INPUT` naming `X-Actor-Id`, both still echoing a valid correlation ID; MCP context — a valid `PCA_ACTOR_ID` is accepted, an over-long or empty one throws at startup naming the variable. `pnpm run verify` passes (9/9).
 
+## TASK-907 Record identity scoped by production in every adapter — DONE
+
+Code review finding #8 (High) / AUD-005 (High): production isolation (INV-4) is an authorization boundary, and record identity was not consistently scoped by it. The file store's `replaceById` matched workflow records on `id` alone although its arrays hold every production's records, so production A's proposal `P-104` overwrote production B's. The memory store and Mongo built flat keys as the unescaped string `${productionId}::${id}`, and entity IDs may contain colons, so `(A, B::P)` and `(A::B, P)` were one key. ID generation makes this rare in ordinary runtime; imports, fixtures, deterministic IDs, and colon-bearing IDs make it reachable.
+
+**Status**  
+Complete. `scopedRecordKey(productionId, id)` (`@pca/application`, beside `assertBelongsToProduction`) is the one encoding every flat-keyed adapter uses: each part has `%` escaped first and then `:` as `%3A`, so the separator is unambiguous and an escape cannot be forged from inside an ID. `%` is outside the entity-ID alphabet, so an ID without a colon encodes to exactly the `productionId::id` string Mongo rows were always written with — existing data keeps its `_id`, no migration, and the report's alternative of a structured `_id` (which would have required one) was not needed. Mongo's `rowId` and the memory store's `scopedKey` delegate to it; the file store's `replaceById` now compares `productionId` and `id` together. No unique compound index was added on the entity collections: with the escaped `_id`, `_id` uniqueness already is `(productionId, id)` uniqueness.
+
+6 new tests: 3 in the shared repository contract, run against file, memory, and a real Mongo replica set — a proposal ID and a change-request ID that repeat across two productions stay two records each, and `(A, B::P)` versus `(A::B, P)` resolve to their own records with `(A, P)` absent; 3 unit tests on the encoding itself — colon-free IDs encode byte-for-byte as before, the two colliding tuples differ, and the escape character is escaped first. `pnpm run verify` passes (9/9).
+
 ---
 
 # Parallelization guidance
