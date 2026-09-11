@@ -33,6 +33,8 @@ export type StartJobInput = {
   readonly message?: string;
   readonly changeRequestId?: string;
   readonly proposalId?: string;
+  /** The verified principal starting the job (TASK-919). */
+  readonly requestedBy?: string;
 };
 
 export interface JobTracker {
@@ -104,6 +106,7 @@ export const createJobTracker = (dependencies: {
         ...(input.message === undefined ? {} : { message: input.message }),
         ...(input.changeRequestId === undefined ? {} : { changeRequestId: input.changeRequestId }),
         ...(input.proposalId === undefined ? {} : { proposalId: input.proposalId }),
+        ...(input.requestedBy === undefined ? {} : { requestedBy: input.requestedBy }),
       });
       await repository.save(started.run);
       publish(started.events);

@@ -192,6 +192,15 @@ export const createApplyProposalJobHandler = (dependencies: {
 
     const run = await tracker.get(jobId);
     if (run === null) return { kind: "FAILED", reason: `Job ${jobId} was never started.` };
+    // TASK-919 (SEC-008 / AUD-012): a payload naming another proposal must
+    // not advance this run — and must not fail it either, since the run is
+    // someone else's timeline. The queue job alone fails.
+    if (run.proposalId !== undefined && run.proposalId !== payload.proposalId) {
+      return {
+        kind: "FAILED",
+        reason: `Job ${jobId} belongs to proposal ${run.proposalId}, not ${payload.proposalId}; the run was left untouched.`,
+      };
+    }
     if (isTerminalStage(run.stage)) return { kind: "COMPLETED" };
     if (
       run.stage !== "awaiting_approval" &&
@@ -204,7 +213,17 @@ export const createApplyProposalJobHandler = (dependencies: {
     }
 
     if (run.stage === "awaiting_approval") {
-      await tracker.advance(jobId, "applying", { proposalId: payload.proposalId });
+      // Compare-and-set: the move lands only if the run is still awaiting
+      // approval for this very proposal at the moment of writing.
+      // A run that recorded its proposal is held to it; one that has none
+      // yet (a job started by hand) records this one.
+      await tracker.advance(jobId, "applying", {
+        proposalId: payload.proposalId,
+        expect: {
+          stage: "awaiting_approval",
+          ...(run.proposalId === undefined ? {} : { proposalId: payload.proposalId }),
+        },
+      });
     }
 
     // Redelivered at `verifying`: the apply already committed; do not repeat it.
@@ -247,6 +266,12 @@ export const createVerifyProposalJobHandler = (dependencies: {
 
     const run = await tracker.get(jobId);
     if (run === null) return { kind: "FAILED", reason: `Job ${jobId} was never started.` };
+    if (run.proposalId !== undefined && run.proposalId !== proposalId) {
+      return {
+        kind: "FAILED",
+        reason: `Job ${jobId} belongs to proposal ${run.proposalId}, not ${proposalId}; the run was left untouched.`,
+      };
+    }
     if (isTerminalStage(run.stage)) return { kind: "COMPLETED" };
     if (run.stage !== "verifying") {
       const reason = `Job ${jobId} is at ${run.stage}; only an applied job can be verified.`;

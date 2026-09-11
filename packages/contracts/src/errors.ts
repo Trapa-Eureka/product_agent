@@ -25,6 +25,8 @@ export const toolErrorCodeSchema = z.enum([
   "UNAUTHENTICATED",
   /** The caller exceeded a request quota (TASK-917). HTTP 429 with Retry-After; never returned by an MCP tool. */
   "RATE_LIMITED",
+  /** The named job is not the one for this proposal, type, or stage (TASK-919). HTTP 409; never returned by an MCP tool. */
+  "JOB_MISMATCH",
   "INVALID_INPUT",
   "INTERNAL_ERROR",
 ]);

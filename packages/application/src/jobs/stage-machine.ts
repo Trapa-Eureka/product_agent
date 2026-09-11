@@ -100,6 +100,7 @@ export type StartJobRunInput = {
   readonly message?: string;
   readonly changeRequestId?: string;
   readonly proposalId?: string;
+  readonly requestedBy?: string;
 };
 
 const event = (
@@ -134,6 +135,7 @@ export const startJobRun = (input: StartJobRunInput): StageMove => {
     ...(input.message === undefined ? {} : { message: input.message }),
     ...(input.changeRequestId === undefined ? {} : { changeRequestId: input.changeRequestId }),
     ...(input.proposalId === undefined ? {} : { proposalId: input.proposalId }),
+    ...(input.requestedBy === undefined ? {} : { requestedBy: input.requestedBy }),
     history: [started],
     createdAt: input.now,
     updatedAt: input.now,
@@ -141,10 +143,50 @@ export const startJobRun = (input: StartJobRunInput): StageMove => {
   return { run, events: [started] };
 };
 
+/**
+ * What a move expects the run to be at the moment of writing (TASK-919).
+ * Checked inside the atomic update, so a decision or apply that continues a
+ * job cannot land on a run that meanwhile moved on or belongs to another
+ * proposal: the whole move is a compare-and-set.
+ */
+export type JobExpectation = {
+  readonly stage?: JobStage;
+  readonly proposalId?: string;
+};
+
+export class JobBindingError extends Error {
+  readonly code = "JOB_MISMATCH";
+
+  constructor(
+    readonly jobId: string,
+    readonly detail: string,
+  ) {
+    super(`Job ${jobId} ${detail}`);
+    this.name = "JobBindingError";
+  }
+}
+
+/** Throws `JobBindingError` when the run is not what the caller expects. */
+export const assertJobExpectation = (run: JobRun, expect: JobExpectation): void => {
+  if (expect.stage !== undefined && run.stage !== expect.stage) {
+    throw new JobBindingError(run.id, `is at ${run.stage}, not ${expect.stage}.`);
+  }
+  if (expect.proposalId !== undefined && run.proposalId !== expect.proposalId) {
+    throw new JobBindingError(
+      run.id,
+      run.proposalId === undefined
+        ? "has no proposal yet."
+        : `belongs to proposal ${run.proposalId}, not ${expect.proposalId}.`,
+    );
+  }
+};
+
 export type AdvanceOptions = {
   readonly message?: string;
   readonly changeRequestId?: string;
   readonly proposalId?: string;
+  /** Refuse the move unless the run matches, checked atomically with the write (TASK-919). */
+  readonly expect?: JobExpectation;
   /** The DESIGN.md §4 proposal card (TASK-504), set on the move into `awaiting_approval`. */
   readonly explanation?: ProposalExplanation;
   /** The ranked/rejected shoot days behind a scheduling proposal (TASK-504). */
@@ -161,6 +203,7 @@ export const advanceJobRun = (
   now: IsoDateTime,
   options: AdvanceOptions = {},
 ): StageMove => {
+  if (options.expect !== undefined) assertJobExpectation(run, options.expect);
   if (!canAdvance(run.stage, to)) throw new JobStageError(run.id, run.stage, to);
   const left = event(run, run.stage, "COMPLETED", now);
   const entered =

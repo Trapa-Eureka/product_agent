@@ -616,6 +616,157 @@ describe("REST API", () => {
       ).toBe("awaiting_approval");
     });
 
+    it("TASK-919: a decision or apply continues only the job that produced that proposal, at its stage", async () => {
+      // Two analyses, two proposals, two jobs.
+      const first = (
+        (await api("POST", `/productions/${DEMO}/changes`, { text: "Sarah cannot shoot Friday." }))
+          .body as { job: { id: string } }
+      ).job;
+      await queue.drain();
+      await settle();
+      const firstRun = (await api("GET", `/productions/${DEMO}/jobs/${first.id}`)).body as {
+        proposalId: string;
+        history: unknown[];
+      };
+      const second = (
+        (
+          await api("POST", `/productions/${DEMO}/changes`, {
+            text: "Scene 18 now needs a red car.",
+          })
+        ).body as { job: { id: string } }
+      ).job;
+      await queue.drain();
+      await settle();
+      const secondRun = (await api("GET", `/productions/${DEMO}/jobs/${second.id}`)).body as {
+        proposalId: string;
+      };
+      expect(secondRun.proposalId).not.toBe(firstRun.proposalId);
+
+      // Rejecting the first proposal "through" the second job changes neither.
+      const crossed = await api(
+        "POST",
+        `/productions/${DEMO}/proposals/${firstRun.proposalId}/decision`,
+        { decision: "REJECT", jobId: second.id },
+      );
+      expect(crossed.status).toBe(409);
+      expect(errorOf(crossed)).toMatchObject({
+        code: "JOB_MISMATCH",
+        expected: firstRun.proposalId,
+        actual: secondRun.proposalId,
+      });
+      expect(await store.approvals.findByProposalId(DEMO, firstRun.proposalId)).toBeNull();
+      expect((await api("GET", `/productions/${DEMO}/jobs/${second.id}`)).body).toMatchObject({
+        stage: "awaiting_approval",
+      });
+
+      // Applying the first proposal with the second job is refused the same way, nothing enqueued.
+      const approved = (
+        (
+          await api("POST", `/productions/${DEMO}/proposals/${firstRun.proposalId}/decision`, {
+            decision: "APPROVE",
+          })
+        ).body as { approval: { id: string } }
+      ).approval;
+      const jobsBefore = (await queue.listJobs()).length;
+      const wrongJob = await api(
+        "POST",
+        `/productions/${DEMO}/proposals/${firstRun.proposalId}/apply`,
+        {
+          approvalId: approved.id,
+          expectedProductionVersion: 1,
+          idempotencyKey: "idem-key-cross",
+          jobId: second.id,
+        },
+      );
+      expect(wrongJob.status).toBe(409);
+      expect(errorOf(wrongJob).code).toBe("JOB_MISMATCH");
+      expect((await queue.listJobs()).length).toBe(jobsBefore);
+
+      // The right job applies; a replay of the same apply is answered with the run, not enqueued twice.
+      const applying = await api(
+        "POST",
+        `/productions/${DEMO}/proposals/${firstRun.proposalId}/apply`,
+        {
+          approvalId: approved.id,
+          expectedProductionVersion: 1,
+          idempotencyKey: "idem-key-right",
+          jobId: first.id,
+        },
+      );
+      expect(applying.status).toBe(202);
+      await queue.drain();
+      await settle();
+      const replay = await api(
+        "POST",
+        `/productions/${DEMO}/proposals/${firstRun.proposalId}/apply`,
+        {
+          approvalId: approved.id,
+          expectedProductionVersion: 1,
+          idempotencyKey: "idem-key-right",
+          jobId: first.id,
+        },
+      );
+      expect(replay.status).toBe(202);
+      expect((replay.body as { job: { stage: string } }).job.stage).toBe("completed");
+      expect((await queue.listJobs()).length).toBe(jobsBefore + 1);
+    });
+
+    it("TASK-919: a job is resumed only by the principal who started it, and only at resolving", async () => {
+      const state = createDemoMovie();
+      await store.productions.save({
+        ...state,
+        castMembers: [
+          ...state.castMembers,
+          { id: "CAST-SARAH-2", productionId: DEMO, name: "Sarah", unavailable: [] },
+        ],
+      });
+      const job = (
+        (await api("POST", `/productions/${DEMO}/changes`, { text: "Sarah cannot shoot Friday." }))
+          .body as { job: { id: string } }
+      ).job;
+      await queue.drain();
+      await settle();
+      expect((await api("GET", `/productions/${DEMO}/jobs/${job.id}`)).body).toMatchObject({
+        stage: "resolving",
+        requestedBy: "jinho@example.test",
+      });
+
+      const mina = tokenFor(principal("mina@example.test", { productions: [DEMO] }));
+      const stolen = await api(
+        "POST",
+        `/productions/${DEMO}/changes`,
+        {
+          text: "Sarah cannot shoot Friday.",
+          change: { type: "CAST_UNAVAILABLE", castId: cast.sarah, unavailable: onDay(friday) },
+          jobId: job.id,
+        },
+        { authorization: `Bearer ${mina}` },
+      );
+      expect(stolen.status).toBe(403);
+      expect(errorOf(stolen).message).toContain("only they may resume it");
+
+      // A job not waiting at resolving cannot be "resumed" either.
+      const done = (
+        (
+          await api("POST", `/productions/${DEMO}/changes`, {
+            text: "Scene 18 now needs a red car.",
+          })
+        ).body as { job: { id: string } }
+      ).job;
+      await queue.drain();
+      await settle();
+      const notWaiting = await api("POST", `/productions/${DEMO}/changes`, {
+        text: "Scene 18 now needs a red car.",
+        change: { type: "CAST_UNAVAILABLE", castId: cast.sarah, unavailable: onDay(friday) },
+        jobId: done.id,
+      });
+      expect(notWaiting.status).toBe(409);
+      expect(errorOf(notWaiting)).toMatchObject({
+        code: "JOB_MISMATCH",
+        actual: "awaiting_approval",
+      });
+    });
+
     it("refuses a job it does not know, and an unknown job for apply", async () => {
       const resume = await api("POST", `/productions/${DEMO}/changes`, {
         text: "x",
