@@ -453,13 +453,19 @@ CONSTRAINT_VIOLATION
 IDEMPOTENCY_CONFLICT
 TOOL_UNAUTHORIZED
 UNAUTHENTICATED
+RATE_LIMITED
+JOB_MISMATCH
 INVALID_INPUT
 INTERNAL_ERROR
 ```
 
-`UNAUTHENTICATED` is the REST API's answer (HTTP 401) to a call with no
-verifiable access token (TASK-914); an MCP tool never returns it, because the
-MCP server's identity is fixed by the operator who started it.
+Three codes are the REST API's alone and an MCP tool never returns them:
+`UNAUTHENTICATED` (HTTP 401) for a call with no verifiable access token
+(TASK-914) — the MCP server's identity is fixed by the operator who started
+it; `RATE_LIMITED` (429, with `Retry-After`) for a caller over its quota
+(TASK-917); and `JOB_MISMATCH` (409) when the job a decision, apply, or
+resumed change names is not the one that produced that proposal, of that
+type, at that stage (TASK-919) — MCP tools do not touch jobs.
 
 Schemas for every tool live in `packages/contracts`, registered in
 `MCP_TOOL_CONTRACTS`. The server registers tools from that registry and the

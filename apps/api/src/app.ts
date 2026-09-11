@@ -17,13 +17,13 @@ import type {
   UseCaseResult,
 } from "@pca/application";
 import {
-  canAdvance,
   createAnalyzeChangeImpact,
   createApplyApprovedProposal,
   createDecideProposal,
   createGetJobRun,
   createGetRecoverySnapshot,
   createSubmitChangeRequest,
+  describeJobMismatch,
 } from "@pca/application";
 import type { EntityId, Principal, PrincipalRole, ToolError } from "@pca/contracts";
 import {
@@ -574,9 +574,25 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
       sendError(response, invalidInput(message, path), call.correlationId);
       return;
     }
+    const proposalId = request.params["proposalId"];
+    // TASK-919: the job named must be the analysis that produced this very
+    // proposal, still awaiting the decision (or already closed, for a
+    // replay) — checked before the decision so a mismatch changes nothing.
+    if (parsed.data.jobId !== undefined) {
+      const mismatch = describeJobMismatch(await tracker.get(parsed.data.jobId), {
+        productionId,
+        type: "ANALYZE_CHANGE",
+        proposalId,
+        stages: ["awaiting_approval", "completed", "failed"],
+      });
+      if (mismatch !== null) {
+        sendError(response, mismatch, call.correlationId);
+        return;
+      }
+    }
     const result = await decide({
       productionId,
-      proposalId: request.params["proposalId"],
+      proposalId,
       decision: parsed.data.decision,
       decidedBy: {
         subject: call.principal.subject,
@@ -587,12 +603,15 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
     });
     if (result.ok && parsed.data.decision === "REJECT" && parsed.data.jobId !== undefined) {
       // Best-effort bookkeeping: the decision itself already succeeded either way.
-      // Idempotent by construction — a replayed reject finds the job already completed
-      // and canAdvance refuses the edge, so this never double-completes it.
+      // Idempotent by construction — a replayed reject finds the job already closed
+      // and the expectation refuses the move, so this never double-completes it.
       const run = await tracker.get(parsed.data.jobId);
-      if (run !== null && run.productionId === productionId && canAdvance(run.stage, "completed")) {
+      if (run !== null && run.stage === "awaiting_approval") {
         await tracker
-          .advance(parsed.data.jobId, "completed", { message: "Rejected; nothing will change." })
+          .advance(parsed.data.jobId, "completed", {
+            message: "Rejected; nothing will change.",
+            expect: { stage: "awaiting_approval", proposalId },
+          })
           .catch((error: unknown) => {
             logger.log("warn", "job_reject_advance_failed", {
               jobId: parsed.data.jobId,
@@ -629,16 +648,21 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
       return;
     }
     const run = await tracker.get(jobId);
-    if (run === null || run.productionId !== productionId) {
-      sendError(
-        response,
-        {
-          code: "ENTITY_NOT_FOUND",
-          message: `Job ${jobId} does not exist in production ${productionId}.`,
-          nextStep: "List the production's jobs and use one of them.",
-        },
-        call.correlationId,
-      );
+    // TASK-919: only the analysis that produced this proposal, and only
+    // from awaiting_approval; a job already applying, verifying, or done
+    // for this same proposal is a replay and is answered with its run.
+    const mismatch = describeJobMismatch(run, {
+      productionId,
+      type: "ANALYZE_CHANGE",
+      proposalId,
+      stages: ["awaiting_approval", "applying", "verifying", "completed"],
+    });
+    if (mismatch !== null || run === null) {
+      sendError(response, mismatch ?? invalidInput("Job is missing."), call.correlationId);
+      return;
+    }
+    if (run.stage !== "awaiting_approval") {
+      response.status(202).json({ job: run });
       return;
     }
     await queue.enqueue({
@@ -663,22 +687,24 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
     }
     const { text, change, jobId } = parsed.data;
     let run = jobId === undefined ? null : await tracker.get(jobId);
-    if (jobId !== undefined && (run === null || run.productionId !== productionId)) {
-      sendError(
-        response,
-        {
-          code: "ENTITY_NOT_FOUND",
-          message: `Job ${jobId} does not exist in production ${productionId}.`,
-          nextStep: "Omit jobId to start a new job.",
-        },
-        call.correlationId,
-      );
-      return;
+    if (jobId !== undefined) {
+      // TASK-919: resuming continues one's own analysis, waiting at resolving.
+      const mismatch = describeJobMismatch(run, {
+        productionId,
+        type: "ANALYZE_CHANGE",
+        stages: ["resolving"],
+        requestedBy: call.actorId,
+      });
+      if (mismatch !== null) {
+        sendError(response, mismatch, call.correlationId);
+        return;
+      }
     }
     run ??= await tracker.start({
       productionId,
       correlationId: call.correlationId,
       type: "ANALYZE_CHANGE",
+      requestedBy: call.actorId,
     });
     await queue.enqueue({
       type: "ANALYZE_CHANGE",

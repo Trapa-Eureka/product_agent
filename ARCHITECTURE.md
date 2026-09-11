@@ -328,7 +328,16 @@ writes under a production to the verified principal
 in-process fixed window; request and header timeouts drop a stalled
 connection; the JSON body stays at 256 KiB; and every externally supplied
 array has a documented maximum (`INPUT_LIMITS`, MCP.md §3), so a body cannot
-carry thousands of scene IDs into analysis.
+carry thousands of scene IDs into analysis. A job named by a decision, an
+apply, or a resumed change is bound to what it claims (TASK-919,
+`describeJobMismatch`): it must be the analysis that produced that exact
+proposal, at a stage where the action makes sense (`JOB_MISMATCH`, 409,
+otherwise, before either the job or the proposal is touched), a resumed
+change must come from the principal who started the job (`requestedBy`, now
+on every run), and the move itself carries the same expectation into the
+atomic update (`AdvanceOptions.expect`), so it is a compare-and-set; a
+queue handler whose payload names another proposal fails the queue job and
+leaves the run alone.
 
 ### Angular UI
 

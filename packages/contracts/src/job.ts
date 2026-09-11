@@ -113,6 +113,8 @@ export const jobRunSchema = z.strictObject({
   message: explanationSchema.optional(),
   changeRequestId: entityIdSchema.optional(),
   proposalId: entityIdSchema.optional(),
+  /** The verified principal who started the job (TASK-919); only they may resume it. Absent on runs started before identities were verified. */
+  requestedBy: z.string().min(1).max(200).optional(),
   options: z.array(interpretationOptionSchema).optional(),
   explanation: proposalExplanationSchema.optional(),
   candidateComparison: candidateComparisonSchema.optional(),

@@ -149,7 +149,11 @@ refused with 403 before any socket, the server's own and a listed origin
 accepted, a query-string token without an Origin refused while a header
 token may omit it; TASK-917: a burst over the per-client quota → 429 with
 `Retry-After`, writes charged per principal while reads pass, an array over
-its documented maximum → `INVALID_INPUT`), reads, GOLDEN-1 driven through REST alone,
+its documented maximum → `INVALID_INPUT`; TASK-919: a decision or apply
+through another proposal's job → `JOB_MISMATCH` with nothing changed, a
+replayed apply answered with the run and not enqueued twice, a job resumed
+by another principal → 403 and a job not at `resolving` → `JOB_MISMATCH`),
+reads, GOLDEN-1 driven through REST alone,
 the stable error codes, changes as jobs with recovery, ambiguity resumed on
 the same job, and the WebSocket gateway on the same server.
 

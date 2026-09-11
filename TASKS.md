@@ -858,28 +858,16 @@ Tests: ws-gateway — five subscribes sent without waiting for an acknowledgemen
 
 Docs: `ARCHITECTURE.md` §11.
 
-## TASK-919 Bind jobs to their proposal and requester — TODO
+## TASK-919 Bind jobs to their proposal and requester — DONE
 
-**Goal**  
-A decision or apply can only continue the job that produced that exact proposal, from the expected stage, by an authorized principal.
+SEC-008 (Medium) / AUD-012. The decision and apply routes checked only that the `jobId` in the body existed in the same production. A caller could complete another proposal's job as "rejected", use any awaiting-approval job as the timeline for a different approved proposal, or resume a job someone else started; the apply queue handler never checked that the run's recorded proposal matched its payload before advancing it.
 
-**Context**  
-SEC-008 (Medium) / AUD-012. Routes check only that `jobId` exists in the production.
+**Status**  
+Complete. `describeJobMismatch` (`packages/application/src/jobs/binding.ts`) is the one place that says whether a job may be continued: it must exist in the production (`ENTITY_NOT_FOUND`), be of the expected type, have produced the exact proposal named, and be at one of the allowed stages (`JOB_MISMATCH`, a new HTTP-only 409 code naming expected and actual), and — for resuming a change — have been started by the calling principal (`TOOL_UNAUTHORIZED`). Every run now records `requestedBy`, the verified principal who started it (optional in the contract so older runs still parse; a run without one is not locked to anyone). The routes check before acting, so a mismatch changes neither the job nor the proposal: a decision with `jobId` requires the analysis that produced the proposal at `awaiting_approval` (or already closed, for a replayed rejection); an apply with `jobId` requires the same job at `awaiting_approval`, and answers a job already applying, verifying, or completed for that same proposal with its run instead of enqueueing again; a resumed change requires one's own analysis waiting at `resolving`. The write is a compare-and-set: `AdvanceOptions.expect` carries the stage and proposal into the stage machine, which throws `JobBindingError` inside the atomic `repository.update` if the run no longer matches, so the reject-completes-job move and the handler's `awaiting_approval → applying` move cannot land on a run that moved on. The apply and verify queue handlers fail the queue job — and leave the run untouched — when the payload names a proposal other than the run's.
 
-**Dependencies**  
-TASK-905 (atomic tracker), TASK-914 (principal).
+Tests: application (`job-binding.test.ts`: every branch of `describeJobMismatch` including an unowned run; `advanceJobRun` moving on a match and refusing untouched on a mismatch; the apply and verify handlers failing the queue job while the run keeps its stage and history); API contract — rejecting one proposal through the other's job → 409 `JOB_MISMATCH` naming both, no approval recorded, the other job untouched; applying with the wrong job → 409 and nothing enqueued; the right job applies and a replay is answered 202 with the completed run without a second queue job; resuming another principal's job → 403, resuming a job not at `resolving` → 409. `pnpm run verify` passes (9/9).
 
-**Allowed scope**  
-`apps/api/src/app.ts`, `packages/application/src/jobs/handlers.ts`, job-run contract (record `proposalId`, `requestedBy`), docs.
-
-**Acceptance criteria**  
-Mismatched `proposalId`, wrong job type, or wrong stage → typed 409/404 without touching either job; the transition is a compare-and-set through `tracker.update`.
-
-**Tests**  
-API contract: reject with another proposal's job → 409; apply with a job at the wrong stage → 409; matching job advances.
-
-**Definition of Done**  
-Acceptance met, verify green.
+Docs: `MCP.md` §9 (the three REST-only codes); `ARCHITECTURE.md` §6; `TESTING.md`.
 
 ## TASK-920 Model prose is untrusted presentation data — TODO
 
