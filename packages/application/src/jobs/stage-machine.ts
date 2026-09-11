@@ -42,6 +42,28 @@ export const TERMINAL_JOB_STAGES: readonly JobStage[] = ["completed", "failed"];
 
 export const isTerminalStage = (stage: JobStage): boolean => TERMINAL_JOB_STAGES.includes(stage);
 
+/**
+ * The happy path in order (TASK-905). A redelivered job re-runs its
+ * orchestration from the top, whose progress callbacks name stages the run
+ * may already have passed; those are answered "already there", not with a
+ * backward move the graph rightly refuses. `failed` sits outside the line.
+ */
+const JOB_STAGE_ORDER: readonly JobStage[] = [
+  "received",
+  "resolving",
+  "analyzing",
+  "simulating",
+  "validating",
+  "awaiting_approval",
+  "applying",
+  "verifying",
+  "completed",
+];
+
+/** True when a run at `current` has already reached or passed `target`. */
+export const isAtOrBeyond = (current: JobStage, target: JobStage): boolean =>
+  current === "failed" || JOB_STAGE_ORDER.indexOf(current) >= JOB_STAGE_ORDER.indexOf(target);
+
 export const canAdvance = (from: JobStage, to: JobStage): boolean =>
   JOB_STAGE_TRANSITIONS[from].includes(to);
 

@@ -675,6 +675,21 @@ A use-case error fails the run and the queue job (no retry); an exception
 propagates and the queue retries. `bindQueueToJobTracker` announces retries on
 the current stage and fails the run when the queue gives up.
 
+Two properties make that retry actually recoverable (TASK-905, post-review
+remediation in TASKS.md). Every tracker move is one atomic
+`JobRunRepository.update` — the stage machine runs against the run as it is
+at the instant of writing, never against a copy loaded earlier — so the
+binder's retry note and the handler's next `advance` cannot overwrite each
+other, and only what landed is published. And a redelivered analyze job,
+which re-runs its orchestration from the top, treats progress callbacks as
+monotonic: a stage the run has already reached or passed is left alone
+(`isAtOrBeyond`) rather than moved back to, which the graph rightly refuses
+and which used to fail every retry at `simulating` or `validating`. The
+change request the first attempt recorded is attached to the run on the
+first progress callback and handed back to `runChangeAgent` on the retry, so
+the sentence is not re-interpreted and no duplicate request is submitted; the
+analysis audit lines do repeat, honestly, because analysis did run again.
+
 The gateway (TASK-404, `@pca/ws-gateway`, built on `ws`) is a notification
 channel only. The application publishes `RealtimeNotification`s to an
 in-process `NotificationHub`: job events are forwarded from the tracker

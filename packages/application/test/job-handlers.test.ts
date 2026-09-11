@@ -103,6 +103,87 @@ describe("job handlers", () => {
   });
 
   describe("ANALYZE_CHANGE", () => {
+    it("TASK-905: a redelivery at simulating re-enters the run, completes it, and records one change request", async () => {
+      const clock = fixedClock(NOW);
+      const ids = sequentialIds();
+      const localQueue = createMemoryQueue({
+        clock,
+        ids,
+        policy: { maxAttempts: 3, retryDelayMs: () => 0 },
+      });
+      const localTracker = createJobTracker({
+        repository: createMemoryJobRunRepository(),
+        clock,
+        ids,
+      });
+      bindQueueToJobTracker(localQueue, localTracker);
+
+      // The first attempt dies as the loop enters `simulating`, after the
+      // change request exists and the run has moved past `analyzing`. Before
+      // this task the retry re-ran from the top, tried to move the run back
+      // to `analyzing`, and threw on every attempt until dead-lettered.
+      let failOnce = true;
+      const flaky: RunChangeAgent = (input) =>
+        runChangeAgent({
+          ...input,
+          progress: async (stage, details) => {
+            await input.progress?.(stage, details);
+            if (stage === "simulating" && failOnce) {
+              failOnce = false;
+              throw new Error("socket hang up");
+            }
+          },
+        });
+      localQueue.register(
+        "ANALYZE_CHANGE",
+        createAnalyzeChangeJobHandler({ tracker: localTracker, runChangeAgent: flaky }),
+      );
+
+      const run = await localTracker.start({
+        productionId: DEMO,
+        correlationId: "corr-1",
+        type: "ANALYZE_CHANGE",
+      });
+      await localQueue.enqueue(
+        envelope(
+          "ANALYZE_CHANGE",
+          { jobId: run.id, text: "Sarah cannot shoot Friday.", requestedBy: "c" },
+          "idem-retry",
+        ),
+      );
+      await localQueue.drain();
+      await settle();
+
+      const final = (await localTracker.get(run.id)) as JobRun;
+      expect(final.stage).toBe("awaiting_approval");
+      expect(final.history.some((event) => event.message?.startsWith("Retrying (attempt 2)"))).toBe(
+        true,
+      );
+      // The retry picked up where it left off: no second entry into
+      // `analyzing` or `simulating`. The one extra `simulating:STARTED` is the
+      // queue binder's retry note re-announcing the stage, not a re-entry.
+      expect(
+        final.history.filter((e) => e.stage === "analyzing" && e.status === "STARTED"),
+      ).toHaveLength(1);
+      expect(
+        final.history.filter(
+          (e) => e.stage === "simulating" && e.status === "STARTED" && e.message === undefined,
+        ),
+      ).toHaveLength(1);
+
+      const submitted = (await store.auditEvents.list(DEMO)).filter(
+        (event) => event.action === "CHANGE_REQUEST_SUBMITTED",
+      );
+      expect(submitted).toHaveLength(1);
+      // The one change request the first attempt recorded is the one on the run.
+      expect(final.changeRequestId).toBe("CR-1");
+      expect(await store.changeRequests.findById(DEMO, "CR-2")).toBeNull();
+      expect((await localQueue.listJobs())[0]).toMatchObject({
+        state: "COMPLETED",
+        job: { attempt: 2 },
+      });
+    });
+
     it("GOLDEN-1: walks received → resolving → analyzing → simulating → validating → awaiting_approval", async () => {
       const run = await analyzeJob("Sarah cannot shoot Friday.");
       expect(timeline(run)).toEqual([
