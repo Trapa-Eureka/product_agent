@@ -44,6 +44,7 @@ import { createAllToolHandlers } from "@pca/mcp-server/handlers";
 import { HTTP_STATUS_BY_CODE, invalidInput, sendError } from "./errors";
 import { invokeTool } from "./invoke";
 import { clientAddressOf, createRateLimiter, rateLimit } from "./rate-limit";
+import { securityHeaders } from "./security-headers";
 import type { ApiLogger } from "./logging";
 import { silentApiLogger } from "./logging";
 
@@ -100,6 +101,8 @@ export type ApiDependencies = {
     readonly requestsPerMinute?: number;
     readonly writesPerMinute?: number;
   };
+  /** The service is reached over TLS; answers then carry HSTS (TASK-928). */
+  readonly tlsTerminated?: boolean;
   readonly logger?: ApiLogger;
   /** Tool handlers to run; defaults to the full MCP set over the same repositories. */
   readonly handlers?: ToolHandlers;
@@ -246,6 +249,8 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
 
   const app = express();
   app.disable("x-powered-by");
+  // First, on every answer including errors and 404s (TASK-928).
+  app.use(securityHeaders({ tlsTerminated: dependencies.tlsTerminated ?? false }));
   app.use(express.json({ limit: "256kb" }));
 
   // Every request: an echoed correlation ID and one log line.

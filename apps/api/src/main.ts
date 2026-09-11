@@ -29,6 +29,8 @@ import { stderrApiLogger } from "./logging";
 import { allowedOriginsFromEnv } from "./origins";
 import { createApiServer } from "./server";
 
+const isTrueEnv = (value: string | undefined): boolean => value?.trim().toLowerCase() === "true";
+
 /** A positive integer from the environment, or the default; anything else refuses to start. */
 const positiveIntFromEnv = (name: string, fallback: number): number => {
   const raw = process.env[name]?.trim();
@@ -104,6 +106,7 @@ const main = async (): Promise<void> => {
     ids,
     context,
     limits,
+    tlsTerminated: isTrueEnv(process.env["PCA_TLS_TERMINATED"]),
     identity: auth.identity,
     ...(auth.demoSession === undefined ? {} : { demoSession: auth.demoSession }),
     makerChecker: auth.makerChecker,
@@ -123,6 +126,7 @@ const main = async (): Promise<void> => {
     allowedOrigins: allowedOrigins.join(",") || "(same-origin only)",
     requestsPerMinute: limits.requestsPerMinute,
     writesPerMinute: limits.writesPerMinute,
+    hsts: isTrueEnv(process.env["PCA_TLS_TERMINATED"]),
     allowedProductions:
       context.allowedProductionIds === "*" ? "*" : context.allowedProductionIds.join(","),
   });
