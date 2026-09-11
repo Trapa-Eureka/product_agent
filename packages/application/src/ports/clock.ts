@@ -15,7 +15,7 @@ export interface Clock {
 }
 
 export interface IdFactory {
-  /** A new identifier such as `CR-3f9a1c2b`, unique within the prefix. */
+  /** A new identifier such as `CR-6f1c…-…`, unique within the prefix. */
   next(prefix: string): EntityId;
 }
 
@@ -23,6 +23,13 @@ export const systemClock: Clock = {
   now: () => new Date().toISOString(),
 };
 
+/**
+ * TASK-932 (AUD-025): the whole UUID v4 — 122 random bits — not its first
+ * 48. Proposal, approval, job, audit, and correlation IDs are long-lived
+ * operational records that get quoted in tokens, logs, and audit lines; an
+ * ID that is cheap to guess or to collide is a weakness there, and the 36
+ * characters fit every ID contract (`entityIdSchema` allows 128).
+ */
 export const randomIdFactory: IdFactory = {
-  next: (prefix) => `${prefix}-${randomUUID().replaceAll("-", "").slice(0, 12)}`,
+  next: (prefix) => `${prefix}-${randomUUID()}`,
 };

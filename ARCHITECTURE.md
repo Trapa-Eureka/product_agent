@@ -990,6 +990,15 @@ Avoid deploying expensive resources merely for portfolio completeness. Infrastru
 - no hidden chain-of-thought logging;
 - audit structured actions/results instead.
 
+### Identifiers (TASK-932)
+
+Every generated ID — proposal, approval, audit event, change request, job,
+correlation — is `<prefix>-<UUID v4>` from `randomIdFactory`: the whole
+122 random bits, never a truncation. These are long-lived operational
+records quoted in tokens, logs, and audit lines, where an ID cheap to guess
+or to collide is a weakness; 36 characters fit every ID contract.
+Fixtures and tests use fixed or sequential IDs, so nothing else changes.
+
 ### Data at intake (TASK-922)
 
 The change sentence lives once, on the change request; the audit event
