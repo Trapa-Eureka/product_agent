@@ -34,6 +34,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # TASK-925 (SEC-012 / AUD-018): a known advisory at moderate or above in
+      # the resolved dependency graph fails the build. Runs here and not in
+      # `verify`, because `verify` must work offline and this needs the
+      # advisory database.
+      - name: Audit dependencies
+        run: pnpm audit --audit-level=moderate
+
       - name: Install Playwright's Chromium (TASK-604)
         run: pnpm exec playwright install --with-deps chromium
 
