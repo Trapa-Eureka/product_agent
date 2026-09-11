@@ -979,28 +979,16 @@ Tests: application — on timeout the provider's signal is aborted, not only the
 
 Docs: `ARCHITECTURE.md` §7.
 
-## TASK-930 Deployment baseline and Mongo connection policy — TODO
+## TASK-930 Deployment baseline and Mongo connection policy — DONE
 
-**Goal**  
-A reproducible build artifact (container or `npm pack`) with a documented security baseline; Mongo connections require TLS and auth outside demo mode.
+AUD-015 / AUD-016 (Medium). Nothing built a deployable artifact, the documentation implied a baseline that existed nowhere, and a `PCA_MONGO_URI` could be plain and anonymous with no complaint from the server.
 
-**Context**  
-AUD-015 / AUD-016 (Medium).
+**Status**  
+Complete. **Policy:** `assertMongoUriPolicy` (`@pca/bootstrap`, applied in `selectStorage`) refuses, outside `PCA_DEMO_MODE=true` and before any connection is attempted, a Mongo URI that is not encrypted (`mongodb+srv://`, `tls=true`, or `ssl=true`) or not authenticated (`user:password@`, or `authMechanism=MONGODB-X509`/`MONGODB-AWS`), naming what is missing and never repeating the URI, which may hold a password. **Artifact:** a root `Dockerfile` builds one image from a clean checkout — Node 22 alpine, the pinned pnpm through corepack, `pnpm install --frozen-lockfile --ignore-scripts` with `mongodb-memory-server`'s binary download disabled, a non-root `pca` user, a `0700` `/data` volume as the data directory, `0.0.0.0:3000`, a health check on `/api/health`, `node --import tsx apps/api/src/main.ts` as the command, with the pinned pnpm prepared at build time so a running container never touches the network to start (the MCP server runs from the same image); `.dockerignore` keeps `node_modules`, build output, `.git`, and env files out. CI gains an `artifact` job that builds the image and boots the demo from it (`PCA_DEMO_MODE=true`, memory store), waiting on health and checking that the demo session is issued and `api_start` was logged. **Baseline:** `docs/DEPLOYMENT.md` — the artifact, a checklist of every setting a deployment must have with the column saying whether the server enforces it (demo off, `PCA_AUTH_SECRET`, maker-checker, allow-list, origins, TLS/HSTS, quotas, the Mongo policy, file-store permissions, non-root process, console headers, the log lines to alert on, backups, updates), and what the baseline does not cover; `README.md` links it.
 
-**Dependencies**  
-TASK-914, TASK-915.
+Tests: bootstrap unit — the five accepted URI forms; a plain, an anonymous, and a plain-and-anonymous URI refused naming what is missing without echoing the host; an unparsable URI refused; demo mode accepting a local replica set; `selectStorage` applying the policy. CI — the `artifact` job is the artifact's test. `pnpm run verify` passes (9/9).
 
-**Allowed scope**  
-`Dockerfile`/`.dockerignore` or pack script, bootstrap Mongo options, `docs/DEPLOYMENT.md`.
-
-**Acceptance criteria**  
-Non-demo Mongo URI without `tls=true`/credentials fails startup; the artifact runs the demo with documented env; baseline checklist in docs.
-
-**Tests**  
-Unit for URI policy; CI builds the artifact.
-
-**Definition of Done**  
-Acceptance met, verify green.
+Docs: `docs/DEPLOYMENT.md` (new); `README.md` "Deployment".
 
 ## TASK-931 Readiness and saturation health checks — TODO
 

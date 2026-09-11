@@ -7,6 +7,7 @@ import type { LogFields, LogLevel } from "@pca/application";
 import { createDemoMovie } from "@pca/fixtures";
 
 import {
+  assertMongoUriPolicy,
   createJobRuns,
   createModel,
   createQueue,
@@ -58,6 +59,7 @@ describe("selectStorage", () => {
     expect(
       selectStorage({
         PCA_STORAGE: "mongo",
+        PCA_DEMO_MODE: "true",
         PCA_MONGO_URI: "mongodb://h/?replicaSet=r",
         PCA_MONGO_DB: "d",
       }),
@@ -211,5 +213,61 @@ describe("queue selection", () => {
   it("refuses an unknown queue kind, and names the deferred one honestly", () => {
     expect(() => selectQueue({ PCA_QUEUE: "rabbit" })).toThrow(/memory, sqs/u);
     expect(() => createQueue("sqs")).toThrow(/deferred/u);
+  });
+});
+
+/** TASK-930 (AUD-016): a deployment's database must be encrypted and authenticated. */
+describe("Mongo URI policy", () => {
+  it("accepts TLS plus credentials in any of the documented forms", () => {
+    for (const uri of [
+      "mongodb+srv://app:s3cret@cluster0.example.net/pca",
+      "mongodb://app:s3cret@db.example.net:27017/pca?tls=true&replicaSet=rs0",
+      "mongodb://app:s3cret@db.example.net:27017/pca?ssl=true",
+      "mongodb+srv://cluster0.example.net/pca?authMechanism=MONGODB-X509",
+      "mongodb://db.example.net/pca?tls=true&authMechanism=MONGODB-AWS",
+    ]) {
+      expect(() => assertMongoUriPolicy(uri, false)).not.toThrow();
+    }
+  });
+
+  it("refuses a plain or anonymous URI outside demo mode, naming what is missing, never the URI", () => {
+    expect(() => assertMongoUriPolicy("mongodb://app:s3cret@db.example.net/pca", false)).toThrow(
+      /missing TLS/u,
+    );
+    expect(() => assertMongoUriPolicy("mongodb://db.example.net/pca?tls=true", false)).toThrow(
+      /missing credentials/u,
+    );
+    const plain = "mongodb://127.0.0.1:27017/?replicaSet=rs0";
+    const error = (() => {
+      try {
+        assertMongoUriPolicy(plain, false);
+      } catch (thrown) {
+        return thrown as Error;
+      }
+      throw new Error("expected a refusal");
+    })();
+    expect(error.message).toMatch(/missing TLS .* and credentials/u);
+    expect(error.message).not.toContain("127.0.0.1");
+    expect(() => assertMongoUriPolicy("not a uri", false)).toThrow(
+      /not a valid connection string/u,
+    );
+  });
+
+  it("lets a demo use a local, unencrypted replica set, and selectStorage applies the policy", () => {
+    expect(() =>
+      assertMongoUriPolicy("mongodb://127.0.0.1:27017/?replicaSet=rs0", true),
+    ).not.toThrow();
+    expect(() =>
+      selectStorage({
+        PCA_STORAGE: "mongo",
+        PCA_MONGO_URI: "mongodb://127.0.0.1:27017/?replicaSet=rs0",
+      }),
+    ).toThrow(/PCA_MONGO_URI is missing/u);
+    expect(
+      selectStorage({
+        PCA_STORAGE: "mongo",
+        PCA_MONGO_URI: "mongodb+srv://app:s3cret@cluster0.example.net/pca",
+      }).kind,
+    ).toBe("mongo");
   });
 });

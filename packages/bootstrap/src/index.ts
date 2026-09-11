@@ -52,6 +52,45 @@ export type Environment = Readonly<Record<string, string | undefined>>;
 
 const STORAGE_KINDS: readonly StorageKind[] = ["file", "memory", "mongo"];
 
+const isTrue = (value: string | undefined): boolean => value?.trim().toLowerCase() === "true";
+
+/**
+ * Mongo connection policy (TASK-930, AUD-016). Outside an explicit demo, a
+ * production database must be reached over TLS and with credentials:
+ * `mongodb+srv://` (TLS implied) or `tls=true`/`ssl=true` in the URI, and a
+ * `user:password@` pair or an X.509/AWS auth mechanism. A URI that has
+ * neither is refused at startup, before any connection is attempted; the
+ * message never repeats the URI, which may hold a password.
+ */
+export const assertMongoUriPolicy = (uri: string, demo: boolean): void => {
+  if (demo) return;
+  let parsed: URL;
+  try {
+    parsed = new URL(uri);
+  } catch {
+    throw new Error("PCA_MONGO_URI is not a valid connection string.");
+  }
+  const query = parsed.searchParams;
+  const flag = (name: string): boolean => query.get(name)?.trim().toLowerCase() === "true";
+  const encrypted = parsed.protocol === "mongodb+srv:" || flag("tls") || flag("ssl");
+  const mechanism = query.get("authMechanism")?.toUpperCase() ?? "";
+  const authenticated =
+    (parsed.username !== "" && parsed.password !== "") ||
+    mechanism === "MONGODB-X509" ||
+    mechanism === "MONGODB-AWS";
+  const missing = [
+    ...(encrypted ? [] : ["TLS (use mongodb+srv:// or add tls=true)"]),
+    ...(authenticated
+      ? []
+      : ["credentials (user:password@ in the URI, or authMechanism=MONGODB-X509/MONGODB-AWS)"]),
+  ];
+  if (missing.length > 0) {
+    throw new Error(
+      `PCA_MONGO_URI is missing ${missing.join(" and ")}. A deployment's database must be encrypted and authenticated; set PCA_DEMO_MODE=true only for a local demo against a throwaway replica set.`,
+    );
+  }
+};
+
 /** Reads PCA_STORAGE and its companions; refuses an unknown value loudly. */
 export const selectStorage = (env: Environment): StorageSelection => {
   const raw = env["PCA_STORAGE"] ?? "file";
@@ -73,12 +112,11 @@ export const selectStorage = (env: Environment): StorageSelection => {
     }
     case "memory":
       return { kind };
-    case "mongo":
-      return {
-        kind,
-        uri: env["PCA_MONGO_URI"] ?? defaultMongoUri(),
-        databaseName: env["PCA_MONGO_DB"],
-      };
+    case "mongo": {
+      const uri = env["PCA_MONGO_URI"] ?? defaultMongoUri();
+      assertMongoUriPolicy(uri, isTrue(env["PCA_DEMO_MODE"]));
+      return { kind, uri, databaseName: env["PCA_MONGO_DB"] };
+    }
   }
 };
 
@@ -307,7 +345,6 @@ export const DEMO_PRINCIPAL: Principal = {
   productions: "*",
 };
 
-const isTrue = (value: string | undefined): boolean => value?.trim().toLowerCase() === "true";
 const isFalse = (value: string | undefined): boolean => value?.trim().toLowerCase() === "false";
 
 export const selectAuth = (env: Environment, clock: Clock = systemClock): AuthSelection => {
