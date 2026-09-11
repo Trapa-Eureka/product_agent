@@ -1023,28 +1023,16 @@ Tests: the build step of `pnpm run verify` is the test; a manual negative check 
 
 Docs: `ARCHITECTURE.md` §6 "Angular UI"; `TESTING.md` §12.
 
-## TASK-934 Memory-store commits clone their inputs — TODO
+## TASK-934 Memory-store commits clone their inputs — DONE
 
-**Goal**  
-Mutating an object after `commit`/`applyProposalTransaction` does not change stored state.
+Code review #18 (Low). `MemoryStore.productions.save` cloned its input but `commit` (and so `applyProposalTransaction`, which runs through the same `#commit`) upserted the caller's record objects straight into stored state. A caller that kept editing a record after the commit changed what was stored with no repository call and no version bump — behaviour the file store (which serialises to disk) and the Mongo store (which serialises to the wire) never had, so a test passing on the memory store could mean something different in production.
 
-**Context**  
-Code review #18 (Low).
+**Status**  
+Complete. `#commit` clones the mutation once (`structuredClone`, after the isolation and version checks) and upserts the clone, so the stored state owns every record it holds. The repository contract suite gained "stored state owns its records (TASK-934)": one case commits a task and a shoot day, then edits the task's title, pushes onto the shoot day's scene list, and pushes a new task onto the mutation's array, and reads the stored state unchanged at version 2; one case runs `applyProposalTransaction` and then edits the task, flips the proposal's status, appends to the idempotency record's affected IDs, and changes the audit event's action, and reads every stored record unchanged; one case empties the array returned by `loadState` and reloads it intact. The suite runs unchanged against the memory, file, and Mongo stores.
 
-**Dependencies**  
-None.
+Tests: `packages/test-support/src/repository-contract.ts` (three cases, run by all three adapter suites). A negative check (the store change stashed) failed the first two cases on the memory store with the edited title read back. `pnpm run verify` passes (9/9).
 
-**Allowed scope**  
-`packages/adapters/memory-store`, repository contract tests.
-
-**Acceptance criteria**  
-Contract test mutates inputs after commit and reads unchanged state in every adapter.
-
-**Tests**  
-Shared repository contract case.
-
-**Definition of Done**  
-Acceptance met, verify green.
+Docs: `ARCHITECTURE.md` §9 adapter table; `TESTING.md` §6a.
 
 ## TASK-935 Queue idempotency scoped by production and job type — TODO
 

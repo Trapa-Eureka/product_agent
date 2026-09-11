@@ -636,7 +636,7 @@ implement them:
 | Adapter | Package | Role |
 |---|---|---|
 | JSON file | `@pca/file-store` | Runtime default. No server, no native module, no account. |
-| In-memory | `@pca/memory-store` | Unit tests and throwaway demo runs. |
+| In-memory | `@pca/memory-store` | Unit tests and throwaway demo runs. Copies on every read and write, `commit` included (TASK-934), so a caller's object is never the stored one. |
 | MongoDB | `@pca/mongo-store` | The portfolio target. Requires a replica set so commits are transactional; refuses a standalone server. |
 
 Every store is wrapped by `guardRepositories` in bootstrap (TASK-602): a

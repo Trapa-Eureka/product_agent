@@ -412,6 +412,12 @@ database, so isolation costs nothing after start-up.
 Both the repository contract suite and the golden scenario suite run against
 Mongo in the integration suite, unchanged from the memory and file adapters.
 
+The contract suite also proves that stored state owns its records (TASK-934):
+it edits the objects it passed to `commit` and `applyProposalTransaction`
+after the call, and the array `loadState` returned, and reads the stored
+state unchanged. The file and Mongo stores get this from serialising; the
+memory store has to copy, and this is what holds it to that.
+
 ## 7. Search mocking
 
 If OpenSearch is added:
