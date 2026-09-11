@@ -1,6 +1,8 @@
-import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { DEMO_MOVIE_IDS, createDemoMovie } from "@pca/fixtures";
@@ -221,6 +223,105 @@ describe("file store specifics", () => {
       await store.resetProduction(createDemoMovie());
 
       expect(await store.auditEvents.list(OTHER)).toHaveLength(1);
+    });
+  });
+
+  describe("writer lock (TASK-903: code review #3 / AUD-006)", () => {
+    const DEMO = DEMO_MOVIE_IDS.production;
+    const taskFor = (id: string) => ({
+      id,
+      productionId: DEMO,
+      title: id,
+      relatedEntityType: "SCENE" as const,
+      relatedEntityId: DEMO_MOVIE_IDS.scenes.s18,
+      status: "OPEN" as const,
+    });
+
+    it("two instances on one file cannot both commit version 2", async () => {
+      const filePath = await temporaryFile();
+      const first = createFileStore({ filePath });
+      const second = createFileStore({ filePath });
+      await first.productions.save(createDemoMovie());
+
+      // Each instance's own queue is empty, so both reach the file at once.
+      // Before the lock, both read version 1 and both renamed a version 2
+      // into place; the later rename silently dropped the earlier task.
+      const [a, b] = await Promise.all([
+        first.productions.commit({
+          productionId: DEMO,
+          expectedVersion: 1,
+          tasks: [taskFor("T-A")],
+        }),
+        second.productions.commit({
+          productionId: DEMO,
+          expectedVersion: 1,
+          tasks: [taskFor("T-B")],
+        }),
+      ]);
+
+      expect([a.status, b.status].sort()).toEqual(["COMMITTED", "VERSION_MISMATCH"]);
+      const state = await first.productions.loadState(DEMO);
+      expect(state?.production.version).toBe(2);
+      const written = state?.tasks.filter((task) => task.id === "T-A" || task.id === "T-B");
+      expect(written).toHaveLength(1);
+      expect(await readdir(join(filePath, ".."))).toEqual(["data.json"]);
+    });
+
+    it("two processes on one file cannot both commit version 2", async () => {
+      const filePath = await temporaryFile();
+      await createFileStore({ filePath }).productions.save(createDemoMovie());
+      const worker = fileURLToPath(new URL("./helpers/commit-worker.ts", import.meta.url));
+      const run = (taskId: string) =>
+        new Promise<{ status: string }>((resolve, reject) => {
+          execFile(
+            process.execPath,
+            ["--import", "tsx", worker, filePath, taskId],
+            { cwd: fileURLToPath(new URL("..", import.meta.url)) },
+            (error, stdout, stderr) => {
+              if (error) reject(new Error(`${error.message}\n${stderr}`));
+              else resolve(JSON.parse(stdout.trim()) as { status: string });
+            },
+          );
+        });
+
+      const [a, b] = await Promise.all([run("T-P1"), run("T-P2")]);
+
+      expect([a.status, b.status].sort()).toEqual(["COMMITTED", "VERSION_MISMATCH"]);
+      const state = await createFileStore({ filePath }).productions.loadState(DEMO);
+      expect(state?.production.version).toBe(2);
+      expect(state?.tasks.filter((t) => t.id.startsWith("T-P"))).toHaveLength(1);
+    }, 30_000);
+
+    it("reclaims a lock left behind by a process that no longer exists", async () => {
+      const filePath = await temporaryFile();
+      const store = createFileStore({ filePath, lockTimeoutMs: 500 });
+      // A pid this high is not a live process on any supported platform.
+      await mkdir(join(filePath, ".."), { recursive: true });
+      await writeFile(
+        store.lockPath,
+        JSON.stringify({ pid: 2_147_483_000, acquiredAt: "2026-09-10T00:00:00.000Z" }),
+      );
+
+      await store.productions.save(createDemoMovie());
+
+      expect((await store.productions.loadState(DEMO))?.scenes).toHaveLength(4);
+      expect(await readdir(join(filePath, ".."))).toEqual(["data.json"]);
+    });
+
+    it("waits for a live writer, then fails with STORE_LOCKED rather than overwriting", async () => {
+      const filePath = await temporaryFile();
+      const store = createFileStore({ filePath, lockTimeoutMs: 200 });
+      await mkdir(join(filePath, ".."), { recursive: true });
+      // Held by "us": this process is alive, so the lock is never reclaimed.
+      await writeFile(
+        store.lockPath,
+        JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() }),
+      );
+
+      const started = Date.now();
+      await expect(store.productions.save(createDemoMovie())).rejects.toThrow(/STORE_LOCKED/u);
+      expect(Date.now() - started).toBeGreaterThanOrEqual(190);
+      expect(await store.productions.loadState(DEMO)).toBeNull();
     });
   });
 });

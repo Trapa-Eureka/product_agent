@@ -540,10 +540,18 @@ them. An adapter that merely compiles against the ports has proved nothing;
 when two adapters disagree, the disagreement must fail in that suite rather
 than inside a use case that assumed one of them.
 
-The file store is single-process: writes are serialised in-process, and two
-processes writing the same file can still lose an update. Multi-writer
-deployments select MongoDB. It reads through to the file on every call rather
-than caching, so a second instance sees the first one's writes.
+The file store admits one writer at a time, whoever it is (TASK-903): every
+mutation holds an `O_EXCL` lock file (`data.json.lock`) beside the data file
+for its whole read-check-write, so a second instance in the same process, a
+`seed` run beside the API, or a second server on the same path serialise
+instead of each renaming its own version N+1 over the other's. A lock whose
+owner pid is dead is reclaimed; one held by a live process is waited for, up
+to a bounded timeout that surfaces as `STORE_LOCKED` rather than a silent lost
+update. This is a correctness guarantee, not a throughput one — a busy
+multi-writer deployment still selects MongoDB. Reads take no lock: rename is
+atomic, so a reader sees a whole database, before or after, never a torn one,
+and a second instance sees the first one's writes because every read goes
+through to the file rather than a cache.
 
 Entity rows in Mongo use a composite `_id` of `productionId::id`, so an entity
 ID that repeats across productions is two rows rather than a collision, and

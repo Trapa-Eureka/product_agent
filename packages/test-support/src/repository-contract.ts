@@ -587,6 +587,30 @@ export const describeRepositoryContract = (
         expect((await reopened.productions.loadState(DEMO))?.scenes).toHaveLength(4);
         expect((await reopened.changeRequests.findById(DEMO, "CR-001"))?.id).toBe("CR-001");
       });
+
+      it("serialises concurrent commits from two separate handles, so neither loses the other's write (TASK-903)", async () => {
+        if (reopen === undefined) {
+          expect(reopen).toBeUndefined();
+          return;
+        }
+        await repositories.productions.save(demoState());
+        const other = await reopen();
+
+        // The "commit" suite already proves this for one handle, whose own
+        // queue orders its calls. Two handles share no queue: this is the
+        // race code review #3 / AUD-006 reproduced against the file store.
+        const results = await Promise.allSettled([
+          repositories.productions.commit({ productionId: DEMO, expectedVersion: 1 }),
+          other.productions.commit({ productionId: DEMO, expectedVersion: 1 }),
+        ]);
+        const outcomes = results.map((result) =>
+          result.status === "fulfilled" ? result.value.status : "REJECTED",
+        );
+
+        expect(outcomes.filter((status) => status === "COMMITTED")).toHaveLength(1);
+        expect(outcomes.filter((status) => status === "VERSION_MISMATCH")).toHaveLength(1);
+        expect((await other.productions.loadState(DEMO))?.production.version).toBe(2);
+      });
     });
   });
 };
