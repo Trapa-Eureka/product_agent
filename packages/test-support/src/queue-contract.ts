@@ -95,6 +95,35 @@ export const describeQueueContract = (name: string, create: QueueFactory): void 
         expect(second.kind).toBe("ENQUEUED");
         expect(second.record.job.id).not.toBe(first.record.job.id);
       });
+
+      it("scopes identity by production, so one production's key cannot suppress another's job (TASK-935)", async () => {
+        const first = await queue.enqueue(job({ productionId: "PROD-A" }));
+        const second = await queue.enqueue(job({ productionId: "PROD-B" }));
+        expect(second.kind).toBe("ENQUEUED");
+        expect(second.record.job.id).not.toBe(first.record.job.id);
+        expect((await queue.enqueue(job({ productionId: "PROD-B" }))).kind).toBe("DUPLICATE");
+      });
+
+      it("scopes identity by job type, so an analyze and an apply may share a key (TASK-935)", async () => {
+        const first = await queue.enqueue(job({ type: "ANALYZE_CHANGE" }));
+        const second = await queue.enqueue(job({ type: "APPLY_PROPOSAL" }));
+        expect(second.kind).toBe("ENQUEUED");
+        expect(second.record.job.id).not.toBe(first.record.job.id);
+        expect((await queue.enqueue(job({ type: "APPLY_PROPOSAL" }))).kind).toBe("DUPLICATE");
+      });
+
+      it("cannot be tricked into a collision by separators inside the parts (TASK-935)", async () => {
+        // A naive `${productionId}::${type}::${key}` join would read both as
+        // "PROD-A::ANALYZE_CHANGE::forge::ANALYZE_CHANGE::idem-key-0009".
+        const first = await queue.enqueue(
+          job({ productionId: "PROD-A", idempotencyKey: "forge::ANALYZE_CHANGE::idem-key-0009" }),
+        );
+        const second = await queue.enqueue(
+          job({ productionId: "PROD-A::ANALYZE_CHANGE::forge", idempotencyKey: "idem-key-0009" }),
+        );
+        expect(second.kind).toBe("ENQUEUED");
+        expect(second.record.job.id).not.toBe(first.record.job.id);
+      });
     });
 
     describe("delivery", () => {

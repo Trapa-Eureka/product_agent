@@ -1034,28 +1034,16 @@ Tests: `packages/test-support/src/repository-contract.ts` (three cases, run by a
 
 Docs: `ARCHITECTURE.md` §9 adapter table; `TESTING.md` §6a.
 
-## TASK-935 Queue idempotency scoped by production and job type — TODO
+## TASK-935 Queue idempotency scoped by production and job type — DONE
 
-**Goal**  
-Queue identity is `(productionId, type, idempotencyKey)`.
+Code review #19 (Low). `@pca/memory-queue` indexed `jobIdByKey` by the bare idempotency key, so the same key enqueued for productions A and B answered `ENQUEUED` then `DUPLICATE`: one production's client-generated key could suppress another production's legitimate job, and an analyze and an apply could not share a key either.
 
-**Context**  
-Code review #19 (Low).
+**Status**  
+Complete. `QueuePort` now fixes a job's identity as the tuple `(productionId, type, idempotencyKey)`, and `jobIdentityKey` (`@pca/application`) is the one string an adapter indexes by, each part escaped the way `scopedRecordKey` escapes (`scopedKeyOf`, the same encoding for any number of parts), so a key or ID containing the separator cannot forge another tuple. The memory queue uses it at enqueue, at the duplicate check, and when pruning. The queue contract suite gained three cases: the same key in two productions is two jobs and a repeat in the second is `DUPLICATE`; the same key for `ANALYZE_CHANGE` and `APPLY_PROPOSAL` is two jobs; and a pair of inputs a naive `productionId::type::key` join would read as one string are two jobs. The existing same-tuple `DUPLICATE` case is unchanged. A future SQS adapter runs the same suite.
 
-**Dependencies**  
-None.
+Tests: `packages/test-support/src/queue-contract.ts`. A negative check (the adapter change stashed) failed the production and type cases with `DUPLICATE` where `ENQUEUED` was expected. `pnpm run verify` passes (9/9).
 
-**Allowed scope**  
-`packages/adapters/memory-queue`, queue port docs.
-
-**Acceptance criteria**  
-Same key in two productions → two jobs; same tuple → `DUPLICATE`.
-
-**Tests**  
-Queue contract cases.
-
-**Definition of Done**  
-Acceptance met, verify green.
+Docs: `ARCHITECTURE.md` §10.
 
 ## TASK-936 One model-guard boundary — TODO
 

@@ -19,6 +19,7 @@ import {
   DEFAULT_QUEUE_POLICY,
   describeFailure,
   describeFailureForUser,
+  jobIdentityKey,
   randomIdFactory,
   systemClock,
   timerScheduler,
@@ -101,8 +102,9 @@ export const createMemoryQueue = (options: MemoryQueueOptions = {}): MemoryQueue
       if (records.size <= maxRetained) return;
       if (record.state !== "COMPLETED" && record.state !== "FAILED") continue;
       records.delete(jobId);
-      if (jobIdByKey.get(record.job.idempotencyKey) === jobId) {
-        jobIdByKey.delete(record.job.idempotencyKey);
+      const identity = jobIdentityKey(record.job);
+      if (jobIdByKey.get(identity) === jobId) {
+        jobIdByKey.delete(identity);
       }
       const dead = deadLetters.indexOf(jobId);
       if (dead !== -1) deadLetters.splice(dead, 1);
@@ -252,7 +254,8 @@ export const createMemoryQueue = (options: MemoryQueueOptions = {}): MemoryQueue
           `Job is malformed at ${issue?.path.join(".") ?? "<root>"}: ${issue?.message ?? "unknown issue"}.`,
         );
       }
-      const existingId = jobIdByKey.get(parsed.data.idempotencyKey);
+      // TASK-935: identity is the (productionId, type, idempotencyKey) tuple, not the bare key.
+      const existingId = jobIdByKey.get(jobIdentityKey(parsed.data));
       if (existingId !== undefined) {
         return { kind: "DUPLICATE", record: snapshot(records.get(existingId) as MutableRecord) };
       }
@@ -265,7 +268,7 @@ export const createMemoryQueue = (options: MemoryQueueOptions = {}): MemoryQueue
         updatedAt: now,
       };
       records.set(record.job.id, record);
-      jobIdByKey.set(record.job.idempotencyKey, record.job.id);
+      jobIdByKey.set(jobIdentityKey(record.job), record.job.id);
       transition(record, "QUEUED", undefined, null);
       ready.push(record.job.id);
       if (started) scheduleLoop(0);

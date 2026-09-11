@@ -777,8 +777,11 @@ Requirements:
 - local in-memory/fake queue with identical application contract.
 
 Implementation (TASK-401): `QueuePort` in the application layer fixes the
-contract. An idempotency key names a job once (a repeat enqueue is a
-`DUPLICATE`); retry is bounded by `QueuePolicy.maxAttempts` and exhausting it
+contract. A job's identity is the tuple `(productionId, type, idempotencyKey)`
+(TASK-935): a repeat enqueue of the same tuple is a `DUPLICATE`, while the
+same key in another production or for another job type is another job, so a
+client-generated key can never suppress a different production's work;
+`jobIdentityKey` is the one escaped string every adapter indexes by. Retry is bounded by `QueuePolicy.maxAttempts` and exhausting it
 is an explicit `FAILED` state plus a dead-letter entry; a handler answers
 `COMPLETED`, `RETRY`, or `FAILED`, and an exception it throws is retried as
 transient; every state change is observable through `onTransition`, which is
