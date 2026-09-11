@@ -21,11 +21,12 @@ const moveBoth: ProposedOperation = {
   toShootDayId: shootDays.monday,
 };
 
-const golden1Remedy: ProposedOperation[] = [
-  moveBoth,
+const staleFridayAndMonday: ProposedOperation[] = [
   { type: "MARK_CALL_SHEET_STALE", callSheetId: callSheets.friday },
   { type: "MARK_CALL_SHEET_STALE", callSheetId: callSheets.monday },
 ];
+
+const golden1Remedy: ProposedOperation[] = [moveBoth, ...staleFridayAndMonday];
 
 const golden3Remedy: ProposedOperation[] = [
   {
@@ -106,6 +107,7 @@ describe("a partial remedy is not a valid one", () => {
   it("moving only Scene 07 leaves Scene 12 conflicting, so the proposal is invalid", () => {
     const outcome = simulateProposal(afterSarahConflict(), [
       { ...moveBoth, sceneIds: [scenes.s07] },
+      ...staleFridayAndMonday,
     ]);
 
     expect(outcome.valid).toBe(false);
@@ -125,7 +127,7 @@ describe("a partial remedy is not a valid one", () => {
     const index = indexProduction(
       withCastUnavailable(afterSarahConflict().state, cast.sarah, onDay(monday)),
     );
-    const outcome = simulateProposal(index, [moveBoth]);
+    const outcome = simulateProposal(index, golden1Remedy);
 
     expect(outcome.valid).toBe(false);
     expect(outcome.resolvedConflicts.map((conflict) => [conflict.entityId, conflict.date])).toEqual(
@@ -137,6 +139,75 @@ describe("a partial remedy is not a valid one", () => {
     expect(outcome.conflicts.map((conflict) => [conflict.entityId, conflict.date])).toEqual([
       [scenes.s07, monday],
       [scenes.s12, monday],
+    ]);
+  });
+});
+
+describe("TASK-911: a move must stale the published call sheets of the days it changes", () => {
+  it("a bare move that leaves both days' sheets published is invalid, naming each sheet", () => {
+    const outcome = simulateProposal(afterSarahConflict(), [moveBoth]);
+
+    expect(outcome.valid).toBe(false);
+    // Sarah's conflicts are still resolved: the plan is right, the paperwork is not.
+    expect(outcome.resolvedConflicts).toHaveLength(2);
+    expect(outcome.conflicts).toEqual([
+      {
+        code: "CALL_SHEET_PUBLISHED_FOR_CHANGED_SHOOT_DAY",
+        entityType: "CALL_SHEET",
+        entityId: callSheets.friday,
+        date: friday,
+        detail: `Call sheet ${callSheets.friday} describes ${friday}, whose scenes this proposal moves, but stays published; add MARK_CALL_SHEET_STALE for ${callSheets.friday}.`,
+      },
+      {
+        code: "CALL_SHEET_PUBLISHED_FOR_CHANGED_SHOOT_DAY",
+        entityType: "CALL_SHEET",
+        entityId: callSheets.monday,
+        date: monday,
+        detail: `Call sheet ${callSheets.monday} describes ${monday}, whose scenes this proposal moves, but stays published; add MARK_CALL_SHEET_STALE for ${callSheets.monday}.`,
+      },
+    ]);
+  });
+
+  it("marking only one of the two days leaves the other sheet as the one remaining conflict", () => {
+    const outcome = simulateProposal(afterSarahConflict(), [
+      moveBoth,
+      { type: "MARK_CALL_SHEET_STALE", callSheetId: callSheets.friday },
+    ]);
+
+    expect(outcome.valid).toBe(false);
+    expect(outcome.conflicts.map((conflict) => [conflict.code, conflict.entityId])).toEqual([
+      ["CALL_SHEET_PUBLISHED_FOR_CHANGED_SHOOT_DAY", callSheets.monday],
+    ]);
+  });
+
+  it("a sheet that is already a draft needs no mark, and a mark may precede the move", () => {
+    const state = afterSarahConflict().state;
+    const fridaySheet = state.callSheets.find((sheet) => sheet.id === callSheets.friday);
+    if (fridaySheet === undefined) throw new Error("fixture lost Friday's call sheet");
+    const alreadyDraft = indexProduction({
+      ...state,
+      callSheets: state.callSheets.map((sheet) =>
+        sheet.id === callSheets.friday ? { ...sheet, status: "DRAFT" as const } : sheet,
+      ),
+    });
+
+    const outcome = simulateProposal(alreadyDraft, [
+      { type: "MARK_CALL_SHEET_STALE", callSheetId: callSheets.monday },
+      moveBoth,
+    ]);
+
+    expect(outcome.valid).toBe(true);
+    expect(outcome.conflicts).toEqual([]);
+    expect(outcome.summary.staleCallSheetIds).toEqual([callSheets.monday]);
+  });
+
+  it("a move that could not apply asks for no marks: nothing changed", () => {
+    const outcome = simulateProposal(indexProduction(createDemoMovie()), [
+      { ...moveBoth, sceneIds: ["S99"] },
+    ]);
+
+    expect(outcome.conflicts.map((conflict) => conflict.code)).toEqual([
+      "UNKNOWN_ENTITY_REFERENCE",
     ]);
   });
 });

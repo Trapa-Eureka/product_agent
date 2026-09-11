@@ -47,6 +47,8 @@ export const conflictCodeSchema = z.enum([
   "CROSS_PRODUCTION_REFERENCE",
   "UNKNOWN_ENTITY_REFERENCE",
   "STALE_PRODUCTION_VERSION",
+  /** A proposal moves scenes but leaves a published call sheet for a changed day (TASK-911). */
+  "CALL_SHEET_PUBLISHED_FOR_CHANGED_SHOOT_DAY",
 ]);
 
 export const conflictSchema = z.strictObject({

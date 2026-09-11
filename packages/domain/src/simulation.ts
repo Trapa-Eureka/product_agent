@@ -15,7 +15,7 @@ import { ImpactCollector, analyzeImpact } from "./impact";
 import { checkStateInvariants } from "./invariants/state";
 import { isOperationAlreadyApplied } from "./operations";
 import type { ProductionIndex, ProductionState } from "./production-state";
-import { indexProduction, scheduledShootDay } from "./production-state";
+import { callSheetsFor, indexProduction, scheduledShootDay } from "./production-state";
 
 /**
  * Proposal simulation (SPEC.md FR-3/FR-4, MCP.md §5).
@@ -369,6 +369,45 @@ const factImpact = (index: ProductionIndex, operation: ProposedOperation): Impac
   }
 };
 
+/**
+ * TASK-911 (code review #13): a call sheet describes one shoot day, so a
+ * proposal that changes which scenes a day holds and leaves that day's sheet
+ * `PUBLISHED` would hand the crew a document the plan no longer matches.
+ * The agent path proposes `MARK_CALL_SHEET_STALE` for every such sheet; a
+ * caller writing operations by hand must too. The check reads the would-be
+ * state, so a mark anywhere in the proposal satisfies it, and a sheet that
+ * was already a draft needs nothing. Operations stay explicit rather than
+ * the move implying the mark: the digest a coordinator approves covers the
+ * operations, and a write that changes a call sheet should be in them.
+ */
+const publishedSheetsForChangedDays = (
+  postIndex: ProductionIndex,
+  applied: readonly ProposedOperation[],
+): Conflict[] => {
+  const changedDayIds = new Set<EntityId>();
+  for (const operation of applied) {
+    if (operation.type === "MOVE_SCENES") {
+      changedDayIds.add(operation.fromShootDayId);
+      changedDayIds.add(operation.toShootDayId);
+    }
+  }
+  const conflicts: Conflict[] = [];
+  for (const shootDay of postIndex.state.shootDays) {
+    if (!changedDayIds.has(shootDay.id)) continue;
+    for (const sheet of callSheetsFor(postIndex, shootDay.id)) {
+      if (sheet.status !== "PUBLISHED") continue;
+      conflicts.push({
+        code: "CALL_SHEET_PUBLISHED_FOR_CHANGED_SHOOT_DAY",
+        entityType: "CALL_SHEET",
+        entityId: sheet.id,
+        date: shootDay.date,
+        detail: `Call sheet ${sheet.id} describes ${shootDay.date}, whose scenes this proposal moves, but stays published; add MARK_CALL_SHEET_STALE for ${sheet.id}.`,
+      });
+    }
+  }
+  return conflicts;
+};
+
 const conflictKey = (conflict: Conflict): string =>
   `${conflict.code}:${conflict.entityType}:${conflict.entityId}:${conflict.date ?? ""}`;
 
@@ -436,7 +475,11 @@ export const simulateProposal = (
   }
   const { impacts } = collector.result();
 
-  const conflicts = [...application.conflicts, ...after];
+  const conflicts = [
+    ...application.conflicts,
+    ...after,
+    ...publishedSheetsForChangedDays(postIndex, application.applied),
+  ];
   const warnings = [
     ...impacts
       .filter((impact) => impact.severity === "WARNING")

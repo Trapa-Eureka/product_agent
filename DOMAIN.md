@@ -421,6 +421,16 @@ Friday" both records that she is unavailable and moves her scenes. Recording
 the fact alone is a valid operation but an invalid proposal, because it leaves
 the plan conflicted.
 
+A move must carry its paperwork (TASK-911). A call sheet describes one shoot
+day, so a proposal whose `MOVE_SCENES` changes which scenes a day holds must
+also `MARK_CALL_SHEET_STALE` every `PUBLISHED` call sheet of the days it
+changes, source and target alike; otherwise simulation reports
+`CALL_SHEET_PUBLISHED_FOR_CHANGED_SHOOT_DAY` on each such sheet and the
+proposal is invalid. The check reads the would-be state, so the mark may
+appear anywhere in the proposal and a sheet that is already a draft needs
+none. The move does not imply the mark: the digest a coordinator approves
+covers the operations, and a write that changes a call sheet belongs in them.
+
 Simulation measures "resolved" from the world with the proposal's facts recorded
 but its remedy not yet applied. Recording the fact is what creates the conflict;
 the remedy is what resolves it.
