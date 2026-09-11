@@ -666,6 +666,8 @@ TASK-101 (file store), TASK-302 (rule interpreter), TASK-110, TASK-207, TASK-501
 
 Three independent reviews of revision `c6ddb4ee9b4cbc55e826fd2703dbe003a2a3b626` — `docs/01_COMPREHENSIVE_CODE_REVIEW.md`, `docs/02_SECURITY_REVIEW.md`, `docs/03_FULL_SECURITY_ARCHITECTURE_AUDIT.md` — found substantial overlap: the same underlying defect is often finding #N in the code review, SEC-NNN in the security review, and AUD-NNN in the full audit. Each task below is filed once under the numbering scheme here (`TASK-9NN`) and cites every report finding it closes, rather than being fixed three times under three labels. Tasks are worked one at a time, in the order the reports were read (code review first, by severity; then security-review-only findings; then audit-only findings), with the human confirming before each next task starts.
 
+TASK-901–913 closed every code-review finding through #16. The remaining findings — code review #17–#21, every security-review finding not already covered, and every audit-only finding — are filed as TASK-914–937 below in the security review's remediation order (identity first, then defaults and boundary limits, then workflow integrity and data protection, then supply chain and defence in depth, then code-quality leftovers).
+
 ## TASK-901 Atomic apply-approved-proposal commit — DONE
 
 Code review finding #1 (Critical) / SEC-005 (High) / AUD-002 (Critical): the production mutation, idempotency record, proposal `APPLIED` status, and audit event were four separate writes. A failure after the first left the mutation committed with some or all bookkeeping missing, and a replay saw the advanced version before an idempotency record existed, returning `PRODUCTION_VERSION_MISMATCH` instead of recovering.
@@ -790,6 +792,572 @@ Code review findings #15 and #16 (Medium). #15: both pages launched their reques
 Complete. Server: `get_schedule` gained `includeScenes`; when set, the handler resolves every distinct scene the returned days name — in day order, normalized exactly like `get_scene` through a shared `normalizeScene` — from the index it already built, so the whole page is one production read. A scene ID a day names that cannot be resolved is left out rather than failing the call (the caller shows it by ID; INV-3 reports the corruption). REST passes `?includeScenes=true` through. Web: a `PageLoad<T>` state (`loading` | `ready` | `error`) replaces the nullable rows, and a `latestOnly()` ticket guard makes only the newest request able to write, so a straggling answer about a production the page has left is dropped whether it succeeds or fails. Failures render the server's `ToolError` — code, message, next step — with a Retry button, the same shape the header and the change input already use; `toToolError` moved to the API client so the store and both pages share it. The schedule page makes one request and never calls `get_scene`. MCP.md documents the option.
 
 Tests: MCP contract (`includeScenes` returns the four demo scenes in day order, normalized, with exactly one `loadState` call counted on the store; the plain call has no `scenes`); REST contract (`?includeScenes=true` carries the day's scenes, plain call does not); web — schedule page renders from the one request and asserts `get_scene` is never called, shows the error with next step and retries to a rendered page, and drops a late answer from the previous production; audit page shows the error, ignores a late answer from the previous production, and retries; `latestOnly` unit. `pnpm run verify` passes (9/9).
+
+## TASK-914 Authenticated identity and a real approver role — TODO
+
+**Goal**  
+Every non-health REST route and the WebSocket upgrade require a verified identity; the actor recorded in approvals and audit events comes from verified claims, never from a caller-supplied header; a proposal can only be decided by a principal holding an approver role for that production.
+
+**Context**  
+SEC-001 (Critical) / AUD-001 (Critical). The API accepts `X-Actor-Id` as the user, so anyone reachable can approve a proposal under any name and apply it. Free-first stack: the token scheme must need no external identity provider or paid service — a locally signed token (HMAC, Node `crypto`) issued by a CLI/`serve` command is enough to make the boundary real; an OIDC verifier is a later adapter behind the same port.
+
+**Dependencies**  
+TASK-902 (atomic decision), TASK-906 (header validation).
+
+**Allowed scope**  
+`packages/application` (identity port, principal type, role check inside `decideProposal`), `packages/contracts` (principal/role schemas), a new `packages/adapters/local-auth` (HMAC token issue/verify), `apps/api` (auth middleware, upgrade handshake), `apps/mcp-server` (context from a verified principal or an explicit local-operator env), `apps/web` (send the token), docs.
+
+**Acceptance criteria**
+
+- unauthenticated requests to non-health routes get 401; the WebSocket upgrade is refused before `handleUpgrade`;
+- `X-Actor-Id` is ignored for identity (kept only as a validated display hint, or removed);
+- `decideProposal` refuses a principal without the `approver` role for the production with a typed error; the requester of a change cannot approve its own proposal when maker-checker is enabled;
+- approval and audit records carry the verified subject, issuer, and role;
+- demo mode (`npx … serve`) issues a local approver token so the golden scenarios still run with zero configuration.
+
+**Tests**  
+API contract: 401 without token, 403 wrong production/role, forged `X-Actor-Id` ignored, approve/apply with a valid approver token. WS: upgrade refused without token. Application: role check unit tests. E2E golden scenarios still pass.
+
+**Definition of Done**  
+Acceptance met, `pnpm run verify` green, `ARCHITECTURE.md`/`MCP.md`/`README.md` describe the identity boundary and demo token.
+
+## TASK-915 Authorization fails closed when the allow-list is missing — TODO
+
+**Goal**  
+An unset, blank, or `*` `PCA_ALLOWED_PRODUCTIONS` denies startup unless `PCA_DEMO_MODE=true` is set explicitly.
+
+**Context**  
+SEC-002 (High) / AUD-003 (High). `contextFromEnv` maps a missing variable to wildcard, so an ordinary deployment omission grants every production.
+
+**Dependencies**  
+None (TASK-914 makes the principal's own grants the preferred source later).
+
+**Allowed scope**  
+`apps/mcp-server/src/context.ts`, `apps/api/src/main.ts`, bootstrap env parsing, docs.
+
+**Acceptance criteria**
+
+- missing/blank/`*` without demo mode: process exits non-zero with an actionable message;
+- every listed ID parsed with `entityIdSchema`; an invalid entry fails startup;
+- `npx production-change-agent serve` (demo) still works because the demo command sets demo mode.
+
+**Tests**  
+Unit tests for env parsing (all branches); smoke test that `serve` demo boots.
+
+**Definition of Done**  
+Acceptance met, verify green, `README.md` env table updated.
+
+## TASK-916 WebSocket upgrade authentication and Origin validation — TODO
+
+**Goal**  
+The `/ws` upgrade verifies the principal (TASK-914 token) and an exact Origin allow-list, rejecting with 401/403 before `handleUpgrade`.
+
+**Context**  
+SEC-003 (High) / AUD-007 (High). A hostile web page can open a socket to a loopback API and subscribe to any allowed production.
+
+**Dependencies**  
+TASK-914.
+
+**Allowed scope**  
+`apps/api/src/server.ts`, `packages/adapters/ws-gateway`, web client connect code, docs.
+
+**Acceptance criteria**
+
+- missing/invalid token → 401; foreign or missing Origin from a browser → 403;
+- subscriptions authorized against the principal's productions;
+- `PCA_ALLOWED_ORIGINS` documented, demo default is the served UI origin.
+
+**Tests**  
+ws-gateway tests: foreign Origin, missing Origin, missing token, valid token subscribes.
+
+**Definition of Done**  
+Acceptance met, verify green.
+
+## TASK-917 Resource limits: payload, rate, connection, and cardinality caps — TODO
+
+**Goal**  
+Bound the work an unauthenticated or abusive client can cause.
+
+**Context**  
+SEC-007 (High) / AUD-008 (High). No `maxPayload` (ws default 100 MiB), no rate limit, externally reachable arrays have `.min(1)` but no `.max()`.
+
+**Dependencies**  
+None.
+
+**Allowed scope**  
+`packages/adapters/ws-gateway`, `apps/api`, `packages/contracts` (array maxima), docs.
+
+**Acceptance criteria**
+
+- WebSocket `maxPayload` set to a few KiB; per-IP connection cap; per-connection message rate cap; abusive clients closed;
+- HTTP request rate limit (in-process, no external dependency) returning 429 with `Retry-After`;
+- `sceneIds`, operations, and other external arrays capped with documented maxima; bounded job retention.
+
+**Tests**  
+Oversized frame closed; N+1 connections refused; burst over limit → 429; array over max → validation error.
+
+**Definition of Done**  
+Acceptance met, verify green, `MCP.md` contract maxima updated.
+
+## TASK-918 WebSocket subscription cap cannot be raced — TODO
+
+**Goal**  
+Concurrent subscribe messages cannot exceed the per-connection subscription limit.
+
+**Context**  
+SEC-013 (Medium) / AUD-022. `handleMessage` awaits `authorize` after reading `subscriptions.size`.
+
+**Dependencies**  
+None.
+
+**Allowed scope**  
+`packages/adapters/ws-gateway/src/index.ts` and its tests.
+
+**Acceptance criteria**  
+Messages processed serially per connection (or a slot reserved before the await and released on failure); the cap holds under a burst with delayed authorization.
+
+**Tests**  
+Burst of limit+N subscribes with a deliberately slow `authorize` leaves exactly `limit` subscriptions.
+
+**Definition of Done**  
+Acceptance met, verify green.
+
+## TASK-919 Bind jobs to their proposal and requester — TODO
+
+**Goal**  
+A decision or apply can only continue the job that produced that exact proposal, from the expected stage, by an authorized principal.
+
+**Context**  
+SEC-008 (Medium) / AUD-012. Routes check only that `jobId` exists in the production.
+
+**Dependencies**  
+TASK-905 (atomic tracker), TASK-914 (principal).
+
+**Allowed scope**  
+`apps/api/src/app.ts`, `packages/application/src/jobs/handlers.ts`, job-run contract (record `proposalId`, `requestedBy`), docs.
+
+**Acceptance criteria**  
+Mismatched `proposalId`, wrong job type, or wrong stage → typed 409/404 without touching either job; the transition is a compare-and-set through `tracker.update`.
+
+**Tests**  
+API contract: reject with another proposal's job → 409; apply with a job at the wrong stage → 409; matching job advances.
+
+**Definition of Done**  
+Acceptance met, verify green.
+
+## TASK-920 Model prose is untrusted presentation data — TODO
+
+**Goal**  
+Approval-critical claims (conflicts, warnings, version, digest, operations) come only from deterministic templates; free-form model narrative is labeled, separated, and cannot assert authorization or safety.
+
+**Context**  
+SEC-009 (Medium) / AUD-014. `explainImpact` returns an arbitrary string shown to the approver.
+
+**Dependencies**  
+None.
+
+**Allowed scope**  
+`packages/application` (explanation layer, model guard), `packages/contracts/src/explanation.ts`, `apps/web` confirmation view, docs.
+
+**Acceptance criteria**  
+Deterministic block always rendered first; model narrative is optional, marked as model-authored, and rejected by the guard if it contains authorization/safety assertions from a closed phrase list or references IDs not in the input.
+
+**Tests**  
+Adversarial prompt tests: "no conflicts" prose against a conflicting impact is dropped; narrative referencing an unknown ID is dropped; UI test shows the deterministic block without narrative.
+
+**Definition of Done**  
+Acceptance met, verify green, `DESIGN.md` updated.
+
+## TASK-921 Restrictive file-store permissions — TODO
+
+**Goal**  
+The data directory is `0700`, data/temp/lock files `0600`, verified at startup.
+
+**Context**  
+SEC-010 (Medium) / AUD-017. Files are created with ambient umask.
+
+**Dependencies**  
+TASK-903.
+
+**Allowed scope**  
+`packages/adapters/file-store`, docs.
+
+**Acceptance criteria**  
+Explicit modes on mkdir/open; startup warns and tightens (or refuses, configurable) when an existing file is group/world-readable; symlinked data path refused.
+
+**Tests**  
+Integration: created file mode is `0600` (POSIX); loose existing file is tightened; symlink refused.
+
+**Definition of Done**  
+Acceptance met, verify green, `README.md` states the adapter is single-user.
+
+## TASK-922 Raw change text: no duplication, retention policy — TODO
+
+**Goal**  
+`rawText` lives once on the change request; audit metadata carries a digest and length; retention/redaction is documented.
+
+**Context**  
+SEC-011 (Medium) / AUD-017.
+
+**Dependencies**  
+None.
+
+**Allowed scope**  
+`packages/application/src/use-cases/submit-change-request.ts`, audit contract, `apps/web` audit formatting, docs.
+
+**Acceptance criteria**  
+Audit event metadata has `rawTextDigest`, not `rawText`; UI warns not to paste secrets; high-confidence credential patterns are rejected at intake with a typed error.
+
+**Tests**  
+Unit: audit metadata shape; intake rejects a string containing an AWS-style key; web: warning text present.
+
+**Definition of Done**  
+Acceptance met, verify green, `SPEC.md` data policy section.
+
+## TASK-923 Queue and JobRun state persist when Mongo is selected — TODO
+
+**Goal**  
+With `PCA_STORE=mongo`, job runs and queued work survive a restart.
+
+**Context**  
+AUD-009 (High). Queue and job-run repositories are process-local regardless of store.
+
+**Dependencies**  
+TASK-905.
+
+**Allowed scope**  
+`packages/adapters/mongo-store` (job-run repository with atomic `update`), a Mongo-backed queue adapter or documented SQS-deferred path, bootstrap wiring, docs.
+
+**Acceptance criteria**  
+Mongo job-run repository passes the shared job-run contract; restart with in-flight runs resumes or marks them failed with a clear reason; file/memory defaults unchanged.
+
+**Tests**  
+Integration (Mongo memory server): contract suite + restart scenario.
+
+**Definition of Done**  
+Acceptance met, verify green, `ARCHITECTURE.md` updated.
+
+## TASK-924 Infrastructure errors are not copied into user-visible job state — TODO
+
+**Goal**  
+JobRun messages and API errors carry stable codes and safe text; raw driver/filesystem messages go only to structured operator logs with the correlation ID.
+
+**Context**  
+AUD-011 (Medium). `handlers.ts` writes `${error.code}: ${error.message}` into runs.
+
+**Dependencies**  
+None.
+
+**Allowed scope**  
+`packages/application/src/jobs`, API error mapping, logger, docs.
+
+**Acceptance criteria**  
+Infrastructure-class errors map to a fixed user message plus code; the original message is logged once with correlation ID; domain/validation errors keep their actionable text.
+
+**Tests**  
+Unit: a `STORE_CORRUPT` with a path in its message yields a run message without the path; log receives it.
+
+**Definition of Done**  
+Acceptance met, verify green.
+
+## TASK-925 Upgrade the test toolchain past the mocker advisory — TODO
+
+**Goal**  
+Root `vitest` ≥ 4.1.11, lockfile regenerated, `pnpm audit` clean.
+
+**Context**  
+SEC-012 (Medium) / AUD-018. GHSA-82fw-gwwq-j7x9 in `@vitest/mocker`.
+
+**Dependencies**  
+None.
+
+**Allowed scope**  
+`package.json`, `pnpm-lock.yaml`, vitest configs, test fixes required by the major upgrade, CI audit step.
+
+**Acceptance criteria**  
+All suites pass on the new major; `pnpm audit` reports zero known vulnerabilities; CI runs `pnpm audit --audit-level=moderate`.
+
+**Tests**  
+Full verify.
+
+**Definition of Done**  
+Acceptance met, verify green.
+
+## TASK-926 Mongo validates workflow documents on read and write — TODO
+
+**Goal**  
+Change requests, proposals, approvals, audit events, idempotency and job-run rows are parsed with their strict schemas; failures become `STORE_CORRUPT` without echoing document content.
+
+**Context**  
+SEC-015 (Low) / AUD-020. `fromRow<T>` casts.
+
+**Dependencies**  
+None.
+
+**Allowed scope**  
+`packages/adapters/mongo-store`, an idempotency-row schema in contracts.
+
+**Acceptance criteria**  
+Every read path parses; every write validates; malformed row → `STORE_CORRUPT` with collection + id only.
+
+**Tests**  
+Integration: insert a malformed approval directly; read yields `STORE_CORRUPT`, message has no field values.
+
+**Definition of Done**  
+Acceptance met, verify green.
+
+## TASK-927 CI least privilege and pinned actions — TODO
+
+**Goal**  
+Actions pinned to full commit SHAs; explicit minimal `permissions`; Dependabot proposes SHA updates.
+
+**Context**  
+SEC-016 (Low) / AUD-019.
+
+**Dependencies**  
+None.
+
+**Allowed scope**  
+`.github/`.
+
+**Acceptance criteria**  
+No `@vN` action refs; top-level `permissions: contents: read`; `dependabot.yml` for github-actions and npm.
+
+**Tests**  
+CI green on the PR.
+
+**Definition of Done**  
+Acceptance met.
+
+## TASK-928 Explicit HTTP security headers — TODO
+
+**Goal**  
+Central security-header policy: CSP tailored to the Angular build, `X-Content-Type-Options`, frame denial, Referrer-Policy, `Cache-Control: no-store` on API responses, HSTS when TLS is configured.
+
+**Context**  
+SEC-017 (Low) / AUD-024.
+
+**Dependencies**  
+None.
+
+**Allowed scope**  
+`apps/api` (own middleware or `helmet`), docs.
+
+**Acceptance criteria**  
+Headers present on API and served-UI responses; the UI still loads under the CSP (no `unsafe-inline` scripts).
+
+**Tests**  
+API contract asserts headers; e2e loads UI with CSP.
+
+**Definition of Done**  
+Acceptance met, verify green.
+
+## TASK-929 Model calls carry an AbortSignal — TODO
+
+**Goal**  
+`ModelPort` methods accept a signal; the timeout guard aborts the provider request; adapters observe it.
+
+**Context**  
+SEC-014 (Low) / AUD-023.
+
+**Dependencies**  
+None.
+
+**Allowed scope**  
+`packages/application/src/ports/model.ts`, rule/Ollama/Bedrock adapters, docs.
+
+**Acceptance criteria**  
+Timeout aborts; job cancellation aborts; bounded provider concurrency.
+
+**Tests**  
+Unit: adapter observes abort on timeout; concurrency cap holds.
+
+**Definition of Done**  
+Acceptance met, verify green.
+
+## TASK-930 Deployment baseline and Mongo connection policy — TODO
+
+**Goal**  
+A reproducible build artifact (container or `npm pack`) with a documented security baseline; Mongo connections require TLS and auth outside demo mode.
+
+**Context**  
+AUD-015 / AUD-016 (Medium).
+
+**Dependencies**  
+TASK-914, TASK-915.
+
+**Allowed scope**  
+`Dockerfile`/`.dockerignore` or pack script, bootstrap Mongo options, `docs/DEPLOYMENT.md`.
+
+**Acceptance criteria**  
+Non-demo Mongo URI without `tls=true`/credentials fails startup; the artifact runs the demo with documented env; baseline checklist in docs.
+
+**Tests**  
+Unit for URI policy; CI builds the artifact.
+
+**Definition of Done**  
+Acceptance met, verify green.
+
+## TASK-931 Readiness and saturation health checks — TODO
+
+**Goal**  
+`/health` stays liveness; new `/ready` reports store reachability, queue depth, job-run backlog, lock state, and rate-limit rejections.
+
+**Context**  
+AUD-021 (Low).
+
+**Dependencies**  
+TASK-917.
+
+**Allowed scope**  
+`apps/api`, adapters expose cheap probes, docs.
+
+**Acceptance criteria**  
+`/ready` 503 when the store is unreachable; counters exposed as JSON; no secrets in output.
+
+**Tests**  
+API contract for both states.
+
+**Definition of Done**  
+Acceptance met, verify green.
+
+## TASK-932 Full-entropy identifiers for operational records — TODO
+
+**Goal**  
+Proposal, approval, job, and audit IDs use untruncated random identifiers.
+
+**Context**  
+AUD-025 (Low).
+
+**Dependencies**  
+None.
+
+**Allowed scope**  
+ID generation in application/domain, `entityIdSchema` length if needed, fixtures.
+
+**Acceptance criteria**  
+≥122 bits of entropy per generated ID; existing fixtures unaffected.
+
+**Tests**  
+Unit on format/length.
+
+**Definition of Done**  
+Acceptance met, verify green.
+
+## TASK-933 Angular program covers imported workspace sources — TODO
+
+**Goal**  
+`@pca/contracts` and `@pca/realtime-client` sources are part of the web TypeScript program (or consumed as built libraries), and the "not part of the compilation" warning fails CI.
+
+**Context**  
+Code review #17 (Medium).
+
+**Dependencies**  
+None.
+
+**Allowed scope**  
+`apps/web/tsconfig*.json`, `angular.json`, package builds, CI.
+
+**Acceptance criteria**  
+`pnpm build` emits no compilation-coverage warning; CI greps for it.
+
+**Tests**  
+Build in CI.
+
+**Definition of Done**  
+Acceptance met, verify green.
+
+## TASK-934 Memory-store commits clone their inputs — TODO
+
+**Goal**  
+Mutating an object after `commit`/`applyProposalTransaction` does not change stored state.
+
+**Context**  
+Code review #18 (Low).
+
+**Dependencies**  
+None.
+
+**Allowed scope**  
+`packages/adapters/memory-store`, repository contract tests.
+
+**Acceptance criteria**  
+Contract test mutates inputs after commit and reads unchanged state in every adapter.
+
+**Tests**  
+Shared repository contract case.
+
+**Definition of Done**  
+Acceptance met, verify green.
+
+## TASK-935 Queue idempotency scoped by production and job type — TODO
+
+**Goal**  
+Queue identity is `(productionId, type, idempotencyKey)`.
+
+**Context**  
+Code review #19 (Low).
+
+**Dependencies**  
+None.
+
+**Allowed scope**  
+`packages/adapters/memory-queue`, queue port docs.
+
+**Acceptance criteria**  
+Same key in two productions → two jobs; same tuple → `DUPLICATE`.
+
+**Tests**  
+Queue contract cases.
+
+**Definition of Done**  
+Acceptance met, verify green.
+
+## TASK-936 One model-guard boundary — TODO
+
+**Goal**  
+`guardModelPort` is applied once at the composition root; use cases accept an already-guarded port.
+
+**Context**  
+Code review #20 (Low).
+
+**Dependencies**  
+None.
+
+**Allowed scope**  
+`packages/bootstrap`, `run-change-agent.ts`, `interpret-change.ts`, tests.
+
+**Acceptance criteria**  
+Exactly one guard layer per call, proven by a test counting validations; all composition roots pass through it.
+
+**Tests**  
+Unit counting guard invocations.
+
+**Definition of Done**  
+Acceptance met, verify green.
+
+## TASK-937 Unused domain helpers are wired or removed — TODO
+
+**Goal**  
+`pendingOperations`, `staleCallSheetIdsForShootDays`, `checkVersionIncremented`, `idempotencyKeyForProposal` each have exactly one runtime consumer or are deleted with their tests.
+
+**Context**  
+Code review #21 (Low).
+
+**Dependencies**  
+TASK-911.
+
+**Allowed scope**  
+`packages/domain`, callers in application/web.
+
+**Acceptance criteria**  
+No exported helper without a non-test consumer; the UI derives its idempotency key from the domain helper.
+
+**Tests**  
+Existing tests adjusted.
+
+**Definition of Done**  
+Acceptance met, verify green.
 
 ---
 
