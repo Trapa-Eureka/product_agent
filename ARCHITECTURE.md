@@ -875,8 +875,12 @@ signs with an ephemeral secret and hands anyone who asks
 `GET /api/auth/demo-session` the demo coordinator's token, so `npx … serve`
 runs the golden scenarios with zero configuration, with a startup warning
 saying so. Neither set: startup fails, because a deployment that forgot its
-secret must not come up open. An OIDC verifier is a later adapter behind the
-same port; nothing above the port changes for it.
+secret must not come up open. The production allow-list follows the same
+rule (TASK-915, `contextFromEnv`): `PCA_ALLOWED_PRODUCTIONS` unset, blank,
+or `*` is a startup error unless `PCA_DEMO_MODE=true`, and every listed ID
+must parse as an entity ID — a deployment omission or typo refuses to start
+rather than silently granting every production. An OIDC verifier is a later
+adapter behind the same port; nothing above the port changes for it.
 
 What the boundary records: an approval carries `approvedBy` (the subject),
 `approvedByIssuer`, and `approvedByRole`; the decision's audit event carries

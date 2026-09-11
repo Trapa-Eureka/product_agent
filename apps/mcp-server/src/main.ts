@@ -13,6 +13,10 @@ import { createProductionChangeServer } from "./server";
  *
  *   PCA_STORAGE=file PCA_ALLOWED_PRODUCTIONS=PROD-DEMO node --import tsx apps/mcp-server/src/main.ts
  *
+ * PCA_ALLOWED_PRODUCTIONS is required (or PCA_DEMO_MODE=true for a local
+ * demo); the server refuses to start rather than act on every production
+ * (TASK-915).
+ *
  * stdout is the protocol stream; everything human-readable goes to stderr.
  */
 const main = async (): Promise<void> => {
