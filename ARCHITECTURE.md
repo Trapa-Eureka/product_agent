@@ -630,6 +630,21 @@ atomic, so a reader sees a whole database, before or after, never a torn one,
 and a second instance sees the first one's writes because every read goes
 through to the file rather than a cache.
 
+The data file is owner-only (TASK-921, SEC-010 / AUD-017): it holds cast
+and location schedules, human-entered change text, identities, approvals,
+and the audit trail, so the store creates its directory `0700` and its
+data, temporary, and lock files `0600` at creation (never fixed up after a
+readable window), refuses a data file, lock file, or directory entry that
+is a symbolic link (`STORE_UNSAFE_PATH`), tightens an existing loose data
+file to `0600` with a warning — or refuses it (`STORE_UNSAFE_PERMISSIONS`)
+under `PCA_DATA_FILE_PERMISSIONS=refuse` — and warns about a loose directory
+it did not create without ever chmodding it (`/tmp` is not ours to change).
+`FileStore.verify()` runs once per instance before the first read or write,
+and the composition root calls it at startup so a refusal fails startup
+rather than the first request. Windows has no mode bits; the checks are a
+no-op there. This is a single-user store: no encryption at rest, no
+per-field access.
+
 The same `fileDatabaseSchema` that validates every read validates every write
 (TASK-906): the complete next database is parsed before the temporary file is
 written, so a record the schema would refuse — a 129-character correlation ID

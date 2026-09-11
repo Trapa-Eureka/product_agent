@@ -173,7 +173,8 @@ pnpm --filter @pca/web start
 | Variable | Default | Meaning |
 |---|---|---|
 | `PCA_STORAGE` | `file` | `file`, `memory`, or `mongo` |
-| `PCA_DATA_FILE` | `~/.production-change-agent/data.json` | JSON store location |
+| `PCA_DATA_FILE` | `~/.production-change-agent/data.json` | JSON store location; created `0700`/`0600`, owner-only, and never a symbolic link |
+| `PCA_DATA_FILE_PERMISSIONS` | `tighten` | An existing data file readable by others is chmodded to `0600` (`tighten`, with a warning) or refused at startup (`refuse`) |
 | `PCA_MONGO_URI` | `mongodb://127.0.0.1:27017/?replicaSet=rs0` | Mongo connection; must be a replica set |
 | `PCA_MONGO_DB` | `production_change_agent` | Mongo database name |
 | `PCA_MODEL` | `rules` | `rules` (free, no network), `ollama` (later), or `bedrock` (deferred, paid) |
@@ -255,7 +256,10 @@ walks the same architecture through an actual approved change.
 - The file store keeps everything on one machine's local disk and admits one
   writer at a time (a lock file, not a database); multiple API instances on
   the same path stay correct but queue behind each other, so a multi-writer
-  deployment belongs on `PCA_STORAGE=mongo`.
+  deployment belongs on `PCA_STORAGE=mongo`. It is a single-user store: the
+  directory and files are owner-only (`0700`/`0600`) and a symlinked path is
+  refused, but there is no encryption at rest and no per-field access — a
+  multi-user deployment needs a managed database.
 
 ## Documentation
 

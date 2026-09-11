@@ -1,5 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, open, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  lstat,
+  mkdir,
+  open,
+  readFile,
+  rename,
+  stat,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -12,6 +22,7 @@ import type {
   CommitOutcome,
   DecisionOutcome,
   IdempotencyRepository,
+  Logger,
   ProductionMutation,
   ProductionRepository,
   ProposalDecisionCommit,
@@ -66,7 +77,26 @@ export type FileStoreOptions = {
    * holding the lock longer is stuck, not busy.
    */
   readonly lockTimeoutMs?: number;
+  /**
+   * What to do when the data file already exists with permissions looser
+   * than owner-only (TASK-921): `tighten` (default) chmods it to `0600` and
+   * warns; `refuse` throws `STORE_UNSAFE_PERMISSIONS`. A directory is never
+   * chmodded — it may not be ours — only warned about.
+   */
+  readonly permissions?: "tighten" | "refuse";
+  /** Receives the permission warnings; silent otherwise. */
+  readonly logger?: Logger;
 };
+
+/** Owner-only: the store holds schedules, identities, and free text. */
+export const DATA_DIRECTORY_MODE = 0o700;
+export const DATA_FILE_MODE = 0o600;
+
+/** Bits that grant group or others anything. */
+const LOOSE_BITS = 0o077;
+
+/** Windows has no POSIX mode bits; the checks below are a no-op there. */
+const POSIX = process.platform !== "win32";
 
 /** How often a waiting writer re-tries the lock. */
 const LOCK_POLL_MS = 10;
@@ -120,11 +150,87 @@ export class FileStore implements RepositorySet {
    * the lock file's job (`#acquireLock`, TASK-903).
    */
   #writeQueue: Promise<unknown> = Promise.resolve();
+  readonly #permissions: "tighten" | "refuse";
+  readonly #logger: Logger | undefined;
+  /** The one-time path and permission check, shared by every read and write. */
+  #checked: Promise<void> | null = null;
 
   constructor(options: FileStoreOptions = {}) {
     this.#filePath = options.filePath ?? defaultDataFilePath();
     this.#now = options.now ?? defaultClock;
     this.#lockTimeoutMs = options.lockTimeoutMs ?? 5_000;
+    this.#permissions = options.permissions ?? "tighten";
+    this.#logger = options.logger;
+  }
+
+  /**
+   * TASK-921 (SEC-010 / AUD-017): the data file holds cast and location
+   * schedules, human-entered change text, identities, approvals, and the
+   * audit trail, so it is owner-only. Creates the directory `0700` when it
+   * does not exist, refuses a data file or a directory entry that is a
+   * symbolic link (a link could point the store at, or leak it to, a path
+   * the operator never chose), tightens an existing loose data file to
+   * `0600` — or refuses, when so configured — and warns about a loose
+   * directory it did not create. Runs once per instance, before the first
+   * read or write; the composition root also calls it at startup so a
+   * refusal is a startup failure, not a first-request one.
+   */
+  verify(): Promise<void> {
+    this.#checked ??= this.#verifyPath();
+    return this.#checked;
+  }
+
+  async #verifyPath(): Promise<void> {
+    const directory = dirname(this.#filePath);
+    await mkdir(directory, { recursive: true, mode: DATA_DIRECTORY_MODE });
+    if (!POSIX) return;
+
+    for (const [path, what] of [
+      [this.#filePath, "data file"],
+      [this.lockPath, "lock file"],
+      [directory, "data directory"],
+    ] as const) {
+      const entry = await lstat(path).catch((error: unknown) => {
+        if (isNotFound(error)) return null;
+        throw error;
+      });
+      if (entry?.isSymbolicLink() === true) {
+        throw new Error(
+          `STORE_UNSAFE_PATH: ${path} (the ${what}) is a symbolic link; the store refuses to follow it. ` +
+            `Point PCA_DATA_FILE at a real file in a directory you own.`,
+        );
+      }
+    }
+
+    const directoryMode = (await stat(directory)).mode & 0o777;
+    if ((directoryMode & LOOSE_BITS) !== 0) {
+      const message = `${directory} is mode ${directoryMode.toString(8)}; the data directory should be 0700 (owner-only).`;
+      if (this.#permissions === "refuse") throw new Error(`STORE_UNSAFE_PERMISSIONS: ${message}`);
+      this.#logger?.log("warn", "store_directory_permissions", {
+        directory,
+        mode: directoryMode.toString(8),
+      });
+    }
+
+    const file = await stat(this.#filePath).catch((error: unknown) => {
+      if (isNotFound(error)) return null;
+      throw error;
+    });
+    if (file === null) return;
+    const fileMode = file.mode & 0o777;
+    if ((fileMode & LOOSE_BITS) === 0) return;
+    if (this.#permissions === "refuse") {
+      throw new Error(
+        `STORE_UNSAFE_PERMISSIONS: ${this.#filePath} is mode ${fileMode.toString(8)}; the data file must be 0600 (owner-only). ` +
+          `Run chmod 600 on it, or set PCA_DATA_FILE_PERMISSIONS=tighten to have the store do so.`,
+      );
+    }
+    await chmod(this.#filePath, DATA_FILE_MODE);
+    this.#logger?.log("warn", "store_file_permissions_tightened", {
+      filePath: this.#filePath,
+      from: fileMode.toString(8),
+      to: DATA_FILE_MODE.toString(8),
+    });
   }
 
   /** Where the writer lock lives: beside the data file, never inside it. */
@@ -380,6 +486,7 @@ export class FileStore implements RepositorySet {
   };
 
   async #read(): Promise<FileDatabase> {
+    await this.verify();
     let raw: string;
     try {
       raw = await readFile(this.#filePath, "utf8");
@@ -454,12 +561,12 @@ export class FileStore implements RepositorySet {
    */
   async #acquireLock(): Promise<() => Promise<void>> {
     const { lockPath } = this;
-    await mkdir(dirname(this.#filePath), { recursive: true });
+    await this.verify();
     const deadline = Date.now() + this.#lockTimeoutMs;
 
     for (;;) {
       try {
-        const handle = await open(lockPath, "wx");
+        const handle = await open(lockPath, "wx", DATA_FILE_MODE);
         try {
           await handle.writeFile(
             JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() }),
@@ -551,10 +658,15 @@ export class FileStore implements RepositorySet {
       );
     }
 
-    await mkdir(dirname(this.#filePath), { recursive: true });
+    await this.verify();
     const temporaryPath = `${this.#filePath}.${randomUUID()}.tmp`;
     try {
-      await writeFile(temporaryPath, `${JSON.stringify(database, null, 2)}\n`, "utf8");
+      // Owner-only from the first byte: the mode is set at creation, never
+      // fixed up after a window in which the file was readable.
+      await writeFile(temporaryPath, `${JSON.stringify(database, null, 2)}\n`, {
+        encoding: "utf8",
+        mode: DATA_FILE_MODE,
+      });
       await rename(temporaryPath, this.#filePath);
     } catch (error) {
       await unlink(temporaryPath).catch(() => undefined);
