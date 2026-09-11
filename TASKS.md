@@ -957,28 +957,16 @@ Tests: the change is to CI itself; the pull request's own run on this workflow i
 
 Docs: `TESTING.md` §12.
 
-## TASK-928 Explicit HTTP security headers — TODO
+## TASK-928 Explicit HTTP security headers — DONE
 
-**Goal**  
-Central security-header policy: CSP tailored to the Angular build, `X-Content-Type-Options`, frame denial, Referrer-Policy, `Cache-Control: no-store` on API responses, HSTS when TLS is configured.
+SEC-017 (Low) / AUD-024. The API disabled `X-Powered-By` and set nothing else: no content-security policy, no `nosniff`, no frame restriction, no referrer policy, no cache control on answers that are a production's state or a person's session, and no HSTS for a TLS deployment. The console had no policy of its own either.
 
-**Context**  
-SEC-017 (Low) / AUD-024.
+**Status**  
+Complete. `securityHeaders` (`apps/api/src/security-headers.ts`) is the API's first middleware, so every answer including errors and 404s carries: `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'` (a JSON endpoint loads nothing and may not be framed), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Cross-Origin-Resource-Policy: same-origin`, `Cross-Origin-Opener-Policy: same-origin`, and `Cache-Control: no-store` (with `Pragma: no-cache`); `Strict-Transport-Security: max-age=31536000; includeSubDomains` is added only under `PCA_TLS_TERMINATED=true`, because HSTS over plain HTTP is ignored at best and on a shared host name locks it to TLS at worst. The console's policy is set where the console is served — `angular.json`'s dev-server `headers`: a CSP with `script-src 'self'` (the Angular build has no inline scripts), `style-src 'self' 'unsafe-inline'` (Angular injects component styles as style elements), `img-src 'self' data:`, `connect-src 'self'` (covers `/api` and `/ws` through the proxy), `object-src 'none'`, `base-uri 'self'`, `frame-ancestors 'none'`, plus `nosniff`, `DENY`, and `no-referrer` — and the E2E suite now loads the UI under it, which is the "still loads" proof; a deployment's static host or proxy applies the same headers (`ARCHITECTURE.md` §6). No dependency was added: the policy is eight `setHeader` lines, not a library's defaults to audit.
 
-**Dependencies**  
-None.
+Tests: API contract — a read, a scene-not-found error, an unauthenticated refusal, and an unknown route all carry the full set and no `X-Powered-By`; HSTS is absent by default and present with `tlsTerminated: true`. E2E — the three golden scenarios run in Chromium under the console's CSP. `pnpm run verify` passes (9/9).
 
-**Allowed scope**  
-`apps/api` (own middleware or `helmet`), docs.
-
-**Acceptance criteria**  
-Headers present on API and served-UI responses; the UI still loads under the CSP (no `unsafe-inline` scripts).
-
-**Tests**  
-API contract asserts headers; e2e loads UI with CSP.
-
-**Definition of Done**  
-Acceptance met, verify green.
+Docs: `README.md` env table (`PCA_TLS_TERMINATED`); `ARCHITECTURE.md` §6; `TESTING.md`.
 
 ## TASK-929 Model calls carry an AbortSignal — TODO
 

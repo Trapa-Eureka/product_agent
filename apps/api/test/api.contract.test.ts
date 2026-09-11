@@ -1010,6 +1010,50 @@ describe("REST API", () => {
     });
   });
 
+  describe("security headers (TASK-928, SEC-017 / AUD-024)", () => {
+    const expectHardened = (reply: Reply) => {
+      expect(reply.headers.get("content-security-policy")).toBe(
+        "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+      );
+      expect(reply.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(reply.headers.get("x-frame-options")).toBe("DENY");
+      expect(reply.headers.get("referrer-policy")).toBe("no-referrer");
+      expect(reply.headers.get("cross-origin-resource-policy")).toBe("same-origin");
+      expect(reply.headers.get("cache-control")).toBe("no-store");
+      expect(reply.headers.get("x-powered-by")).toBeNull();
+    };
+
+    it("hardens every answer: a read, an error, an unauthenticated refusal, and a 404", async () => {
+      expectHardened(await api("GET", "/health"));
+      expectHardened(await api("GET", `/productions/${DEMO}`));
+      expectHardened(await api("GET", `/productions/${DEMO}/scenes/S99`));
+      expectHardened(await api("GET", `/productions/${DEMO}`, undefined, { authorization: "" }));
+      expectHardened(await api("GET", "/nowhere", undefined, { authorization: "" }));
+    });
+
+    it("announces HSTS only when the service says it is reached over TLS", async () => {
+      expect((await api("GET", "/health")).headers.get("strict-transport-security")).toBeNull();
+      await server.close();
+      const hub = createNotificationHub();
+      server = createApiServer({
+        repositories: withProposalNotifications(store, hub, clock),
+        tracker,
+        queue,
+        hub,
+        clock,
+        ids: sequentialIds(),
+        context: { actor: { type: "USER", id: "api-user" }, allowedProductionIds: [DEMO] },
+        identity: createLocalIdentity({ secret: SECRET, clock }),
+        makerChecker: false,
+        tlsTerminated: true,
+      });
+      base = (await server.listen(0)).url;
+      expect((await api("GET", "/health")).headers.get("strict-transport-security")).toBe(
+        "max-age=31536000; includeSubDomains",
+      );
+    });
+  });
+
   describe("raw change text policy (TASK-922, SEC-011 / AUD-017)", () => {
     it("refuses a sentence carrying a credential on both intake routes, naming the kind only", async () => {
       const secret = `Sarah cannot shoot Friday; use AKIAIOSFODNN7EXAMPLE to upload.`;

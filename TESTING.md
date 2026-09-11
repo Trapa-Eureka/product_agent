@@ -162,6 +162,9 @@ its documented maximum → `INVALID_INPUT`; TASK-919: a decision or apply
 through another proposal's job → `JOB_MISMATCH` with nothing changed, a
 replayed apply answered with the run and not enqueued twice, a job resumed
 by another principal → 403 and a job not at `resolving` → `JOB_MISMATCH`;
+TASK-928: every answer — a read, an error, an unauthenticated refusal, a
+404 — carries the CSP, `nosniff`, `DENY`, `no-referrer`, same-origin
+resource policy, and `no-store`, and HSTS only when `tlsTerminated` is set;
 TASK-922: a sentence carrying a credential refused on both intake routes
 naming the kind only, and the audit event carrying a digest, a length, and
 the engine's summary but never the sentence), reads, GOLDEN-1 driven through REST alone,

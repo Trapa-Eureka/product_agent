@@ -328,7 +328,20 @@ writes under a production to the verified principal
 in-process fixed window; request and header timeouts drop a stalled
 connection; the JSON body stays at 256 KiB; and every externally supplied
 array has a documented maximum (`INPUT_LIMITS`, MCP.md §3), so a body cannot
-carry thousands of scene IDs into analysis. A job named by a decision, an
+carry thousands of scene IDs into analysis. Every answer carries the API's
+security headers (TASK-928, `securityHeaders`, first middleware, so errors
+and 404s get them too): a `default-src 'none'` CSP with `frame-ancestors
+'none'`, `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy:
+no-referrer`, same-origin `Cross-Origin-Resource-Policy`/`-Opener-Policy`,
+and `Cache-Control: no-store` — an answer is a production's current state
+or a person's session and is never cached anywhere — plus HSTS only when
+`PCA_TLS_TERMINATED=true`, since HSTS over plain HTTP is ignored at best.
+The console's own policy lives where the console is served: the dev
+server's `headers` in `angular.json` (`script-src 'self'`, `style-src
+'self' 'unsafe-inline'` because Angular injects component styles as style
+elements, `connect-src 'self'` for `/api` and `/ws`, `frame-ancestors
+'none'`), which the E2E suite loads the UI under; a deployment's static
+host or proxy applies the same four headers. A job named by a decision, an
 apply, or a resumed change is bound to what it claims (TASK-919,
 `describeJobMismatch`): it must be the analysis that produced that exact
 proposal, at a stage where the action makes sense (`JOB_MISMATCH`, 409,
