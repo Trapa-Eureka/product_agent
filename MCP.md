@@ -403,6 +403,13 @@ requiring the cast member or location remains scheduled inside the window
 version advanced past the proposal's base; that the proposal is marked
 `APPLIED`; and that an apply audit event exists.
 
+A check `name` is a one-line label of at most 120 characters. It quotes the
+user-written text that identifies the operation (a cast member's name, a task
+title), but any such fragment is cut to 30 characters with an ellipsis and the
+whole name to the limit, so a valid proposal always verifies through this tool
+whatever its titles say (TASK-912); the full text is in `detail`, itself bounded
+at 2,000 characters.
+
 The last two are what notice a write that landed without its bookkeeping. The
 whole list is returned, not the first failure, and the outcome is written to
 the audit trail either way as `PROPOSAL_VERIFIED` or

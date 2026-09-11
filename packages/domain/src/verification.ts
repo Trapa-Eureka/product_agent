@@ -1,4 +1,5 @@
 import type { ProposedOperation } from "@pca/contracts";
+import { EXPLANATION_MAX_LENGTH, VERIFICATION_CHECK_NAME_MAX_LENGTH } from "@pca/contracts";
 
 import { isBlockedOn, isRangeCovered } from "./dates";
 import { checkStateInvariants } from "./invariants/state";
@@ -22,6 +23,13 @@ import { findEquivalentRequirement, normalizeRequirementName } from "./requireme
  *
  * Each check is named so a failure says what is wrong in the coordinator's
  * words, and the whole list is returned rather than the first failure.
+ *
+ * Names are labels, not documents (TASK-912, code review #14). They quote
+ * user-written text — a cast member's name, a task title — so a coordinator
+ * recognises the operation, but such a fragment is cut to a few dozen
+ * characters and the whole name to the MCP output contract's limit, so a
+ * valid proposal can never produce a check the tool refuses to return. The
+ * full text lives in `detail`, which has its own, larger, bound.
  */
 
 export type VerificationCheck = {
@@ -30,10 +38,25 @@ export type VerificationCheck = {
   readonly detail?: string;
 };
 
+const ELLIPSIS = "\u2026";
+
+/** `text`, or its first `max` characters with the cut marked. */
+export const clip = (text: string, max: number): string =>
+  text.length <= max ? text : `${text.slice(0, Math.max(0, max - ELLIPSIS.length))}${ELLIPSIS}`;
+
+/**
+ * Room for one user-written fragment inside a check name. Sized so the
+ * longest template with two fragments ("No scene requiring X remains
+ * scheduled while X is unavailable") still fits the name limit whole.
+ */
+export const CHECK_NAME_FRAGMENT_MAX_LENGTH = 30;
+
+const fragment = (text: string): string => clip(text, CHECK_NAME_FRAGMENT_MAX_LENGTH);
+
 const check = (name: string, passed: boolean, detail: string): VerificationCheck => ({
-  name,
+  name: clip(name, VERIFICATION_CHECK_NAME_MAX_LENGTH),
   passed,
-  detail,
+  detail: clip(detail, EXPLANATION_MAX_LENGTH),
 });
 
 const sceneLabel = (index: ProductionIndex, sceneId: string): string => {
@@ -51,7 +74,7 @@ export const verifyOperationsApplied = (
     switch (operation.type) {
       case "RECORD_CAST_UNAVAILABILITY": {
         const cast = index.castById.get(operation.castId);
-        const name = `${ordinal}. ${cast?.name ?? operation.castId} recorded unavailable ${operation.unavailable.start} to ${operation.unavailable.end}`;
+        const name = `${ordinal}. ${fragment(cast?.name ?? operation.castId)} recorded unavailable ${operation.unavailable.start} to ${operation.unavailable.end}`;
         if (cast === undefined) {
           return check(name, false, `Cast member ${operation.castId} does not exist.`);
         }
@@ -67,7 +90,7 @@ export const verifyOperationsApplied = (
 
       case "RECORD_LOCATION_UNAVAILABILITY": {
         const location = index.locationById.get(operation.locationId);
-        const name = `${ordinal}. ${location?.name ?? operation.locationId} recorded unavailable ${operation.unavailable.start} to ${operation.unavailable.end}`;
+        const name = `${ordinal}. ${fragment(location?.name ?? operation.locationId)} recorded unavailable ${operation.unavailable.start} to ${operation.unavailable.end}`;
         if (location === undefined) {
           return check(name, false, `Location ${operation.locationId} does not exist.`);
         }
@@ -106,7 +129,7 @@ export const verifyOperationsApplied = (
 
       case "ADD_SCENE_REQUIREMENT": {
         const scene = index.sceneById.get(operation.sceneId);
-        const name = `${ordinal}. ${sceneLabel(index, operation.sceneId)} has ${operation.requirementType} "${operation.name}"`;
+        const name = `${ordinal}. ${sceneLabel(index, operation.sceneId)} has ${operation.requirementType} "${fragment(operation.name)}"`;
         if (scene === undefined) {
           return check(name, false, `Scene ${operation.sceneId} does not exist.`);
         }
@@ -127,7 +150,7 @@ export const verifyOperationsApplied = (
       }
 
       case "CREATE_PREPARATION_TASK": {
-        const name = `${ordinal}. Open task "${operation.title}" exists`;
+        const name = `${ordinal}. Open task "${fragment(operation.title)}" exists`;
         const wanted = normalizeRequirementName(operation.title);
         const task = tasksFor(index, operation.relatedEntityType, operation.relatedEntityId).find(
           (candidate) =>
@@ -137,8 +160,8 @@ export const verifyOperationsApplied = (
           name,
           task !== undefined,
           task === undefined
-            ? `No open task with that title is linked to ${operation.relatedEntityType} ${operation.relatedEntityId}.`
-            : `Task ${task.id} is open and linked to ${operation.relatedEntityType} ${operation.relatedEntityId}.`,
+            ? `No open task titled "${operation.title}" is linked to ${operation.relatedEntityType} ${operation.relatedEntityId}.`
+            : `Task ${task.id} "${operation.title}" is open and linked to ${operation.relatedEntityType} ${operation.relatedEntityId}.`,
         );
       }
 
@@ -181,7 +204,7 @@ export const verifyAvailabilityHonoured = (
       });
       checks.push(
         check(
-          `No scene requiring ${cast.name} remains scheduled while ${cast.name} is unavailable`,
+          `No scene requiring ${fragment(cast.name)} remains scheduled while ${fragment(cast.name)} is unavailable`,
           offending.length === 0,
           offending.length === 0
             ? `No scene requiring ${cast.name} falls inside ${operation.unavailable.start} to ${operation.unavailable.end}.`
@@ -201,7 +224,7 @@ export const verifyAvailabilityHonoured = (
       });
       checks.push(
         check(
-          `No scene at ${location.name} remains scheduled while ${location.name} is unavailable`,
+          `No scene at ${fragment(location.name)} remains scheduled while ${fragment(location.name)} is unavailable`,
           offending.length === 0,
           offending.length === 0
             ? `No scene at ${location.name} falls inside ${operation.unavailable.start} to ${operation.unavailable.end}.`

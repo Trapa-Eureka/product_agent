@@ -4,10 +4,12 @@ import {
   MCP_TOOL_CONTRACTS,
   MCP_TOOL_NAMES,
   MCP_WRITE_TOOL_NAMES,
+  VERIFICATION_CHECK_NAME_MAX_LENGTH,
   applyApprovedProposalInputSchema,
   getCastAvailabilityInputSchema,
   getSceneInputSchema,
   simulateProposalInputSchema,
+  verifyAppliedProposalOutputSchema,
 } from "../src/mcp";
 
 describe("tool registry", () => {
@@ -115,6 +117,23 @@ describe("simulate_proposal input", () => {
           },
         ],
       }).success,
+    ).toBe(false);
+  });
+});
+
+describe("verify_applied_proposal output", () => {
+  const withName = (name: string) => ({ success: true, checks: [{ name, passed: true }] });
+
+  it("accepts a check name at the documented limit and refuses one past it", () => {
+    expect(
+      verifyAppliedProposalOutputSchema.safeParse(
+        withName("n".repeat(VERIFICATION_CHECK_NAME_MAX_LENGTH)),
+      ).success,
+    ).toBe(true);
+    expect(
+      verifyAppliedProposalOutputSchema.safeParse(
+        withName("n".repeat(VERIFICATION_CHECK_NAME_MAX_LENGTH + 1)),
+      ).success,
     ).toBe(false);
   });
 });

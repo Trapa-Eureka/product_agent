@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import type { ProposedOperation } from "@pca/contracts";
+import type { ProposedOperation, Task } from "@pca/contracts";
+import { EXPLANATION_MAX_LENGTH, VERIFICATION_CHECK_NAME_MAX_LENGTH } from "@pca/contracts";
 import { DEMO_MOVIE_DATES, DEMO_MOVIE_IDS, createDemoMovie } from "@pca/fixtures";
 import { onDay } from "@pca/test-support";
 
-import { indexProduction } from "../src/production-state";
+import { indexProduction, type ProductionState } from "../src/production-state";
 import { applyOperations, simulationIds } from "../src/simulation";
 import {
+  CHECK_NAME_FRAGMENT_MAX_LENGTH,
+  clip,
   verifyAvailabilityHonoured,
   verifyInvariantsHold,
   verifyOperationsApplied,
@@ -64,7 +67,9 @@ describe("verifyOperationsApplied", () => {
     const checks = verifyOperationsApplied(applied(golden3), golden3);
     expect(checks.map((entry) => entry.passed)).toEqual([true, true]);
     expect(checks[0]?.detail).toBe("Requirement SIM-REQ-1 exists and is listed on the scene.");
-    expect(checks[1]?.detail).toBe("Task SIM-T-1 is open and linked to SCENE S18.");
+    expect(checks[1]?.detail).toBe(
+      'Task SIM-T-1 "Source a red car for Scene 18" is open and linked to SCENE S18.',
+    );
   });
 
   it("notices a requirement that exists but is not listed on the scene", () => {
@@ -123,6 +128,74 @@ describe("verifyOperationsApplied", () => {
       "Cast member CAST-GHOST does not exist.",
       "Call sheet CS-GHOST does not exist.",
     ]);
+  });
+});
+
+describe("TASK-912: check names stay within the MCP output contract whatever the input says", () => {
+  const longTitle = "Source ".padEnd(300, "x");
+  const longTask: ProposedOperation = {
+    type: "CREATE_PREPARATION_TASK",
+    title: longTitle,
+    relatedEntityType: "SCENE",
+    relatedEntityId: scenes.s18,
+  };
+
+  it("clips a 300-character task title in the name and keeps the whole title in the detail", () => {
+    const [entry] = verifyOperationsApplied(applied([longTask]), [longTask]);
+    expect(entry?.passed).toBe(true);
+    expect(entry?.name.length).toBeLessThanOrEqual(VERIFICATION_CHECK_NAME_MAX_LENGTH);
+    expect(entry?.name).toBe(`1. Open task "${longTitle.slice(0, 29)}\u2026" exists`);
+    expect(entry?.detail).toContain(`"${longTitle}"`);
+  });
+
+  it("clips a 200-character cast name in both the operation check and the availability check", () => {
+    const longName = "Sarah ".padEnd(200, "y");
+    const state: ProductionState = {
+      ...createDemoMovie(),
+      castMembers: createDemoMovie().castMembers.map((member) =>
+        member.id === cast.sarah ? { ...member, name: longName } : member,
+      ),
+    };
+    const index = indexProduction(applyOperations(state, golden1, simulationIds()).state);
+    const names = [
+      ...verifyOperationsApplied(index, golden1),
+      ...verifyAvailabilityHonoured(index, golden1),
+    ].map((entry) => entry.name);
+
+    expect(names).toHaveLength(5);
+    for (const name of names) {
+      expect(name.length).toBeLessThanOrEqual(VERIFICATION_CHECK_NAME_MAX_LENGTH);
+    }
+    const fragment = `${longName.slice(0, CHECK_NAME_FRAGMENT_MAX_LENGTH - 1)}\u2026`;
+    expect(names[0]).toBe(`1. ${fragment} recorded unavailable 2026-09-18 to 2026-09-18`);
+    expect(names[4]).toBe(
+      `No scene requiring ${fragment} remains scheduled while ${fragment} is unavailable`,
+    );
+  });
+
+  it("clips the invariant detail to the explanation limit when there is too much to say", () => {
+    const orphans: Task[] = Array.from({ length: 60 }, (_, position) => ({
+      id: `T-ORPHAN-${position}`,
+      productionId: DEMO_MOVIE_IDS.production,
+      title: `Orphan task number ${position} with a deliberately long title to fill the detail`,
+      relatedEntityType: "SCENE",
+      relatedEntityId: `S-MISSING-${position}`,
+      status: "OPEN",
+    }));
+    const entry = verifyInvariantsHold(
+      indexProduction({ ...createDemoMovie(), tasks: [...createDemoMovie().tasks, ...orphans] }),
+    );
+    expect(entry.passed).toBe(false);
+    expect(entry.detail?.length).toBe(EXPLANATION_MAX_LENGTH);
+    expect(entry.detail?.endsWith("\u2026")).toBe(true);
+    expect(entry.detail?.startsWith("INV-3: Task")).toBe(true);
+  });
+
+  it("clip leaves text at the limit alone and marks a cut so it is never mistaken for the whole", () => {
+    expect(clip("abc", 3)).toBe("abc");
+    expect(clip("abcd", 3)).toBe("ab\u2026");
+    expect(clip("abcd", 3)).toHaveLength(3);
+    expect(clip("x".repeat(121), 120)).toHaveLength(120);
   });
 });
 
