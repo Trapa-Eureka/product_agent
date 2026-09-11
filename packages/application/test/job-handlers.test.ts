@@ -22,6 +22,7 @@ import {
   createVerifyAppliedProposal,
   createVerifyProposalJobHandler,
   fail,
+  guardModelPort,
   succeed,
   type ApplyApprovedProposal,
   type EnqueueJobInput,
@@ -92,7 +93,7 @@ describe("job handlers", () => {
 
     runChangeAgent = createRunChangeAgent({
       repositories: store,
-      model: createRuleModelAdapter(),
+      model: guardModelPort(createRuleModelAdapter()),
       clock,
       ids,
     });

@@ -11,8 +11,9 @@ import {
   createRunChangeAgent,
   createVerifyAppliedProposal,
   forwardJobEvents,
-  withProposalNotifications,
+  guardModelPort,
   type JobTracker,
+  withProposalNotifications,
 } from "@pca/application";
 import type { Proposal, ProposedOperation, ToolError } from "@pca/contracts";
 import { DEMO_MOVIE_DATES, DEMO_MOVIE_IDS, createDemoMovie } from "@pca/fixtures";
@@ -120,7 +121,7 @@ describe("REST API", () => {
     tracker = createJobTracker({ repository: createMemoryJobRunRepository(), clock, ids });
     forwardJobEvents(tracker, hub);
     bindQueueToJobTracker(queue, tracker);
-    const model = createRuleModelAdapter();
+    const model = guardModelPort(createRuleModelAdapter());
     queue.register(
       "ANALYZE_CHANGE",
       createAnalyzeChangeJobHandler({

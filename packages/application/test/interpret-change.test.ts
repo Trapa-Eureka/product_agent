@@ -7,6 +7,7 @@ import { createFakeModelAdapter, fixedClock } from "@pca/test-support";
 
 import {
   createInterpretChange,
+  guardModelPort,
   interpretationContextFor,
   localDateIn,
   type InterpretChange,
@@ -51,9 +52,8 @@ describe("interpretChange", () => {
     await store.productions.save(createDemoMovie());
     interpret = createInterpretChange({
       repositories: store,
-      model: createRuleModelAdapter(),
+      model: guardModelPort(createRuleModelAdapter(), { timeoutMs: 200 }),
       clock: fixedClock("2026-09-10T03:00:00.000Z"),
-      modelTimeoutMs: 200,
     });
   });
 
@@ -98,7 +98,7 @@ describe("interpretChange", () => {
     // 22:00 UTC on the 17th is already Friday the 18th in Manila.
     const late = createInterpretChange({
       repositories: store,
-      model: createRuleModelAdapter(),
+      model: guardModelPort(createRuleModelAdapter()),
       clock: fixedClock("2026-09-17T22:00:00.000Z"),
     });
     const result = await late({ productionId: DEMO, text: "Sarah is unavailable today." });
@@ -151,9 +151,8 @@ describe("interpretChange", () => {
     async (misbehave, code, hint) => {
       const broken = createInterpretChange({
         repositories: store,
-        model: createFakeModelAdapter({ misbehave }),
+        model: guardModelPort(createFakeModelAdapter({ misbehave }), { timeoutMs: 20 }),
         clock: fixedClock(),
-        modelTimeoutMs: 20,
       });
       const result = await broken({
         productionId: DEMO,
@@ -174,7 +173,7 @@ describe("interpretChange", () => {
   it("works with the fake adapter's canned answers too", async () => {
     const canned = createInterpretChange({
       repositories: store,
-      model: createFakeModelAdapter(),
+      model: guardModelPort(createFakeModelAdapter()),
       clock: fixedClock(),
     });
     const result = await canned({ productionId: DEMO, text: "Scene 18 now needs a red car." });

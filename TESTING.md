@@ -358,7 +358,11 @@ All model output is schema-validated.
 `createFakeModelAdapter` in `packages/test-support` answers the three golden
 sentences and can be told to misbehave (`malformed`, `hallucinate`, `throw`,
 `hang`). Those tests exercise `guardModelPort`, which every adapter sits
-behind, so a real provider cannot get past what the fake cannot.
+behind, so a real provider cannot get past what the fake cannot. A test that
+builds a use case guards the fake itself (`guardModelPort(createFakeModelAdapter(...),
+{ timeoutMs })`), because the use cases take a `GuardedModelPort` and guard
+nothing (TASK-936); `model-guard-boundary.test.ts` counts provider calls
+against `model_call` lines through the whole agent and expects one each.
 
 ## 6. Queue mocking
 

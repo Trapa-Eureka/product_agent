@@ -26,6 +26,7 @@ import {
   createVerifyAppliedProposal,
   createVerifyProposalJobHandler,
   forwardJobEvents,
+  guardModelPort,
   guardRepositories,
   randomIdFactory,
   systemClock,
@@ -85,7 +86,7 @@ const main = async (): Promise<void> => {
   const tracker = createJobTracker({ repository: createMemoryJobRunRepository(), clock, ids });
   forwardJobEvents(tracker, hub);
   bindQueueToJobTracker(queue, tracker, { logger });
-  const model = createRuleModelAdapter();
+  const model = guardModelPort(createRuleModelAdapter(), { logger });
 
   queue.register(
     "ANALYZE_CHANGE",

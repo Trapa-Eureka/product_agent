@@ -25,10 +25,11 @@ import type {
   IdFactory,
   Logger,
   ModelCallOptions,
+  GuardedModelPort,
   ModelPort,
   RepositorySet,
 } from "../ports";
-import { ModelError, guardModelPort } from "../ports";
+import { ModelError } from "../ports";
 import { describeProposal, toProposalSummary } from "../explanation";
 import type { UseCaseResult } from "../result";
 import { succeed } from "../result";
@@ -186,27 +187,19 @@ const factOperation = (change: TypedChange): ProposedOperation | null => {
 
 export const createRunChangeAgent = (dependencies: {
   readonly repositories: RepositorySet;
-  readonly model: ModelPort;
+  /**
+   * Guarded once, at the composition root (TASK-936): time budget, logging,
+   * and concurrency are the guard's options there. The type refuses a raw
+   * provider, so this use case never re-validates what the guard already did.
+   */
+  readonly model: GuardedModelPort;
   readonly clock: Clock;
   readonly ids: IdFactory;
-  readonly modelTimeoutMs?: number;
-  /** Logs `model_call` and `dependency_analysis` lines (TASK-804). */
+  /** Logs `dependency_analysis` lines (TASK-804); `model_call` lines come from the guard. */
   readonly logger?: Logger;
 }): RunChangeAgent => {
-  const { repositories, clock, ids, logger } = dependencies;
-  const guardOptions = {
-    ...(dependencies.modelTimeoutMs === undefined
-      ? {}
-      : { timeoutMs: dependencies.modelTimeoutMs }),
-    ...(logger === undefined ? {} : { logger }),
-  };
-  const model = guardModelPort(dependencies.model, guardOptions);
-  const interpret = createInterpretChange({
-    repositories,
-    model,
-    clock,
-    ...(guardOptions.timeoutMs === undefined ? {} : { modelTimeoutMs: guardOptions.timeoutMs }),
-  });
+  const { repositories, model, clock, ids, logger } = dependencies;
+  const interpret = createInterpretChange({ repositories, model, clock });
   const submit = createSubmitChangeRequest({ repositories, clock, ids });
   const analyze = createAnalyzeChangeImpact({
     repositories,

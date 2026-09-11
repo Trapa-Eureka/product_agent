@@ -11,8 +11,13 @@ import {
   withLocationUnavailable,
 } from "@pca/test-support";
 
-import type { LogFields, LogLevel } from "../src";
-import { createRunChangeAgent, toProposalSummary, type RunChangeAgent } from "../src";
+import type { LogFields, LogLevel, ModelPort } from "../src";
+import {
+  createRunChangeAgent,
+  guardModelPort,
+  toProposalSummary,
+  type RunChangeAgent,
+} from "../src";
 
 /** Collects log lines instead of printing them, so a test can assert on shape. */
 const recordingLogger = (): {
@@ -37,13 +42,12 @@ describe("runChangeAgent", () => {
   let store: MemoryStore;
   let run: RunChangeAgent;
 
-  const agent = (model = createRuleModelAdapter()) =>
+  const agent = (model: ModelPort = createRuleModelAdapter()) =>
     createRunChangeAgent({
       repositories: store,
-      model,
+      model: guardModelPort(model, { timeoutMs: 200 }),
       clock: fixedClock(NOW),
       ids: sequentialIds(),
-      modelTimeoutMs: 200,
     });
 
   const unchanged = async (): Promise<void> => {
@@ -349,10 +353,9 @@ describe("runChangeAgent timing (TASK-804)", () => {
     await store.productions.save(createDemoMovie());
     const run = createRunChangeAgent({
       repositories: store,
-      model: createRuleModelAdapter(),
+      model: guardModelPort(createRuleModelAdapter(), { timeoutMs: 200, logger }),
       clock: fixedClock(NOW),
       ids: sequentialIds(),
-      modelTimeoutMs: 200,
       logger,
     });
 

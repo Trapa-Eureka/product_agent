@@ -69,11 +69,10 @@ const main = async (): Promise<void> => {
   // human (resolving, awaiting_approval) are kept.
   await reconcileInterruptedRuns({ tracker, repository: jobRuns, logger });
   bindQueueToJobTracker(queue, tracker, { logger });
-  // No logger here: createRunChangeAgent re-guards this model with its own
-  // guardModelPort call (belt-and-suspenders safety on the one path that
-  // matters), and that is where the logger goes — passing it here too would
-  // double-log every model call.
-  const model = createModelFromEnv(process.env);
+  // The one model-guard boundary (TASK-936): createModelFromEnv hands out a
+  // guarded port, and the logger goes here because this is where every
+  // model_call line comes from; the use cases take the guarded port as is.
+  const model = createModelFromEnv(process.env, { logger });
 
   queue.register(
     "ANALYZE_CHANGE",
