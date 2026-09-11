@@ -69,8 +69,11 @@ Write tools additionally require:
 - **Server-side context.** The acting identity and the productions the server
   may touch are fixed at start-up from the environment (`PCA_ACTOR_ID`,
   `PCA_ALLOWED_PRODUCTIONS`). A call naming any other production is
-  `TOOL_UNAUTHORIZED` before the handler runs. Handlers receive the identity
-  and a per-call correlation ID; they never see the transport.
+  `TOOL_UNAUTHORIZED` before the handler runs. The allow-list fails closed
+  (TASK-915): unset, blank, or `*` is a startup error unless
+  `PCA_DEMO_MODE=true`, and every listed ID must parse as an entity ID.
+  Handlers receive the identity and a per-call correlation ID; they never
+  see the transport.
 - **Failures are structured, in text.** A use-case failure is returned as its
   `ToolError`, JSON-encoded in the text content with `isError` set, and with no
   `structuredContent`: clients validate `structuredContent` against the tool's

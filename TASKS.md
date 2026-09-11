@@ -810,31 +810,16 @@ Docs: `ARCHITECTURE.md` §6 REST and §15 "Identity"; `README.md` run/env/comman
 
 Left for later tasks: TASK-915 makes the production allow-list fail closed the same way identity now does; TASK-916 adds Origin validation to the upgrade; TASK-919 binds jobs to the requester the token names.
 
-## TASK-915 Authorization fails closed when the allow-list is missing — TODO
+## TASK-915 Authorization fails closed when the allow-list is missing — DONE
 
-**Goal**  
-An unset, blank, or `*` `PCA_ALLOWED_PRODUCTIONS` denies startup unless `PCA_DEMO_MODE=true` is set explicitly.
+SEC-002 (High) / AUD-003 (High). `contextFromEnv` mapped an unset or blank `PCA_ALLOWED_PRODUCTIONS` to `"*"`, so the most ordinary deployment mistake — forgetting one variable — silently became access to every production for the REST API, the MCP server, and the WebSocket gateway alike.
 
-**Context**  
-SEC-002 (High) / AUD-003 (High). `contextFromEnv` maps a missing variable to wildcard, so an ordinary deployment omission grants every production.
+**Status**  
+Complete. `allowedProductionsFromEnv` (`apps/mcp-server/src/context.ts`, used by both entry points through `contextFromEnv`) now throws at startup when the variable is unset, blank, or `*` unless `PCA_DEMO_MODE=true` — the same explicit demo flag TASK-914 introduced for identity, so one flag marks "this is a local demo" and nothing else widens access. Every listed entry is parsed with `entityIdSchema` and a bad one fails startup naming the entry; a list is kept as-is even in demo mode. The error message says exactly what to set. `main.ts` for both servers refuses to start on the thrown error as before (exit 1, the message on stderr).
 
-**Dependencies**  
-None (TASK-914 makes the principal's own grants the preferred source later).
+Tests: `contextFromEnv` unit — unset/blank/comma-only/`*` refused outside demo mode (and with `PCA_DEMO_MODE=false`), `*` granted only with the flag (case- and whitespace-insensitive), a list parsed and trimmed and kept in demo mode, an over-long and a malformed entry refused by name. `apps/api/test/main.integration.test.ts` boots the real API entry point as a child process: no allow-list and no demo flag → exit 1 with the actionable message; a malformed entry → exit 1 naming it; `PCA_DEMO_MODE=true` alone → `api_start` with `auth: demo`, `allowedProductions: *`, and the demo warning. `pnpm run verify` passes (9/9).
 
-**Allowed scope**  
-`apps/mcp-server/src/context.ts`, `apps/api/src/main.ts`, bootstrap env parsing, docs.
-
-**Acceptance criteria**
-
-- missing/blank/`*` without demo mode: process exits non-zero with an actionable message;
-- every listed ID parsed with `entityIdSchema`; an invalid entry fails startup;
-- `npx production-change-agent serve` (demo) still works because the demo command sets demo mode.
-
-**Tests**  
-Unit tests for env parsing (all branches); smoke test that `serve` demo boots.
-
-**Definition of Done**  
-Acceptance met, verify green, `README.md` env table updated.
+Docs: `README.md` env table (`PCA_ALLOWED_PRODUCTIONS` no longer defaults to `*`; `PCA_DEMO_MODE` described as the one demo flag); `MCP.md` §3; `ARCHITECTURE.md` §15; the MCP entry point's usage comment.
 
 ## TASK-916 WebSocket upgrade authentication and Origin validation — TODO
 

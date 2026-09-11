@@ -178,9 +178,9 @@ pnpm --filter @pca/web start
 | `PCA_MONGO_DB` | `production_change_agent` | Mongo database name |
 | `PCA_MODEL` | `rules` | `rules` (free, no network), `ollama` (later), or `bedrock` (deferred, paid) |
 | `PCA_QUEUE` | `memory` | `memory` (in-process, free) or `sqs` (deferred, paid) |
-| `PCA_ALLOWED_PRODUCTIONS` | `*` | Comma-separated production IDs the MCP server may act on |
+| `PCA_ALLOWED_PRODUCTIONS` | (unset) | Comma-separated production IDs the API and MCP server may act on; required unless `PCA_DEMO_MODE=true`, which grants every production. Unset, blank, or `*` without the demo flag refuses to start |
 | `PCA_AUTH_SECRET` | (unset) | 32+ character secret that signs access tokens; required unless `PCA_DEMO_MODE=true` |
-| `PCA_DEMO_MODE` | (unset) | `true` lets the API issue the demo coordinator's token to anyone at `/api/auth/demo-session` |
+| `PCA_DEMO_MODE` | (unset) | `true` marks a local demo: the API issues the demo coordinator's token to anyone at `/api/auth/demo-session`, and an unset allow-list means every production |
 | `PCA_MAKER_CHECKER` | `true` with a secret, `false` in demo mode | Whether the person who submitted a change may decide its proposal |
 | `PCA_ACTOR_ID` | `mcp-agent` | Identity recorded for agent actions (1–200 characters; refused at startup otherwise) |
 | `PCA_API_PORT` | `3000` | REST API and WebSocket port |
