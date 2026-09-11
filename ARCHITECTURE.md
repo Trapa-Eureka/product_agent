@@ -817,7 +817,11 @@ client message is a few dozen bytes; a larger frame closes the socket with
 more than 20 messages a second (1008). The in-process queue forgets its
 oldest finished jobs past 1,000 records, and the in-memory job-run store its
 oldest finished runs past 500 per production; a run still in progress is
-never forgotten.
+never forgotten. Messages are handled one at a time per connection
+(TASK-918): each is chained behind the previous one, so a burst of
+subscribes cannot all read the subscription count under the cap, suspend at
+`authorize`, and all land once it resolves; the rate check runs before a
+message joins the chain, so a flood is dropped, not queued.
 
 ## 12. OpenSearch
 
