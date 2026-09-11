@@ -46,7 +46,7 @@ export type FakeModelOptions = {
 export const createFakeModelAdapter = (options: FakeModelOptions = {}): ModelPort => {
   const answers = { ...GOLDEN_INTERPRETATIONS, ...options.answers };
 
-  const misbehave = <T>(operation: string): Promise<T> | null => {
+  const misbehave = <T>(operation: string, signal?: AbortSignal): Promise<T> | null => {
     switch (options.misbehave) {
       case "malformed":
         return Promise.resolve({
@@ -67,28 +67,37 @@ export const createFakeModelAdapter = (options: FakeModelOptions = {}): ModelPor
       case "throw":
         return Promise.reject(new Error(`${operation}: provider returned 503`));
       case "hang":
-        return new Promise<T>(() => undefined);
+        // A cancellable provider: hangs until the guard's signal says stop (TASK-929).
+        return new Promise<T>((_, reject) => {
+          if (signal?.aborted === true) {
+            reject(new Error("aborted before the call started"));
+            return;
+          }
+          signal?.addEventListener("abort", () => reject(new Error("aborted by the caller")), {
+            once: true,
+          });
+        });
       default:
         return null;
     }
   };
 
   return {
-    interpretChange: (input) =>
-      misbehave<InterpretedChange>("interpretChange") ??
+    interpretChange: (input, call) =>
+      misbehave<InterpretedChange>("interpretChange", call?.signal) ??
       Promise.resolve(
         answers[input.text.trim()] ?? {
           kind: "UNSUPPORTED",
           reason: `The fake model has no canned answer for "${input.text}".`,
         },
       ),
-    explainImpact: (input) =>
-      misbehave("explainImpact") ??
+    explainImpact: (input, call) =>
+      misbehave("explainImpact", call?.signal) ??
       Promise.resolve({
         explanation: `Fake explanation: ${input.impacts.length} impacts, ${input.conflicts.length} conflicts.`,
       }),
-    rankCandidates: (input) =>
-      misbehave("rankCandidates") ??
+    rankCandidates: (input, call) =>
+      misbehave("rankCandidates", call?.signal) ??
       Promise.resolve({
         ranked: input.candidates.map((candidate, index) => ({
           shootDayId: candidate.shootDayId,

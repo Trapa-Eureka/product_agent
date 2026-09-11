@@ -25,14 +25,37 @@ import type { Logger } from "./logging";
  * answer, so the guarantee holds for the rule-based adapter, a local Ollama,
  * and Bedrock alike.
  */
+/**
+ * Per-call options every provider receives (TASK-929, SEC-014 / AUD-023).
+ * `signal` is aborted when the guard's budget runs out or the caller gives
+ * up, so a provider that honours it (an HTTP client, a streaming SDK) stops
+ * spending sockets, memory, and paid tokens on an answer nobody will read.
+ * A provider that cannot cancel may ignore it; the guard still stops
+ * waiting.
+ */
+export type ModelCallOptions = {
+  readonly signal?: AbortSignal;
+};
+
 export interface ModelPort {
-  interpretChange(input: InterpretChangeInput): Promise<InterpretedChange>;
-  explainImpact(input: ExplainImpactInput): Promise<ExplanationOutput>;
-  rankCandidates(input: RankCandidatesInput): Promise<RankedCandidatesOutput>;
+  interpretChange(
+    input: InterpretChangeInput,
+    options?: ModelCallOptions,
+  ): Promise<InterpretedChange>;
+  explainImpact(input: ExplainImpactInput, options?: ModelCallOptions): Promise<ExplanationOutput>;
+  rankCandidates(
+    input: RankCandidatesInput,
+    options?: ModelCallOptions,
+  ): Promise<RankedCandidatesOutput>;
 }
 
 export type ModelErrorCode =
-  "MALFORMED_OUTPUT" | "UNGROUNDED_OUTPUT" | "PROVIDER_ERROR" | "TIMEOUT";
+  | "MALFORMED_OUTPUT"
+  | "UNGROUNDED_OUTPUT"
+  | "PROVIDER_ERROR"
+  | "TIMEOUT"
+  /** The caller's own signal was aborted before the provider answered (TASK-929). */
+  | "ABORTED";
 
 /** Thrown by the guard; the orchestrator maps it to a ToolError. Never carries prompt text. */
 export class ModelError extends Error {
@@ -279,46 +302,99 @@ export type ModelGuardOptions = {
   readonly timeoutMs?: number;
   /** Logs one `model_call` line per call: operation, durationMs, outcome (TASK-804, ARCHITECTURE.md §16). */
   readonly logger?: Logger;
+  /**
+   * Calls in flight at the provider at once (TASK-929); the rest wait their
+   * turn, and the budget starts when a call actually starts. Default 4.
+   */
+  readonly maxConcurrent?: number;
 };
 
-const withTimeout = async <T>(
+export const DEFAULT_MAX_CONCURRENT_MODEL_CALLS = 4;
+
+/** A counting semaphore: `acquire` resolves to the release function. */
+const createSemaphore = (slots: number): (() => Promise<() => void>) => {
+  let free = slots;
+  const waiting: (() => void)[] = [];
+  const release = (): void => {
+    const next = waiting.shift();
+    if (next === undefined) free += 1;
+    else next();
+  };
+  return () =>
+    new Promise<() => void>((resolve) => {
+      const grant = (): void => resolve(release);
+      if (free > 0) {
+        free -= 1;
+        grant();
+      } else {
+        waiting.push(grant);
+      }
+    });
+};
+
+/**
+ * Runs one provider call under the budget and the caller's signal. On a
+ * timeout or an outer abort the provider's signal is aborted *and* the call
+ * rejects, so the caller stops waiting and a cancellable provider stops
+ * working; the two are the same event, never a race between them.
+ */
+const withBudget = async <T>(
   operation: keyof ModelPort,
-  promise: Promise<T>,
+  run: (signal: AbortSignal) => Promise<T>,
   timeoutMs: number | undefined,
+  outer: AbortSignal | undefined,
 ): Promise<T> => {
-  if (timeoutMs === undefined) {
-    return promise;
-  }
+  const controller = new AbortController();
+  const aborted = (): ModelError =>
+    new ModelError("ABORTED", operation, "The caller gave up before the model answered.");
+  if (outer?.aborted === true) throw aborted();
+
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
+  let settle: ((error: ModelError) => void) | undefined;
+  const interrupted = new Promise<never>((_, reject) => {
+    settle = (error) => {
+      // Reject first, then abort: the provider's own rejection on abort must
+      // not win the race and turn a TIMEOUT into a PROVIDER_ERROR.
+      reject(error);
+      controller.abort(error);
+    };
+  });
+  const onOuterAbort = (): void => settle?.(aborted());
+  outer?.addEventListener("abort", onOuterAbort, { once: true });
+  if (timeoutMs !== undefined) {
     timer = setTimeout(
-      () => reject(new ModelError("TIMEOUT", operation, `No answer within ${timeoutMs} ms.`)),
+      () => settle?.(new ModelError("TIMEOUT", operation, `No answer within ${timeoutMs} ms.`)),
       timeoutMs,
     );
-  });
+  }
   try {
-    return await Promise.race([promise, timeout]);
+    return await Promise.race([run(controller.signal), interrupted]);
   } finally {
     clearTimeout(timer);
+    outer?.removeEventListener("abort", onOuterAbort);
+    // A rejection nobody awaits any more must not become an unhandled one.
+    interrupted.catch(() => undefined);
   }
 };
 
 const callProvider = async <T>(
   operation: keyof ModelPort,
-  run: () => Promise<T>,
-  timeoutMs: number | undefined,
-  logger: Logger | undefined,
+  run: (signal: AbortSignal) => Promise<T>,
+  options: ModelGuardOptions,
+  acquire: () => Promise<() => void>,
+  outer: AbortSignal | undefined,
 ): Promise<T> => {
+  const release = await acquire();
   const startedAt = Date.now();
   const record = (outcome: "ok" | "error"): void => {
-    logger?.log("info", "model_call", {
+    options.logger?.log("info", "model_call", {
       operation,
       outcome,
       durationMs: Date.now() - startedAt,
     });
   };
   try {
-    const result = await withTimeout(operation, run(), timeoutMs);
+    const result = await withBudget(operation, run, options.timeoutMs, outer);
     record("ok");
     return result;
   } catch (error) {
@@ -332,6 +408,8 @@ const callProvider = async <T>(
       "The model provider failed.",
       error instanceof Error ? error.message : String(error),
     );
+  } finally {
+    release();
   }
 };
 
@@ -358,55 +436,61 @@ const parseOr = <T>(
  * anything downstream sees them. Adapters stay simple; the guarantee lives
  * here once.
  */
-export const guardModelPort = (port: ModelPort, options: ModelGuardOptions = {}): ModelPort => ({
-  interpretChange: async (input) => {
-    const raw: unknown = await callProvider(
-      "interpretChange",
-      () => port.interpretChange(input),
-      options.timeoutMs,
-      options.logger,
-    );
-    const output = parseOr("interpretChange", () => interpretedChangeSchema.safeParse(raw));
-    assertGroundedInterpretation(input, output);
-    return output;
-  },
-  explainImpact: async (input) => {
-    const raw: unknown = await callProvider(
-      "explainImpact",
-      () => port.explainImpact(input),
-      options.timeoutMs,
-      options.logger,
-    );
-    const output = parseOr("explainImpact", () => explanationOutputSchema.safeParse(raw));
-    try {
-      assertGroundedNarrative(input, output);
-    } catch (error) {
-      options.logger?.log("warn", "model_output_rejected", {
-        operation: "explainImpact",
-        reason: error instanceof ModelError ? (error.detail ?? error.code) : String(error),
-      });
-      throw error;
-    }
-    return output;
-  },
-  rankCandidates: async (input) => {
-    const raw: unknown = await callProvider(
-      "rankCandidates",
-      () => port.rankCandidates(input),
-      options.timeoutMs,
-      options.logger,
-    );
-    const output = parseOr("rankCandidates", () => rankedCandidatesOutputSchema.safeParse(raw));
-    assertGroundedRanking(input, output);
-    try {
-      assertGroundedReasons(input, output);
-    } catch (error) {
-      options.logger?.log("warn", "model_output_rejected", {
-        operation: "rankCandidates",
-        reason: error instanceof ModelError ? (error.detail ?? error.code) : String(error),
-      });
-      throw error;
-    }
-    return output;
-  },
-});
+export const guardModelPort = (port: ModelPort, options: ModelGuardOptions = {}): ModelPort => {
+  const acquire = createSemaphore(options.maxConcurrent ?? DEFAULT_MAX_CONCURRENT_MODEL_CALLS);
+  return {
+    interpretChange: async (input, call) => {
+      const raw: unknown = await callProvider(
+        "interpretChange",
+        (signal) => port.interpretChange(input, { signal }),
+        options,
+        acquire,
+        call?.signal,
+      );
+      const output = parseOr("interpretChange", () => interpretedChangeSchema.safeParse(raw));
+      assertGroundedInterpretation(input, output);
+      return output;
+    },
+    explainImpact: async (input, call) => {
+      const raw: unknown = await callProvider(
+        "explainImpact",
+        (signal) => port.explainImpact(input, { signal }),
+        options,
+        acquire,
+        call?.signal,
+      );
+      const output = parseOr("explainImpact", () => explanationOutputSchema.safeParse(raw));
+      try {
+        assertGroundedNarrative(input, output);
+      } catch (error) {
+        options.logger?.log("warn", "model_output_rejected", {
+          operation: "explainImpact",
+          reason: error instanceof ModelError ? (error.detail ?? error.code) : String(error),
+        });
+        throw error;
+      }
+      return output;
+    },
+    rankCandidates: async (input, call) => {
+      const raw: unknown = await callProvider(
+        "rankCandidates",
+        (signal) => port.rankCandidates(input, { signal }),
+        options,
+        acquire,
+        call?.signal,
+      );
+      const output = parseOr("rankCandidates", () => rankedCandidatesOutputSchema.safeParse(raw));
+      assertGroundedRanking(input, output);
+      try {
+        assertGroundedReasons(input, output);
+      } catch (error) {
+        options.logger?.log("warn", "model_output_rejected", {
+          operation: "rankCandidates",
+          reason: error instanceof ModelError ? (error.detail ?? error.code) : String(error),
+        });
+        throw error;
+      }
+      return output;
+    },
+  };
+};

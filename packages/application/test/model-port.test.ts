@@ -457,3 +457,90 @@ describe("guardModelPort: prose is untrusted (TASK-920, SEC-009 / AUD-014)", () 
     ).toMatchObject({ ranked: [{ rank: 1 }] });
   });
 });
+
+describe("guardModelPort: cancellation and concurrency (TASK-929, SEC-014 / AUD-023)", () => {
+  /** A provider that never answers but records the signal it was handed. */
+  const hanging = () => {
+    const seen: AbortSignal[] = [];
+    const port: ModelPort = {
+      interpretChange: (_input, call) =>
+        new Promise((_, reject) => {
+          if (call?.signal !== undefined) seen.push(call.signal);
+          call?.signal?.addEventListener("abort", () => reject(new Error("cancelled")), {
+            once: true,
+          });
+        }),
+      explainImpact: () => Promise.reject(new Error("unused")),
+      rankCandidates: () => Promise.reject(new Error("unused")),
+    };
+    return { port, seen };
+  };
+
+  it("aborts the provider's signal when the budget runs out, not only the caller's wait", async () => {
+    const { port, seen } = hanging();
+    const error = await failure(() =>
+      guardModelPort(port, { timeoutMs: 5 }).interpretChange(interpretInput),
+    );
+    expect(error.code).toBe("TIMEOUT");
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.aborted).toBe(true);
+  });
+
+  it("aborts the provider when the caller gives up, as ABORTED", async () => {
+    const { port, seen } = hanging();
+    const controller = new AbortController();
+    const pending = failure(() =>
+      guardModelPort(port).interpretChange(interpretInput, { signal: controller.signal }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    controller.abort();
+    expect((await pending).code).toBe("ABORTED");
+    expect(seen[0]?.aborted).toBe(true);
+    // Already aborted: refused before the provider is asked at all.
+    const { port: fresh, seen: none } = hanging();
+    expect(
+      (
+        await failure(() =>
+          guardModelPort(fresh).interpretChange(interpretInput, { signal: controller.signal }),
+        )
+      ).code,
+    ).toBe("ABORTED");
+    expect(none).toHaveLength(0);
+  });
+
+  it("the fake model's hang mode honours the signal, so a hung provider is released on timeout", async () => {
+    const { createFakeModelAdapter } = await import("@pca/test-support");
+    const error = await failure(() =>
+      guardModelPort(createFakeModelAdapter({ misbehave: "hang" }), {
+        timeoutMs: 5,
+      }).interpretChange(interpretInput),
+    );
+    expect(error.code).toBe("TIMEOUT");
+  });
+
+  it("bounds calls in flight at the provider", async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const port: ModelPort = {
+      interpretChange: async () => {
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        inFlight -= 1;
+        return { kind: "RESOLVED", change: sarahOnFriday, confidence: 0.9 };
+      },
+      explainImpact: () => Promise.reject(new Error("unused")),
+      rankCandidates: () => Promise.reject(new Error("unused")),
+    };
+    const guarded = guardModelPort(port, { maxConcurrent: 2 });
+    await Promise.all(Array.from({ length: 6 }, () => guarded.interpretChange(interpretInput)));
+    expect(peak).toBe(2);
+    // A slot is released on failure too, or the next caller would wait forever.
+    const failing = guardModelPort(
+      { ...port, interpretChange: () => Promise.reject(new Error("boom")) },
+      { maxConcurrent: 1 },
+    );
+    await failure(() => failing.interpretChange(interpretInput));
+    await failure(() => failing.interpretChange(interpretInput));
+  });
+});

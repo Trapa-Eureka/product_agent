@@ -463,6 +463,21 @@ interface ModelPort {
 
 Production target: Bedrock adapter.
 
+A model call can be stopped (TASK-929, SEC-014 / AUD-023): every
+`ModelPort` method takes `{ signal }`, and `guardModelPort` hands each
+provider call its own `AbortSignal`, aborted when the per-call budget runs
+out or when the caller's own signal (threaded through `runChangeAgent` and
+`interpretChange` inputs) is aborted — the same event that rejects the
+call, so the caller stops waiting and a cancellable provider (an HTTP
+client, a streaming SDK) stops spending sockets and paid tokens; a caller
+that gives up sees `ABORTED`, a budget that runs out `TIMEOUT`. The guard
+also bounds calls in flight at the provider (`maxConcurrent`, default 4),
+queueing the rest with the budget starting only when a call actually
+starts, so a burst of analyses cannot fan out into unbounded provider
+concurrency. The rule-based adapter needs no cancellation; the fake
+model's hang mode honours the signal, which is how the guard's abort is
+proved to reach an adapter.
+
 Model prose is untrusted presentation data (TASK-920, SEC-009 / AUD-014).
 The contracts already keep a narrative or a ranking reason from adding an
 operation or an effect; `guardModelPort` now also keeps it from lying to
