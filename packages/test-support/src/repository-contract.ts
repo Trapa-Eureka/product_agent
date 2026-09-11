@@ -392,6 +392,98 @@ export const describeRepositoryContract = (
       });
     });
 
+    describe("stored state owns its records (TASK-934: code review #18)", () => {
+      beforeEach(async () => {
+        await repositories.productions.save(demoState());
+      });
+
+      /** A caller that keeps a handle on what it wrote and edits it afterwards. */
+      const aTask = () => ({
+        id: "T-934",
+        productionId: DEMO,
+        title: "Source a red car for Scene 18",
+        relatedEntityType: "SCENE" as const,
+        relatedEntityId: DEMO_MOVIE_IDS.scenes.s18,
+        status: "OPEN" as const,
+      });
+
+      it("does not change committed state when the commit's input is mutated afterwards", async () => {
+        const task = aTask();
+        const before = await repositories.productions.loadState(DEMO);
+        const friday = {
+          ...before!.shootDays.find((day) => day.id === DEMO_MOVIE_IDS.shootDays.friday)!,
+          sceneIds: [DEMO_MOVIE_IDS.scenes.s12] as string[],
+        };
+        const mutation = {
+          productionId: DEMO,
+          expectedVersion: 1,
+          tasks: [task],
+          shootDays: [friday],
+        };
+
+        await repositories.productions.commit(mutation);
+
+        task.title = "Edited after the commit";
+        friday.sceneIds.push(DEMO_MOVIE_IDS.scenes.s18);
+        mutation.tasks.push({ ...aTask(), id: "T-935" });
+
+        const after = await repositories.productions.loadState(DEMO);
+        expect(after?.production.version).toBe(2);
+        expect(after?.tasks.find((stored) => stored.id === "T-934")?.title).toBe(
+          "Source a red car for Scene 18",
+        );
+        expect(after?.tasks.some((stored) => stored.id === "T-935")).toBe(false);
+        expect(
+          after?.shootDays.find((day) => day.id === DEMO_MOVIE_IDS.shootDays.friday)?.sceneIds,
+        ).toEqual([DEMO_MOVIE_IDS.scenes.s12]);
+      });
+
+      it("does not change applied records when the transaction's inputs are mutated afterwards", async () => {
+        const task = aTask();
+        const proposal = aProposal({ status: "APPLIED" });
+        const idempotencyRecord = {
+          key: "apply:P-104:cccccccccccccccc",
+          proposalId: "P-104",
+          proposalDigest: "c".repeat(64),
+          productionVersionAfter: 2,
+          affectedEntityIds: ["T-934"],
+        };
+        const auditEvent = anAuditEvent({ action: "PROPOSAL_APPLIED" });
+
+        await repositories.applyProposalTransaction({
+          mutation: { productionId: DEMO, expectedVersion: 1, tasks: [task] },
+          idempotencyRecord,
+          proposal,
+          auditEvent,
+        });
+
+        task.title = "Edited after the transaction";
+        (proposal as { status: string }).status = "REJECTED";
+        idempotencyRecord.affectedEntityIds.push("T-999");
+        (auditEvent as { action: string }).action = "PROPOSAL_REJECTED";
+
+        expect(
+          (await repositories.productions.loadState(DEMO))?.tasks.find(
+            (stored) => stored.id === "T-934",
+          )?.title,
+        ).toBe("Source a red car for Scene 18");
+        expect((await repositories.proposals.findById(DEMO, "P-104"))?.status).toBe("APPLIED");
+        expect(
+          (await repositories.idempotency.find(DEMO, idempotencyRecord.key))?.affectedEntityIds,
+        ).toEqual(["T-934"]);
+        expect((await repositories.auditEvents.list(DEMO)).map((event) => event.action)).toEqual([
+          "PROPOSAL_APPLIED",
+        ]);
+      });
+
+      it("does not change a loaded state when the object returned by loadState is mutated", async () => {
+        const loaded = await repositories.productions.loadState(DEMO);
+        (loaded!.tasks as unknown[]).length = 0;
+
+        expect((await repositories.productions.loadState(DEMO))?.tasks).toHaveLength(4);
+      });
+    });
+
     describe("recordProposalDecision (TASK-902: code review #2 / SEC-004 / AUD-004)", () => {
       beforeEach(async () => {
         await repositories.proposals.save(aProposal());

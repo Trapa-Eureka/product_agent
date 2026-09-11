@@ -36,8 +36,9 @@ import type { IdempotencyRecord, ProductionState } from "@pca/domain";
  * In-memory repositories.
  *
  * Used by unit tests and by a throwaway demo run. It copies on read and on
- * write so a caller cannot reach in and mutate stored state, which is what a
- * real database would do and what keeps a test failure meaningful.
+ * every write, `commit` included (TASK-934), so a caller cannot reach in and
+ * mutate stored state, which is what a real database would do and what keeps
+ * a test failure meaningful.
  */
 
 type Clock = () => IsoDateTime;
@@ -243,6 +244,12 @@ export class MemoryStore implements RepositorySet {
       };
     }
 
+    // TASK-934 (code review #18): the stored state owns its records. The
+    // caller's objects are cloned here, as `save` already does, so a caller
+    // that keeps editing a record after the commit cannot change what was
+    // stored without another commit and another version — the same isolation
+    // the file store gets from serialising and the Mongo store from the wire.
+    const incoming = copy(mutation);
     const committedAt = this.#now();
     this.#productionStates.set(mutation.productionId, {
       production: {
@@ -250,13 +257,13 @@ export class MemoryStore implements RepositorySet {
         version: current.production.version + 1,
         updatedAt: committedAt,
       },
-      scenes: upsertById(current.scenes, mutation.scenes),
-      castMembers: upsertById(current.castMembers, mutation.castMembers),
-      locations: upsertById(current.locations, mutation.locations),
-      requirements: upsertById(current.requirements, mutation.requirements),
-      shootDays: upsertById(current.shootDays, mutation.shootDays),
-      callSheets: upsertById(current.callSheets, mutation.callSheets),
-      tasks: upsertById(current.tasks, mutation.tasks),
+      scenes: upsertById(current.scenes, incoming.scenes),
+      castMembers: upsertById(current.castMembers, incoming.castMembers),
+      locations: upsertById(current.locations, incoming.locations),
+      requirements: upsertById(current.requirements, incoming.requirements),
+      shootDays: upsertById(current.shootDays, incoming.shootDays),
+      callSheets: upsertById(current.callSheets, incoming.callSheets),
+      tasks: upsertById(current.tasks, incoming.tasks),
     });
 
     return { status: "COMMITTED", productionVersion: current.production.version + 1 };
