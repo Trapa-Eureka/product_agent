@@ -1,5 +1,5 @@
 # TASK-930 (AUD-015): the reproducible artifact. One image runs the REST API
-# (and can run the MCP server: `pnpm exec tsx apps/mcp-server/src/main.ts`).
+# (and can run the MCP server: `node --import tsx apps/mcp-server/src/main.ts`).
 # Everything is pinned by the lockfile and the pnpm version in package.json,
 # built from a clean checkout, and run as a non-root user with the data
 # directory on a volume. The console is a static build served by a host or
@@ -14,7 +14,9 @@
 FROM node:22-alpine AS base
 ENV PNPM_HOME=/pnpm
 ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable
+# Fetch the pinned pnpm now, so no stage — and no running container — needs
+# the network to find it later.
+RUN corepack enable && corepack prepare pnpm@10.30.1 --activate
 WORKDIR /app
 
 FROM base AS deps
@@ -57,4 +59,5 @@ VOLUME ["/data"]
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s \
   CMD wget -qO- http://127.0.0.1:3000/api/health >/dev/null || exit 1
-CMD ["pnpm", "exec", "tsx", "apps/api/src/main.ts"]
+# Straight through node: nothing is resolved or downloaded at start.
+CMD ["node", "--import", "tsx", "apps/api/src/main.ts"]

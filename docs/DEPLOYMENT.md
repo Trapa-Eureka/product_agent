@@ -13,7 +13,7 @@ the lockfile (`--frozen-lockfile`), no install scripts, a non-root `pca`
 user, the data directory on a `/data` volume created `0700`, a health check
 on `/api/health`. CI builds it on every push and pull request and boots the
 demo from it (`artifact` job in `.github/workflows/ci.yml`). The same image
-runs the MCP server (`pnpm exec tsx apps/mcp-server/src/main.ts`).
+runs the MCP server (`node --import tsx apps/mcp-server/src/main.ts`).
 
 ```bash
 docker build -t production-change-agent .

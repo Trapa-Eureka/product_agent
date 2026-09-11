@@ -75,5 +75,6 @@ jobs:
           done
           curl -fsS http://127.0.0.1:3000/api/health
           curl -fsS http://127.0.0.1:3000/api/auth/demo-session | grep -q '"token"'
-          docker logs pca | grep -q '"event":"api_start"'
+          # The API logs JSON lines to stderr; docker logs keeps the streams apart.
+          docker logs pca 2>&1 | grep -q '"event":"api_start"'
           docker stop pca
