@@ -24,6 +24,7 @@ import {
 import { contextFromEnv } from "@pca/mcp-server/context";
 
 import { stderrApiLogger } from "./logging";
+import { allowedOriginsFromEnv } from "./origins";
 import { createApiServer } from "./server";
 
 /**
@@ -75,6 +76,8 @@ const main = async (): Promise<void> => {
   const context = contextFromEnv(process.env);
   // Identity (TASK-914): a signed-token deployment, or an explicit demo. Neither: refuse to start.
   const auth = selectAuth(process.env, clock);
+  // Browser origins that may open the socket (TASK-916): the operator's list, or the dev UI in demo mode.
+  const allowedOrigins = allowedOriginsFromEnv(process.env, auth.mode);
   const server = createApiServer({
     repositories,
     tracker,
@@ -86,6 +89,7 @@ const main = async (): Promise<void> => {
     identity: auth.identity,
     ...(auth.demoSession === undefined ? {} : { demoSession: auth.demoSession }),
     makerChecker: auth.makerChecker,
+    allowedOrigins,
     logger,
   });
   const port = Number.parseInt(process.env["PCA_API_PORT"] ?? "3000", 10);
@@ -98,6 +102,7 @@ const main = async (): Promise<void> => {
     queue: queueKind,
     auth: auth.mode,
     makerChecker: auth.makerChecker,
+    allowedOrigins: allowedOrigins.join(",") || "(same-origin only)",
     allowedProductions:
       context.allowedProductionIds === "*" ? "*" : context.allowedProductionIds.join(","),
   });

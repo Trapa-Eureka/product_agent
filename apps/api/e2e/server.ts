@@ -38,6 +38,7 @@ import { createMemoryStore } from "@pca/memory-store";
 import { createRuleModelAdapter } from "@pca/rule-model";
 
 import { stderrApiLogger } from "../src/logging";
+import { allowedOriginsFromEnv } from "../src/origins";
 import { createApiServer } from "../src/server";
 
 /**
@@ -118,6 +119,8 @@ const main = async (): Promise<void> => {
     identity: auth.identity,
     ...(auth.demoSession === undefined ? {} : { demoSession: auth.demoSession }),
     makerChecker: auth.makerChecker,
+    // The browser's page comes from the Angular dev server on 4200 (TASK-916).
+    allowedOrigins: allowedOriginsFromEnv({}, auth.mode),
     logger,
   });
   const bound = await server.listen(3000, "127.0.0.1");
