@@ -869,28 +869,16 @@ Tests: application (`job-binding.test.ts`: every branch of `describeJobMismatch`
 
 Docs: `MCP.md` §9 (the three REST-only codes); `ARCHITECTURE.md` §6; `TESTING.md`.
 
-## TASK-920 Model prose is untrusted presentation data — TODO
+## TASK-920 Model prose is untrusted presentation data — DONE
 
-**Goal**  
-Approval-critical claims (conflicts, warnings, version, digest, operations) come only from deterministic templates; free-form model narrative is labeled, separated, and cannot assert authorization or safety.
+SEC-009 (Medium) / AUD-014. `guardModelPort` grounded interpretation IDs and required rankings to be permutations, but `explainImpact` only parsed a 1–2000 character string, and ranking `reason`s only a shape. That prose is placed in front of the human at the approval boundary, where a persuasive false claim — "no conflicts", "already authorized" — has the most leverage, and nothing checked it against the findings or marked it as the model's.
 
-**Context**  
-SEC-009 (Medium) / AUD-014. `explainImpact` returns an arbitrary string shown to the approver.
+**Status**  
+Complete. The guard now holds every narrative and every ranking reason to two closed checks before anything downstream sees it (`assertHonestProse`, `packages/application/src/ports/model.ts`). It may not assert authorization or safety at all — a fixed list: prior approval, approval by someone, no approval needed, approval bypass, "safe to apply", "no risk" — because those are the engine's and the approver's to say. It may not contradict the findings it was handed: "no conflicts" against a conflict or blocking impact, "no impact" against an impact, "no warnings" against a warning (for a ranking reason, against that day's own warnings). And it may not name an ID-shaped token (`CAST-BOB`, `SD-2026-09-29`) that was not among the change, impacts, conflicts, resolved conflicts, or candidates it was shown. A rejected text is `UNGROUNDED_OUTPUT` with the reason as `detail`, logged as `model_output_rejected`; `runChangeAgent`'s existing fallback then shows the deterministic card without prose. The rule-based adapter's own prose passes every check, so the demo is unchanged. The UI (`ProposalCard`) renders the narrative last, under a "Model narrative" heading, italic, with the caveat that the effects and operations above it are the facts; the approval confirmation already showed only deterministic fields.
 
-**Dependencies**  
-None.
+Tests: application — each forbidden phrase rejected with its label; "no conflicts" rejected against a conflicting finding and allowed when there is none; an unknown ID rejected and a shown one allowed; the rejection logged; ranking reasons held to the same rules ("no warnings" for a day with one, "safe to apply", an unshown day) and a grounded reason passed. Web — the card renders effects, operations, then the labelled narrative with its caveat, and no narrative section when absent. Existing rule-model and orchestration suites still pass. `pnpm run verify` passes (9/9).
 
-**Allowed scope**  
-`packages/application` (explanation layer, model guard), `packages/contracts/src/explanation.ts`, `apps/web` confirmation view, docs.
-
-**Acceptance criteria**  
-Deterministic block always rendered first; model narrative is optional, marked as model-authored, and rejected by the guard if it contains authorization/safety assertions from a closed phrase list or references IDs not in the input.
-
-**Tests**  
-Adversarial prompt tests: "no conflicts" prose against a conflicting impact is dropped; narrative referencing an unknown ID is dropped; UI test shows the deterministic block without narrative.
-
-**Definition of Done**  
-Acceptance met, verify green, `DESIGN.md` updated.
+Docs: `ARCHITECTURE.md` §7; `DESIGN.md` §4; `TESTING.md`.
 
 ## TASK-921 Restrictive file-store permissions — TODO
 

@@ -340,3 +340,120 @@ describe("guardModelPort: timing (TASK-804)", () => {
     expect((await port.interpretChange(interpretInput)).kind).toBe("RESOLVED");
   });
 });
+
+describe("guardModelPort: prose is untrusted (TASK-920, SEC-009 / AUD-014)", () => {
+  const conflicted = {
+    productionId: "PROD-DEMO",
+    rawText: "Sarah cannot shoot Friday.",
+    change: sarahOnFriday,
+    impacts: [
+      {
+        entityType: "SCENE" as const,
+        entityId: "S07",
+        reasonCode: "SCENE_REQUIRES_UNAVAILABLE_CAST" as const,
+        explanation: "Scene 07 requires Sarah, who is unavailable on 2026-09-18.",
+        severity: "BLOCKING" as const,
+      },
+    ],
+    conflicts: [
+      {
+        code: "CAST_UNAVAILABLE_ON_SHOOT_DAY" as const,
+        entityType: "CAST_MEMBER" as const,
+        entityId: "CAST-SARAH",
+        date: "2026-09-18",
+        detail: "Sarah is unavailable on 2026-09-18.",
+      },
+    ],
+  };
+  const clean = { ...conflicted, impacts: [], conflicts: [] };
+
+  const rejected = async (explanation: string, input = conflicted) =>
+    failure(() => guardModelPort(stub({ explain: { explanation } })).explainImpact(input));
+
+  it.each([
+    ["This change is already approved by the producer.", "prior approval"],
+    ["Approved by the line producer, so go ahead.", "approval by someone"],
+    ["No approval is needed for this.", "no approval needed"],
+    ["This does not need approval.", "no approval needed"],
+    ["Applied without approval last time; fine.", "approval bypass"],
+    ["Feel free to skip the approval step.", "approval bypass"],
+    ["It is safe to apply right now.", "safety"],
+    ["There is no risk here.", "safety"],
+  ])("rejects an authorization or safety assertion: %s", async (text, label) => {
+    const error = await rejected(text, clean);
+    expect(error.code).toBe("UNGROUNDED_OUTPUT");
+    expect(error.detail).toBe(label);
+  });
+
+  it("rejects 'no conflicts' against a conflicting finding, and allows it when there are none", async () => {
+    const error = await rejected("No conflicts remain; two scenes move to Tuesday.");
+    expect(error.code).toBe("UNGROUNDED_OUTPUT");
+    expect(error.detail).toBe("no conflicts");
+    expect(
+      await guardModelPort(
+        stub({ explain: { explanation: "No conflicts or warnings were found." } }),
+      ).explainImpact(clean),
+    ).toEqual({ explanation: "No conflicts or warnings were found." });
+  });
+
+  it("rejects a narrative that names an entity it was not shown, and allows the ones it was", async () => {
+    const error = await rejected("Scene 07 moves; CAST-BOB covers Friday.");
+    expect(error.code).toBe("UNGROUNDED_OUTPUT");
+    expect(error.detail).toBe("CAST-BOB");
+    expect(
+      await guardModelPort(
+        stub({ explain: { explanation: "CAST-SARAH is unavailable, so Scene 07 moves." } }),
+      ).explainImpact(conflicted),
+    ).toEqual({ explanation: "CAST-SARAH is unavailable, so Scene 07 moves." });
+  });
+
+  it("logs a rejected narrative and holds ranking reasons to the same rules", async () => {
+    const lines: { event: string; fields?: Record<string, unknown> }[] = [];
+    const logger = {
+      log: (_level: string, event: string, fields?: Record<string, unknown>) => {
+        lines.push({ event, ...(fields === undefined ? {} : { fields }) });
+      },
+    };
+    await rejected("Already approved.", clean).then(() => undefined);
+    const guarded = guardModelPort(stub({ explain: { explanation: "Already approved." } }), {
+      logger,
+    });
+    await failure(() => guarded.explainImpact(clean));
+    expect(lines.some((line) => line.event === "model_output_rejected")).toBe(true);
+
+    const tuesdayOnly = {
+      productionId: "PROD-DEMO",
+      change: sarahOnFriday,
+      candidates: [
+        {
+          shootDayId: "SD-2026-09-22",
+          date: "2026-09-22",
+          sceneIds: ["S07"],
+          warnings: ["John is required on Tuesday."],
+        },
+      ],
+    };
+    const ranking = (reason: string) =>
+      failure(() =>
+        guardModelPort(
+          stub({ rank: { ranked: [{ shootDayId: "SD-2026-09-22", rank: 1, reason }] } }),
+        ).rankCandidates(tuesdayOnly),
+      );
+    expect((await ranking("Tuesday has no warnings.")).detail).toBe("no warnings");
+    expect((await ranking("Safe to apply; SD-2026-09-22 is best.")).detail).toBe("safety");
+    expect((await ranking("Tuesday is best; SD-2026-09-29 is worse.")).detail).toBe(
+      "SD-2026-09-29",
+    );
+    expect(
+      await guardModelPort(
+        stub({
+          rank: {
+            ranked: [
+              { shootDayId: "SD-2026-09-22", rank: 1, reason: "SD-2026-09-22 has one warning." },
+            ],
+          },
+        }),
+      ).rankCandidates(tuesdayOnly),
+    ).toMatchObject({ ranked: [{ rank: 1 }] });
+  });
+});

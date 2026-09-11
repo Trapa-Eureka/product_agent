@@ -7,6 +7,12 @@ import type { ProposalExplanation } from "@pca/contracts";
  * operations, one concrete step per line. Purely presentational — every
  * line of text is `describeProposal`'s, carried here on the tracked job's
  * `explanation` field (TASK-504); this component only lays it out.
+ *
+ * The narrative, when there is one, is the model's prose (TASK-920): it is
+ * rendered last, under its own label, with a caveat that the effects and
+ * operations above it are the facts. The guard has already refused prose
+ * that asserts approval or safety, contradicts the findings, or names an
+ * entity the model was not shown; the label is what remains for the human.
  */
 @Component({
   selector: "pca-proposal-card",
@@ -36,7 +42,14 @@ import type { ProposalExplanation } from "@pca/contracts";
         </ul>
       </section>
       @if (explanation().narrative; as narrative) {
-        <p class="narrative">{{ narrative }}</p>
+        <section data-group="narrative" aria-label="Model narrative">
+          <h3>Model narrative</h3>
+          <p class="narrative">{{ narrative }}</p>
+          <p class="caveat">
+            Written by the model from the findings above. The effects and operations are the facts;
+            this paragraph is not.
+          </p>
+        </section>
       }
     </div>
   `,
@@ -84,9 +97,20 @@ import type { ProposalExplanation } from "@pca/contracts";
       display: inline-block;
       width: 1.2em;
     }
+    [data-group="narrative"] {
+      border-top: 1px dashed var(--border, #ccc);
+      margin-top: 10px;
+      padding-top: 6px;
+    }
     .narrative {
       color: var(--muted);
-      margin: 10px 0 0;
+      margin: 0;
+      font-style: italic;
+    }
+    .caveat {
+      color: var(--muted);
+      font-size: 11px;
+      margin: 4px 0 0;
     }
   `,
 })
