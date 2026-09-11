@@ -12,7 +12,13 @@ import type {
   TypedChange,
 } from "@pca/contracts";
 import type { ProductionIndex, ProductionState } from "@pca/domain";
-import { callSheetsFor, indexProduction, scheduledShootDay } from "@pca/domain";
+import {
+  applyOperations,
+  callSheetsFor,
+  generateScheduleCandidates,
+  indexProduction,
+  scheduledShootDay,
+} from "@pca/domain";
 
 import type { Clock, IdFactory, Logger, ModelPort, RepositorySet } from "../ports";
 import { ModelError, guardModelPort } from "../ports";
@@ -21,7 +27,6 @@ import type { UseCaseResult } from "../result";
 import { succeed } from "../result";
 import { createAnalyzeChangeImpact, type ChangeImpactReport } from "./analyze-change-impact";
 import { createCreateProposal } from "./create-proposal";
-import { createGenerateScheduleCandidates } from "./generate-schedule-candidates";
 import { createInterpretChange } from "./interpret-change";
 import { createSimulateProposal } from "./simulate-proposal";
 import { createSubmitChangeRequest } from "./submit-change-request";
@@ -183,7 +188,6 @@ export const createRunChangeAgent = (dependencies: {
     repositories,
     ...(logger === undefined ? {} : { logger }),
   });
-  const generate = createGenerateScheduleCandidates({ repositories });
   const simulate = createSimulateProposal({ repositories });
   const propose = createCreateProposal({ repositories, clock, ids });
 
@@ -303,14 +307,20 @@ export const createRunChangeAgent = (dependencies: {
           operations = [fact];
           break;
         }
-        const generated = await generate({
-          productionId: input.productionId,
-          sceneIds,
-          correlationId,
-        });
-        if (!generated.ok) return generated;
-        candidates = generated.value.candidates;
-        rejected = generated.value.rejected;
+        // TASK-904 (code review #4): candidates are generated against the
+        // world as it will be once the fact is recorded, not the stored one.
+        // A multi-day unavailability otherwise offers a day inside its own
+        // range, which then fails simulation as INVALID although another
+        // day — or an honest NO_CANDIDATE — was available. Applying the fact
+        // to a copy lets the generator's own availability check refuse those
+        // days with the real reason ("Sarah is unavailable on …"), the same
+        // reason simulation would have given, one step earlier.
+        const afterFact = indexProduction(
+          applyOperations(state, [fact], (prefix) => `${prefix}-preview`).state,
+        );
+        const generated = generateScheduleCandidates(afterFact, { sceneIds });
+        candidates = generated.candidates;
+        rejected = generated.rejected;
         if (candidates.length === 0) {
           const explanation = await explain(
             explainInput,

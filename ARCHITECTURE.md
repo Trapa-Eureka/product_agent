@@ -478,6 +478,17 @@ stale mark for every touched call sheet. When the model cannot rank or explain,
 the agent falls back to date order and a data-only summary rather than
 stopping.
 
+Candidates for a cast or location unavailability are generated against a
+preview of the production with the reported fact already applied, not
+against the stored state (TASK-904, post-review remediation in TASKS.md): a
+multi-day unavailability would otherwise offer a day inside its own range,
+which simulation then refuses as INVALID although a different day — or an
+honest NO_CANDIDATE — was there to be had. The generator's own availability
+check refuses those days with the real reason, one step before simulation
+would. The MCP tool `generate_schedule_candidates` still answers against the
+stored state, as a read must; a caller that knows about a pending fact passes
+`excludeDates`.
+
 The explanation layer (`explanation.ts` in the application package, TASK-306)
 is what makes the data-only summary possible: `describeProposal` builds the
 DESIGN.md §4 card (headline, `+`/`!` effects, operation lines) from the
