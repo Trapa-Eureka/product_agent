@@ -773,6 +773,15 @@ Complete, as explicit operations plus a validation rule rather than an implied w
 
 4 new domain tests (bare move invalid naming both sheets while Sarah's conflicts still resolve; marking one day leaves the other as the sole conflict; an already-draft sheet needs no mark and the mark may precede the move; a move that could not apply asks for no marks) and 1 MCP contract test reproducing the review's case (Scene 18 moved by hand → invalid with the two sheets named). Three existing tests that used bare moves to exercise other conflicts now carry the marks so they assert what they meant to. `pnpm run verify` passes (9/9).
 
+## TASK-912 Verification check names honour the MCP output contract — DONE
+
+Code review finding #14 (Medium). Verification check names embedded user-controlled text — task titles (up to 300 characters), requirement names and cast/location names (up to 200) — while `verify_applied_proposal`'s output schema caps a name at 120. The use case succeeded, then MCP output validation turned the result into `INTERNAL_ERROR`: a valid, applied proposal became unverifiable through the public tool because of display-text length. The reviewer reproduced it with a 150-character title yielding a 172-character name.
+
+**Status**  
+Complete, with producer and contract sharing the limits. `@pca/contracts` exports `VERIFICATION_CHECK_NAME_MAX_LENGTH` (120, used by the output schema) and `EXPLANATION_MAX_LENGTH` (2,000, used by `explanationSchema`). The domain verifier clips every user-written fragment it quotes in a name to 30 characters with an ellipsis — sized so the two-fragment template "No scene requiring X remains scheduled while X is unavailable" fits whole — and, as the guarantee, clips every finished name to 120 and every detail to 2,000 in the one `check()` constructor all checks pass through, so a move of many scenes or an invariant report with many violations is bounded too. Names stay readable: "Sarah", "Warehouse", "red car", and "Source a red car for Scene 18" are all under the fragment limit and unchanged. The full task title moved into the task check's detail, so nothing the name drops is lost. MCP.md §8 states the rule.
+
+Tests: 4 domain (a 300-character title clips in the name and appears whole in the detail; a 200-character cast name clips in the operation check and both places in the availability check, all five names within the limit; an invariant detail with 60 violations is cut at exactly 2,000 ending in an ellipsis; `clip` boundaries), 1 contracts boundary (120 accepted, 121 refused), 1 MCP contract (a proposal with a 300-character title runs create → approve → apply and `verify_applied_proposal` returns success rather than `INTERNAL_ERROR`). One existing detail assertion updated for the title now quoted. `pnpm run verify` passes (9/9).
+
 ---
 
 # Parallelization guidance

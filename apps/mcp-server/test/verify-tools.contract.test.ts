@@ -40,8 +40,8 @@ const golden1: ProposedOperation[] = [
 let store: MemoryStore;
 let client: Client;
 let cleanup: () => Promise<void>;
-let proposeOnly: () => Promise<string>;
-let runThroughApply: () => Promise<string>;
+let proposeOnly: (operations?: ProposedOperation[]) => Promise<string>;
+let runThroughApply: (operations?: ProposedOperation[]) => Promise<string>;
 
 const call = async (args: Record<string, unknown>): Promise<Record<string, unknown>> => {
   const result = await client.callTool({ name: "verify_applied_proposal", arguments: args });
@@ -69,20 +69,20 @@ beforeEach(async () => {
   const decide = createDecideProposal(deps);
   const apply = createApplyApprovedProposal(deps);
 
-  proposeOnly = async () => {
+  proposeOnly = async (operations: ProposedOperation[] = golden1) => {
     const created = await create({
       productionId: DEMO,
       changeRequestId: "CR-1",
       baseProductionVersion: 1,
-      operations: golden1,
+      operations,
       summary: "remedy",
       proposedBy: "agent",
     });
     if (!created.ok) throw new Error(created.error.message);
     return created.value.id;
   };
-  runThroughApply = async () => {
-    const proposalId = await proposeOnly();
+  runThroughApply = async (operations: ProposedOperation[] = golden1) => {
+    const proposalId = await proposeOnly(operations);
     const decided = await decide({
       productionId: DEMO,
       proposalId,
@@ -140,6 +140,27 @@ describe("verify_applied_proposal", () => {
       ["Apply was audited", true],
     ]);
     expect((await store.auditEvents.list(DEMO, { limit: 1 }))[0]?.action).toBe("PROPOSAL_VERIFIED");
+  });
+
+  it("TASK-912: verifies a proposal whose task title is as long as the contract allows", async () => {
+    // Code review #14: a 150-character title used to yield a 172-character check name the output schema refused.
+    const title = "Source ".padEnd(300, "x");
+    const proposalId = await runThroughApply([
+      {
+        type: "CREATE_PREPARATION_TASK",
+        title,
+        relatedEntityType: "SCENE",
+        relatedEntityId: scenes.s18,
+      },
+    ]);
+    const result = await call({ productionId: DEMO, proposalId });
+
+    expect(result["error"]).toBeUndefined();
+    expect(result["success"]).toBe(true);
+    const checks = result["checks"] as Check[];
+    for (const check of checks) expect(check.name.length).toBeLessThanOrEqual(120);
+    expect(checks[0]?.name).toBe(`1. Open task "${title.slice(0, 29)}\u2026" exists`);
+    expect(checks[0]?.detail).toContain(title);
   });
 
   it("names the single failed check when the write landed without its bookkeeping", async () => {

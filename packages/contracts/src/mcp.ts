@@ -301,12 +301,19 @@ export const applyApprovedProposalOutputSchema = z.strictObject({
 
 export const verifyAppliedProposalInputSchema = validateProposalInputSchema;
 
+/**
+ * A check name is a one-line label. The verifier (`@pca/domain`) clips what it
+ * builds to this length, so a valid proposal can never produce output this
+ * schema refuses (TASK-912).
+ */
+export const VERIFICATION_CHECK_NAME_MAX_LENGTH = 120;
+
 export const verifyAppliedProposalOutputSchema = z.strictObject({
   success: z.boolean(),
   checks: z
     .array(
       z.strictObject({
-        name: z.string().min(1).max(120),
+        name: z.string().min(1).max(VERIFICATION_CHECK_NAME_MAX_LENGTH),
         passed: z.boolean(),
         detail: explanationSchema.optional(),
       }),

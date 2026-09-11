@@ -68,7 +68,9 @@ export const correlationIdSchema = z.string().min(1).max(128);
 export const actorIdSchema = z.string().min(1).max(200);
 
 /** Free-text meant for a human reader. Never empty, so the UI never renders a blank reason. */
-export const explanationSchema = z.string().min(1).max(2000);
+/** Upper bound of any explanation, conflict detail, or verification detail. Producers clip to it. */
+export const EXPLANATION_MAX_LENGTH = 2000;
+export const explanationSchema = z.string().min(1).max(EXPLANATION_MAX_LENGTH);
 
 /**
  * An inclusive range of production-local dates. Lexicographic comparison is
