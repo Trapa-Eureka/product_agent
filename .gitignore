@@ -15,3 +15,9 @@ test-results/
 .angular/
 apps/web/dist/
 apps/web/out-tsc/
+
+# Review reports are kept locally, not published: they narrate the exploitation
+# of findings that TASK-901..937 have since fixed (TASKS.md "Post-review remediation").
+docs/01_COMPREHENSIVE_CODE_REVIEW.md
+docs/02_SECURITY_REVIEW.md
+docs/03_FULL_SECURITY_ARCHITECTURE_AUDIT.md
