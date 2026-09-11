@@ -31,11 +31,13 @@ const NOW = "2026-09-10T12:00:00.000Z";
 describe("RealtimeService", () => {
   let sockets: FakeSocket[];
   let recoveries: string[];
+  let failRecovery: boolean;
   let service: RealtimeService;
 
   beforeEach(() => {
     sockets = [];
     recoveries = [];
+    failRecovery = false;
     TestBed.configureTestingModule({
       providers: [
         {
@@ -43,6 +45,7 @@ describe("RealtimeService", () => {
           useValue: {
             getRecovery: (productionId: string) => {
               recoveries.push(productionId);
+              if (failRecovery) return Promise.reject(new Error("api down"));
               return Promise.resolve({
                 productionId,
                 productionVersion: 3,
@@ -88,6 +91,28 @@ describe("RealtimeService", () => {
 
     service.connect();
     expect(sockets).toHaveLength(1);
+  });
+
+  it("shows the last recovery error until a later recovery succeeds", async () => {
+    failRecovery = true;
+    service.follow("PROD-DEMO");
+    const socket = sockets[0] as FakeSocket;
+    socket.serverSays({
+      type: "welcome",
+      protocolVersion: 1,
+      serverTime: NOW,
+      canonicalSource: "rest",
+    });
+    socket.serverSays({ type: "subscribed", productionId: "PROD-DEMO" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(service.lastRecoveryError()).toBe("api down");
+    expect(service.view()).toMatchObject({ recovering: true, recoveredAt: null });
+
+    failRecovery = false;
+    await service.recover();
+    expect(recoveries).toEqual(["PROD-DEMO", "PROD-DEMO"]);
+    expect(service.lastRecoveryError()).toBeNull();
+    expect(service.view()).toMatchObject({ recovering: false, recoveredAt: NOW });
   });
 
   it("reports reconnecting when the socket drops, and closed after disconnect", () => {

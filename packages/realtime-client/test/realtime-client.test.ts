@@ -172,6 +172,9 @@ describe("realtime client", () => {
   let recoverGate: (() => void) | null;
   let views: ProductionView[];
   let statuses: [ClientStatus, number][];
+  let errors: string[];
+  /** How many of the next recovery reads reject with "api down". */
+  let failNextRecoveries: number;
   let client: RealtimeClient;
 
   const latestSocket = () => sockets[sockets.length - 1] as FakeSocket;
@@ -184,6 +187,8 @@ describe("realtime client", () => {
     recoverGate = null;
     views = [];
     statuses = [];
+    errors = [];
+    failNextRecoveries = 0;
     client = createRealtimeClient({
       url: "ws://test/ws",
       createSocket: (url) => {
@@ -193,6 +198,10 @@ describe("realtime client", () => {
       },
       recover: (productionId) => {
         recoverCalls.push(productionId);
+        if (failNextRecoveries > 0) {
+          failNextRecoveries -= 1;
+          return Promise.reject(new Error("api down"));
+        }
         if (recoverGate === null) return Promise.resolve(snapshot);
         return new Promise((resolve) => {
           const release = recoverGate as () => void;
@@ -205,8 +214,35 @@ describe("realtime client", () => {
       schedule: (task, delayMs) => scheduler.schedule(task, delayMs),
       onChange: (view) => views.push(view),
       onStatus: (status, attempt) => statuses.push([status, attempt]),
+      onRecoveryError: (productionId, error) =>
+        errors.push(`${productionId}:${(error as Error).message}`),
     });
   });
+
+  const proposalNotification = (
+    status: Proposal["status"],
+    proposalId = "P-1",
+  ): Record<string, unknown> => ({
+    type: "proposal",
+    proposal: {
+      productionId: DEMO,
+      proposalId,
+      changeRequestId: "CR-1",
+      status,
+      validationStatus: "VALID",
+      summary: "Move Scene 07",
+      occurredAt: LATER,
+    },
+  });
+
+  /** Connects, follows DEMO, and completes the first recovery. */
+  const connectAndRecover = async (): Promise<void> => {
+    client.follow(DEMO);
+    client.connect();
+    latestSocket().welcome();
+    latestSocket().ack();
+    await flush();
+  };
 
   it("after welcome, subscribes to every followed production and recovers each once the server acknowledges", async () => {
     client.follow(DEMO);
@@ -394,27 +430,118 @@ describe("realtime client", () => {
     expect(client.view(DEMO)?.jobs[0]?.stage).toBe("received");
   });
 
-  it("reports a failed recovery and leaves the view usable", async () => {
-    const errors: string[] = [];
-    client = createRealtimeClient({
-      url: "ws://test/ws",
-      createSocket: (url) => {
-        const socket = new FakeSocket(url);
-        sockets.push(socket);
-        return socket;
-      },
-      recover: () => Promise.reject(new Error("api down")),
-      schedule: (task, delayMs) => scheduler.schedule(task, delayMs),
-      onRecoveryError: (productionId, error) =>
-        errors.push(`${productionId}:${(error as Error).message}`),
+  // TASK-910 (code review #11): closed proposals leave the open list; APPLIED refreshes the version.
+
+  it("removes a proposal from openProposals when it is APPLIED and recovers to learn the new version", async () => {
+    await connectAndRecover();
+    expect(client.view(DEMO)).toMatchObject({ productionVersion: 1 });
+    snapshot = { ...snapshotOf([run()], []), productionVersion: 2, asOf: LATER };
+    latestSocket().receive(proposalNotification("APPLIED"));
+    await flush();
+    expect(client.view(DEMO)).toMatchObject({
+      productionVersion: 2,
+      openProposals: [],
+      recoveredAt: LATER,
+      recovering: false,
     });
-    client.follow(DEMO);
-    client.connect();
+    expect(recoverCalls).toEqual([DEMO, DEMO]);
+    // The proposal left the list before the read, so nothing closed is ever shown as open.
+    const beforeRead = views.find((view) => view.productionVersion === 1 && view.recovering);
+    expect(beforeRead?.openProposals).toEqual([]);
+  });
+
+  it.each(["REJECTED", "FAILED"] as const)(
+    "removes a %s proposal from openProposals without another read: the version did not move",
+    async (status) => {
+      await connectAndRecover();
+      latestSocket().receive(proposalNotification(status));
+      await flush();
+      expect(client.view(DEMO)?.openProposals).toEqual([]);
+      expect(recoverCalls).toEqual([DEMO]);
+    },
+  );
+
+  it("keeps a proposal that is APPROVED: a coordinator still watches it until it is applied", async () => {
+    await connectAndRecover();
+    latestSocket().receive(proposalNotification("APPROVED"));
+    expect(client.view(DEMO)?.openProposals.map((p) => p.status)).toEqual(["APPROVED"]);
+    expect(recoverCalls).toEqual([DEMO]);
+  });
+
+  // TASK-910 (code review #12): a failed recovery read is retried; nothing is applied without a baseline.
+
+  it("keeps holding after a failed recovery read and retries with backoff until the snapshot arrives", async () => {
+    failNextRecoveries = 1;
+    await connectAndRecover();
+    expect(errors).toEqual([`${DEMO}:api down`]);
+    expect(client.view(DEMO)).toMatchObject({ recovering: true, recoveredAt: null, jobs: [] });
+    expect(scheduler.delays).toEqual([500]);
+
+    // A notification during the outage is held, not applied to nothing and not a reason to read early.
+    latestSocket().receive({ type: "job", event: event("resolving", "STARTED") });
+    expect(client.view(DEMO)?.jobs).toEqual([]);
+    expect(recoverCalls).toEqual([DEMO]);
+
+    expect(scheduler.runNext()).toBe(true);
+    await flush();
+    expect(recoverCalls).toEqual([DEMO, DEMO]);
+    expect(client.view(DEMO)).toMatchObject({ recovering: false, recoveredAt: NOW });
+    expect(client.view(DEMO)?.jobs[0]).toMatchObject({ stage: "resolving", updatedAt: LATER });
+  });
+
+  it("backs off across consecutive failed reads and starts over after a success", async () => {
+    failNextRecoveries = 2;
+    await connectAndRecover();
+    scheduler.runNext();
+    await flush();
+    expect(errors).toHaveLength(2);
+    expect(scheduler.delays).toEqual([500, 1000]);
+    scheduler.runNext();
+    await flush();
+    expect(client.view(DEMO)?.recovering).toBe(false);
+
+    failNextRecoveries = 1;
+    await client.recover(DEMO);
+    expect(scheduler.delays).toEqual([500, 1000, 500]);
+    expect(scheduler.pending()).toBe(1);
+  });
+
+  it("a manual recover while a retry is pending reads now and cancels the retry", async () => {
+    failNextRecoveries = 1;
+    await connectAndRecover();
+    expect(scheduler.pending()).toBe(1);
+    await client.recover(DEMO);
+    expect(scheduler.pending()).toBe(0);
+    expect(recoverCalls).toEqual([DEMO, DEMO]);
+    expect(client.view(DEMO)?.recovering).toBe(false);
+  });
+
+  it("a socket drop while a retry is pending cancels it; the reconnect recovers from scratch, once", async () => {
+    failNextRecoveries = 1;
+    await connectAndRecover();
+    latestSocket().receive({ type: "job", event: event("resolving", "STARTED") });
+    latestSocket().drop();
+    expect(client.view(DEMO)?.recovering).toBe(false);
+    // Only the reconnect timer remains; the recovery retry is gone.
+    expect(scheduler.pending()).toBe(1);
+    scheduler.runNext();
     latestSocket().welcome();
     latestSocket().ack();
     await flush();
-    expect(errors).toEqual([`${DEMO}:api down`]);
-    expect(client.view(DEMO)).toMatchObject({ recovering: false, recoveredAt: null });
+    expect(recoverCalls).toEqual([DEMO, DEMO]);
+    expect(client.view(DEMO)).toMatchObject({ recovering: false, recoveredAt: NOW });
+    // What was held during the outage was dropped with the socket: the fresh snapshot is the truth.
+    expect(client.view(DEMO)?.jobs[0]?.stage).toBe("received");
+  });
+
+  it("close cancels a pending recovery retry", async () => {
+    failNextRecoveries = 1;
+    await connectAndRecover();
+    expect(scheduler.pending()).toBe(1);
+    client.close();
+    expect(scheduler.pending()).toBe(0);
+    expect(client.view(DEMO)?.recovering).toBe(false);
+    expect(client.status()).toBe("closed");
   });
 
   it("close stops reconnecting and ignores messages from a superseded socket", async () => {

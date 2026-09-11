@@ -758,6 +758,22 @@ already reflects is ignored. Reconnection backs off exponentially through an
 injected timer, and a socket that closes mid-recovery discards what it held,
 because the next recovery is the truth.
 
+Two refinements from the post-review remediation (TASK-910, code review #11
+and #12). `openProposals` means what it says: a live notification that takes
+a known proposal to `APPLIED`, `REJECTED`, or `FAILED` removes it from the
+list rather than leaving a closed record in an array the UI reads as "still
+to act on", and `APPLIED` additionally triggers a recovery, because that
+write advanced the production version (INV-7) and the notification does not
+carry the new number — the record does, so the header shows the committed
+version without waiting for a reconnect. And a recovery read that fails is
+retried, not abandoned: nothing held is applied (there is no baseline to
+apply it to), the view stays `recovering` so what arrives next is held as
+well, and the read is scheduled again with the same bounded backoff as
+reconnection, for as long as the socket stays subscribed. A manual recovery
+runs the pending retry now; a socket drop cancels it, because the reconnect
+re-subscribes and recovers from scratch. The console clears its "last
+recovery error" once a snapshot lands.
+
 Suggested event:
 
 ```ts
