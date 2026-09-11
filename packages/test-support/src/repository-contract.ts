@@ -462,6 +462,51 @@ export const describeRepositoryContract = (
       });
     });
 
+    describe("record identity is scoped by production (TASK-907: code review #8 / AUD-005)", () => {
+      it("keeps a proposal ID that repeats across productions as two records", async () => {
+        await repositories.proposals.save(aProposal({ summary: "Demo's P-104" }));
+        await repositories.proposals.save(
+          aProposal({ productionId: OTHER_PRODUCTION, summary: "Other's P-104" }),
+        );
+
+        expect((await repositories.proposals.findById(DEMO, "P-104"))?.summary).toBe(
+          "Demo's P-104",
+        );
+        expect((await repositories.proposals.findById(OTHER_PRODUCTION, "P-104"))?.summary).toBe(
+          "Other's P-104",
+        );
+      });
+
+      it("keeps a change request ID that repeats across productions as two records", async () => {
+        await repositories.changeRequests.save(aChangeRequest({ rawText: "Demo's CR-001" }));
+        await repositories.changeRequests.save(
+          aChangeRequest({ productionId: OTHER_PRODUCTION, rawText: "Other's CR-001" }),
+        );
+
+        expect((await repositories.changeRequests.findById(DEMO, "CR-001"))?.rawText).toBe(
+          "Demo's CR-001",
+        );
+        expect(
+          (await repositories.changeRequests.findById(OTHER_PRODUCTION, "CR-001"))?.rawText,
+        ).toBe("Other's CR-001");
+      });
+
+      it("does not confuse (A, B::P) with (A::B, P) when IDs contain the separator", async () => {
+        // Entity IDs may contain colons, so a naive `${productionId}::${id}`
+        // key made these two the same record.
+        await repositories.proposals.save(
+          aProposal({ productionId: "A", id: "B::P", summary: "first" }),
+        );
+        await repositories.proposals.save(
+          aProposal({ productionId: "A::B", id: "P", summary: "second" }),
+        );
+
+        expect((await repositories.proposals.findById("A", "B::P"))?.summary).toBe("first");
+        expect((await repositories.proposals.findById("A::B", "P"))?.summary).toBe("second");
+        expect(await repositories.proposals.findById("A", "P")).toBeNull();
+      });
+    });
+
     describe("change requests, proposals, and approvals", () => {
       it("round-trips a change request", async () => {
         await repositories.changeRequests.save(aChangeRequest());

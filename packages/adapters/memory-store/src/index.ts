@@ -22,7 +22,7 @@ import type {
   ProposalRepository,
   RepositorySet,
 } from "@pca/application";
-import { assertBelongsToProduction } from "@pca/application";
+import { assertBelongsToProduction, scopedRecordKey } from "@pca/application";
 import type { IdempotencyRecord, ProductionState } from "@pca/domain";
 
 /* eslint-disable @typescript-eslint/require-await --
@@ -263,7 +263,8 @@ export class MemoryStore implements RepositorySet {
   }
 }
 
-const scopedKey = (productionId: EntityId, id: string): string => `${productionId}::${id}`;
+/** TASK-907: the shared unambiguous encoding, so `(A, B::P)` and `(A::B, P)` are two keys. */
+const scopedKey = (productionId: EntityId, id: string): string => scopedRecordKey(productionId, id);
 
 export const createMemoryStore = (options?: MemoryStoreOptions): MemoryStore =>
   new MemoryStore(options);

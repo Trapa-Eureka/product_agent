@@ -91,8 +91,19 @@ const upsertById = <T extends { id: EntityId }>(
   return [...byId.values()];
 };
 
-const replaceById = <T extends { id: EntityId }>(records: T[], record: T): T[] => {
-  const index = records.findIndex((candidate) => candidate.id === record.id);
+/**
+ * Replaces a workflow record by its *scoped* identity (TASK-907, code review
+ * #8 / AUD-005). The workflow arrays hold records from every production, so
+ * matching on `id` alone let production A's proposal `P-1` overwrite
+ * production B's; both parts of the identity are compared now.
+ */
+const replaceById = <T extends { id: EntityId; productionId: EntityId }>(
+  records: T[],
+  record: T,
+): T[] => {
+  const index = records.findIndex(
+    (candidate) => candidate.productionId === record.productionId && candidate.id === record.id,
+  );
   if (index === -1) {
     return [...records, record];
   }

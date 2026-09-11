@@ -35,3 +35,18 @@ export const assertBelongsToProduction = (
     }
   }
 };
+
+/**
+ * One unambiguous key for a record scoped to a production (TASK-907, code
+ * review #8 / AUD-005). Adapters that index by a flat string — the memory
+ * store's maps, Mongo's `_id` — used to concatenate `productionId::id`, and
+ * entity IDs may contain colons, so `(A, B::P)` and `(A::B, P)` collided.
+ * Each part now has its own colons escaped first (`%` before `:`, so the
+ * escape itself cannot be forged), which makes the separator unambiguous.
+ * `%` is outside the entity-ID alphabet, so an ID without a colon encodes to
+ * exactly the string it always did: existing Mongo rows keep their `_id`.
+ */
+export const scopedRecordKey = (productionId: string, id: string): string =>
+  `${escapeKeyPart(productionId)}::${escapeKeyPart(id)}`;
+
+const escapeKeyPart = (part: string): string => part.replaceAll("%", "%25").replaceAll(":", "%3A");
