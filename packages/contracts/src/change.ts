@@ -6,6 +6,7 @@ import {
   dateRangeSchema,
   entityIdSchema,
   isoDateTimeSchema,
+  INPUT_LIMITS,
 } from "./primitives";
 
 /**
@@ -47,7 +48,7 @@ export const sceneRequirementChangedChangeSchema = z.strictObject({
 
 export const scheduleChangedChangeSchema = z.strictObject({
   type: z.literal("SCHEDULE_CHANGED"),
-  sceneIds: z.array(entityIdSchema).min(1),
+  sceneIds: z.array(entityIdSchema).min(1).max(INPUT_LIMITS.sceneIdsPerOperation),
   toShootDayId: entityIdSchema,
 });
 

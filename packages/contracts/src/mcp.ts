@@ -18,6 +18,7 @@ import {
   idempotencyKeySchema,
   localDateSchema,
   productionVersionSchema,
+  INPUT_LIMITS,
 } from "./primitives";
 import { proposalSchema, proposedOperationSchema } from "./proposal";
 
@@ -183,8 +184,8 @@ export const analyzeChangeImpactOutputSchema = z.strictObject({
 
 export const generateScheduleCandidatesInputSchema = z.strictObject({
   productionId: entityIdSchema,
-  sceneIds: z.array(entityIdSchema).min(1),
-  excludeDates: z.array(localDateSchema).optional(),
+  sceneIds: z.array(entityIdSchema).min(1).max(INPUT_LIMITS.sceneIdsPerOperation),
+  excludeDates: z.array(localDateSchema).max(INPUT_LIMITS.excludeDates).optional(),
 });
 
 /** An existing shoot day on which every moving scene's cast and location are free. */
@@ -231,7 +232,7 @@ export const simulationSummarySchema = z.strictObject({
 export const simulateProposalInputSchema = z.strictObject({
   productionId: entityIdSchema,
   baseProductionVersion: productionVersionSchema,
-  operations: z.array(proposedOperationSchema).min(1),
+  operations: z.array(proposedOperationSchema).min(1).max(INPUT_LIMITS.operationsPerProposal),
 });
 
 export const simulateProposalOutputSchema = z.strictObject({
@@ -265,7 +266,7 @@ export const createProposalInputSchema = z.strictObject({
   productionId: entityIdSchema,
   changeRequestId: entityIdSchema,
   baseProductionVersion: productionVersionSchema,
-  operations: z.array(proposedOperationSchema).min(1),
+  operations: z.array(proposedOperationSchema).min(1).max(INPUT_LIMITS.operationsPerProposal),
   summary: explanationSchema,
 });
 

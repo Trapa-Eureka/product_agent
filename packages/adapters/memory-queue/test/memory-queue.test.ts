@@ -8,7 +8,9 @@ import {
   sequentialIds,
 } from "@pca/test-support";
 
-import { createMemoryQueue } from "../src";
+import { createJobTracker } from "@pca/application";
+
+import { createMemoryJobRunRepository, createMemoryQueue } from "../src";
 
 describeQueueContract("memory queue", (policy) =>
   createMemoryQueue({
@@ -172,5 +174,55 @@ describe("memory queue specifics", () => {
     const { record } = await queue.enqueue(job());
     (record.job as { attempt: number }).attempt = 99;
     expect((await queue.getJob(record.job.id))?.job.attempt).toBe(1);
+  });
+
+  it("TASK-917: forgets the oldest finished jobs past maxRetainedJobs, never a queued one", async () => {
+    const queue = createMemoryQueue({ ids: sequentialIds(), maxRetainedJobs: 2 });
+    queue.register("ANALYZE_CHANGE", () => Promise.resolve({ kind: "COMPLETED" }));
+    for (const key of ["idem-key-a", "idem-key-b", "idem-key-c"]) {
+      await queue.enqueue(job({ idempotencyKey: key }));
+    }
+    await queue.drain();
+    expect((await queue.listJobs()).map((entry) => entry.job.id)).toEqual(["JOB-2", "JOB-3"]);
+    // The forgotten job's idempotency key is forgotten with it (documented).
+    expect((await queue.enqueue(job({ idempotencyKey: "idem-key-a" }))).kind).toBe("ENQUEUED");
+    expect((await queue.enqueue(job({ idempotencyKey: "idem-key-c" }))).kind).toBe("DUPLICATE");
+    // Queued work is never pruned to make room.
+    queue.stop();
+    for (const key of ["idem-key-d", "idem-key-e"])
+      await queue.enqueue(job({ idempotencyKey: key }));
+    await queue.drain();
+    const ids = (await queue.listJobs()).map((entry) => entry.job.id);
+    expect(ids).toHaveLength(2);
+  });
+});
+
+describe("memory job runs (TASK-917 retention)", () => {
+  it("keeps at most maxRunsPerProduction finished runs, oldest forgotten first, in-flight runs kept", async () => {
+    const repository = createMemoryJobRunRepository({ maxRunsPerProduction: 2 });
+    let tick = 0;
+    const clock = { now: () => `2026-09-10T12:00:0${(tick += 1)}.000Z` };
+    const tracker = createJobTracker({ repository, clock, ids: sequentialIds() });
+    const start = () =>
+      tracker.start({ productionId: "PROD-DEMO", correlationId: "corr-1", type: "ANALYZE_CHANGE" });
+    const first = await start();
+    const second = await start();
+    const third = await start();
+    const inFlight = await start();
+    await tracker.fail(first.id, "gave up");
+    await tracker.fail(second.id, "gave up");
+    await tracker.fail(third.id, "gave up");
+    const kept = (await repository.listByProduction("PROD-DEMO")).map((run) => run.id);
+    expect(kept).toEqual(expect.arrayContaining([inFlight.id, third.id, second.id]));
+    expect(kept).toHaveLength(3);
+    expect(await repository.findById(first.id)).toBeNull();
+    // Another production's runs are counted on their own.
+    const other = await tracker.start({
+      productionId: "PROD-OTHER",
+      correlationId: "corr-2",
+      type: "ANALYZE_CHANGE",
+    });
+    await tracker.fail(other.id, "gave up");
+    expect(await repository.findById(other.id)).not.toBeNull();
   });
 });

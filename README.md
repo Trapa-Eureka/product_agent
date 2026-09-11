@@ -182,6 +182,8 @@ pnpm --filter @pca/web start
 | `PCA_AUTH_SECRET` | (unset) | 32+ character secret that signs access tokens; required unless `PCA_DEMO_MODE=true` |
 | `PCA_DEMO_MODE` | (unset) | `true` marks a local demo: the API issues the demo coordinator's token to anyone at `/api/auth/demo-session`, and an unset allow-list means every production |
 | `PCA_ALLOWED_ORIGINS` | dev UI origins in demo mode, else none | Exact browser origins (scheme, host, port) allowed to open the WebSocket, besides the API's own host; a browser page from any other origin gets 403 |
+| `PCA_RATE_LIMIT_PER_MINUTE` | `600` | Requests one client address may make per minute across the API; over it is 429 with `Retry-After` |
+| `PCA_WRITE_LIMIT_PER_MINUTE` | `60` | Writes under a production (analysis, simulation, proposals, decisions, apply) one principal may make per minute |
 | `PCA_MAKER_CHECKER` | `true` with a secret, `false` in demo mode | Whether the person who submitted a change may decide its proposal |
 | `PCA_ACTOR_ID` | `mcp-agent` | Identity recorded for agent actions (1–200 characters; refused at startup otherwise) |
 | `PCA_API_PORT` | `3000` | REST API and WebSocket port |

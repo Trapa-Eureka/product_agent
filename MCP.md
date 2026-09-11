@@ -53,6 +53,16 @@ Write tools additionally require:
 - expected production version;
 - idempotency key.
 
+Externally supplied arrays are capped (TASK-917, `INPUT_LIMITS` in
+`packages/contracts/src/primitives.ts`); over the cap is `INVALID_INPUT`
+before any handler runs:
+
+| Input | Maximum |
+|---|---|
+| `sceneIds` in one operation or one typed change | 200 |
+| `operations` in `simulate_proposal` / `create_proposal` | 100 |
+| `excludeDates` in `generate_schedule_candidates` | 366 |
+
 ### Server foundation
 
 `apps/mcp-server` enforces the general requirements above once, for every tool:

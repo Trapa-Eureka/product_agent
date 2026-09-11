@@ -147,7 +147,9 @@ checker, the demo-session route present only in demo mode, the WebSocket
 upgrade refused without a token; TASK-916: a foreign or `null` Origin
 refused with 403 before any socket, the server's own and a listed origin
 accepted, a query-string token without an Origin refused while a header
-token may omit it), reads, GOLDEN-1 driven through REST alone,
+token may omit it; TASK-917: a burst over the per-client quota → 429 with
+`Retry-After`, writes charged per principal while reads pass, an array over
+its documented maximum → `INVALID_INPUT`), reads, GOLDEN-1 driven through REST alone,
 the stable error codes, changes as jobs with recovery, ambiguity resumed on
 the same job, and the WebSocket gateway on the same server.
 
