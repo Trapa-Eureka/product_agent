@@ -176,7 +176,7 @@ pnpm --filter @pca/web start
 | `PCA_DATA_FILE` | `~/.production-change-agent/data.json` | JSON store location; created `0700`/`0600`, owner-only, and never a symbolic link |
 | `PCA_DATA_FILE_PERMISSIONS` | `tighten` | An existing data file readable by others is chmodded to `0600` (`tighten`, with a warning) or refused at startup (`refuse`) |
 | `PCA_MONGO_URI` | `mongodb://127.0.0.1:27017/?replicaSet=rs0` | Mongo connection; must be a replica set |
-| `PCA_MONGO_DB` | `production_change_agent` | Mongo database name |
+| `PCA_MONGO_DB` | `production_change_agent` | Mongo database name; with Mongo, job runs are durable too and a restart reconciles the ones it interrupted |
 | `PCA_MODEL` | `rules` | `rules` (free, no network), `ollama` (later), or `bedrock` (deferred, paid) |
 | `PCA_QUEUE` | `memory` | `memory` (in-process, free) or `sqs` (deferred, paid) |
 | `PCA_ALLOWED_PRODUCTIONS` | (unset) | Comma-separated production IDs the API and MCP server may act on; required unless `PCA_DEMO_MODE=true`, which grants every production. Unset, blank, or `*` without the demo flag refuses to start |

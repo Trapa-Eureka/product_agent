@@ -13,3 +13,4 @@ export * from "./fake-model";
 export * from "./queue-contract";
 export * from "./faults";
 export * from "./identity";
+export * from "./job-run-contract";

@@ -902,28 +902,16 @@ Tests: application — every credential pattern named without echo, ordinary sen
 
 Docs: `SPEC.md` §8 "Data policy"; `README.md` limitations; `ARCHITECTURE.md` §15; `DESIGN.md` §7; `TESTING.md`.
 
-## TASK-923 Queue and JobRun state persist when Mongo is selected — TODO
+## TASK-923 Queue and JobRun state persist when Mongo is selected — DONE
 
-**Goal**  
-With `PCA_STORE=mongo`, job runs and queued work survive a restart.
+AUD-009 (High). `createJobRuns` keyed job-run storage by the queue kind, so with `PCA_STORAGE=mongo` the production data was durable but every job run — the canonical "where is my change?" record — lived in process memory and vanished on restart, along with any in-flight work.
 
-**Context**  
-AUD-009 (High). Queue and job-run repositories are process-local regardless of store.
+**Status**  
+Complete, in two parts. **Durable runs:** `MongoStore.jobRuns` (`packages/adapters/mongo-store/src/job-runs.ts`) stores runs in a `jobRuns` collection with a row revision; `update` is the compare-and-set the port describes — read, transform, replace only if the revision is unchanged, retry up to ten times — so concurrent tracker moves both land; `listByProduction` is newest first and `listUnfinished` (new on the port, implemented by both adapters) lists every run not yet `completed`/`failed`. `createJobRuns(kind, storage)` now takes the storage selection and uses the store's runs when it has them (Mongo), memory otherwise; the API entry point passes it. **Restart reconciliation:** the in-process queue's jobs are not durable (a durable queue is the deferred SQS adapter, TASK-402), so `reconcileInterruptedRuns` (`packages/application/src/jobs/recovery.ts`) runs at API startup: every unfinished run a worker owned is failed with `INTERRUPTED_REASON` — or, at `applying`, a sharper reason saying the idempotent apply may have committed and the proposal's status is the thing to check — logged per run and in summary; runs waiting on a human (`resolving`, `awaiting_approval`) are kept, because the next request continues them.
 
-**Dependencies**  
-TASK-905.
+Tests: `describeJobRunContract` (`@pca/test-support`) — round-trip with copies, newest-first per production, atomic update (result returned, a throw writes nothing, unknown → null), three concurrent updates all landing, unfinished listing across productions — run against the memory store (unit) and Mongo (integration, mongodb-memory-server). Mongo restart scenario: five runs at different stages, close, reopen the same database with a new tracker, every run still there, reconciliation fails the `analyzing` and `applying` runs with their reasons, keeps `awaiting_approval` and `resolving`, leaves the finished one alone, and finds nothing on a second pass. Application unit: the same pass over the memory store with its log lines. `pnpm run verify` passes (9/9).
 
-**Allowed scope**  
-`packages/adapters/mongo-store` (job-run repository with atomic `update`), a Mongo-backed queue adapter or documented SQS-deferred path, bootstrap wiring, docs.
-
-**Acceptance criteria**  
-Mongo job-run repository passes the shared job-run contract; restart with in-flight runs resumes or marks them failed with a clear reason; file/memory defaults unchanged.
-
-**Tests**  
-Integration (Mongo memory server): contract suite + restart scenario.
-
-**Definition of Done**  
-Acceptance met, verify green, `ARCHITECTURE.md` updated.
+Docs: `ARCHITECTURE.md` §10; `README.md` env table.
 
 ## TASK-924 Infrastructure errors are not copied into user-visible job state — TODO
 

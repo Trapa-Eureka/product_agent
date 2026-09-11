@@ -365,6 +365,13 @@ export const createMemoryJobRunRepository = (
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
         .map((run) => structuredClone(run));
     },
+    // eslint-disable-next-line @typescript-eslint/require-await -- port methods are async; nothing here awaits
+    async listUnfinished() {
+      return [...runs.values()]
+        .filter((run) => !isFinished(run))
+        .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+        .map((run) => structuredClone(run));
+    },
     // TASK-905: read, transform, and write with no `await` in between, so no
     // other update to this run can observe or overwrite the intermediate state.
     // eslint-disable-next-line @typescript-eslint/require-await -- port methods are async; nothing here awaits

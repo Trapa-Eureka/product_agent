@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { EnqueueJobInput, JobHandlerOutcome } from "@pca/application";
 import {
+  describeJobRunContract,
   describeQueueContract,
   fixedClock,
   manualScheduler,
@@ -30,6 +31,8 @@ const job = (overrides: Partial<EnqueueJobInput> = {}): EnqueueJobInput => ({
 });
 
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+describeJobRunContract("memory job runs", () => createMemoryJobRunRepository());
 
 describe("memory queue specifics", () => {
   it("stamps records and transitions from the injected clock and ids", async () => {

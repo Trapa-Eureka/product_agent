@@ -743,6 +743,22 @@ at a time in enqueue order; `drain()` is its deterministic path and
 `start()`/`stop()` its background one. The SQS adapter (TASK-402) is deferred
 and would run the same contract suite.
 
+Job runs and restarts (TASK-923, AUD-009): with `PCA_STORAGE=mongo` the
+job runs live in a `jobRuns` collection (`MongoStore.jobRuns`), so a
+restart keeps every "where is my change?" answer; `update` is a genuine
+compare-and-set on a row revision with a bounded retry, so two writers
+both land and neither overwrites the other, the same guarantee the
+in-memory store gives synchronously (one shared contract,
+`describeJobRunContract`, proves both). With the file or memory store,
+runs stay in memory as before. The in-process queue's jobs are never
+durable — a durable queue is the deferred SQS adapter — so at startup
+`reconcileInterruptedRuns` fails every unfinished run a worker owned
+(`received`, `analyzing`, `simulating`, `validating`, `applying`,
+`verifying`) with a reason that says the server restarted and what to do
+(`applying` gets a sharper one: the idempotent apply may have committed,
+check the proposal first), and keeps the runs waiting on a human
+(`resolving`, `awaiting_approval`), which the next request continues.
+
 ## 11. Realtime/WebSocket
 
 WebSocket publishes job state and user-visible events.
