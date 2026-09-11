@@ -4,7 +4,7 @@ import type { ProposedOperation } from "@pca/contracts";
 
 import { canonicalJson, canonicalProposalPayload, computeProposalDigest } from "../src/digest";
 import { indexProduction } from "../src/production-state";
-import { isOperationAlreadyApplied, pendingOperations } from "../src/operations";
+import { isOperationAlreadyApplied, staleCallSheetIdsForShootDays } from "../src/operations";
 import { findEquivalentRequirement, normalizeRequirementName } from "../src/requirements";
 import {
   aCallSheet,
@@ -188,19 +188,25 @@ describe("INV-8 natural idempotency", () => {
       }),
     ).toBe(true);
   });
+});
 
-  it("filters a replayed proposal down to the work that still matters", () => {
-    const index = indexWith({
-      scenes: [aScene({ requirementIds: ["REQ-1"] })],
-      requirements: [aRequirement()],
-      callSheets: [aCallSheet()],
-    });
+describe("staleCallSheetIdsForShootDays (TASK-937)", () => {
+  it("names each published sheet on the days once, and never a draft or an unknown day", () => {
+    const index = indexProduction(
+      aProductionState({
+        locations: [aLocation()],
+        shootDays: [aShootDay(), aShootDay({ id: "SD-MON", date: "2026-09-21", sceneIds: [] })],
+        callSheets: [
+          aCallSheet(),
+          aCallSheet({ id: "CS-MON", shootDayId: "SD-MON" }),
+          aCallSheet({ id: "CS-MON-DRAFT", shootDayId: "SD-MON", status: "DRAFT" }),
+        ],
+      }),
+    );
 
-    const operations: ProposedOperation[] = [
-      { type: "ADD_SCENE_REQUIREMENT", sceneId: "S01", requirementType: "PROP", name: "red car" },
-      { type: "MARK_CALL_SHEET_STALE", callSheetId: "CS-2026-09-18" },
-    ];
-
-    expect(pendingOperations(index, operations)).toEqual([operations[1]]);
+    expect(
+      staleCallSheetIdsForShootDays(index, ["SD-2026-09-18", "SD-MON", "SD-2026-09-18"]),
+    ).toEqual(["CS-2026-09-18", "CS-MON"]);
+    expect(staleCallSheetIdsForShootDays(index, ["SD-UNKNOWN"])).toEqual([]);
   });
 });

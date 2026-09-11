@@ -14,7 +14,7 @@ import type {
 import type { ProductionIndex, ProductionState } from "@pca/domain";
 import {
   applyOperations,
-  callSheetsFor,
+  staleCallSheetIdsForShootDays,
   generateScheduleCandidates,
   indexProduction,
   scheduledShootDay,
@@ -121,22 +121,15 @@ export type AgentOutcome =
 
 export type RunChangeAgent = (input: RunChangeAgentInput) => Promise<UseCaseResult<AgentOutcome>>;
 
+/** One stale mark per published sheet on those days; the policy is the domain's (TASK-937). */
 const staleMarks = (
   index: ProductionIndex,
   shootDayIds: readonly EntityId[],
-): ProposedOperation[] => {
-  const seen = new Set<EntityId>();
-  const marks: ProposedOperation[] = [];
-  for (const shootDayId of shootDayIds) {
-    for (const sheet of callSheetsFor(index, shootDayId)) {
-      if (sheet.status === "PUBLISHED" && !seen.has(sheet.id)) {
-        seen.add(sheet.id);
-        marks.push({ type: "MARK_CALL_SHEET_STALE", callSheetId: sheet.id });
-      }
-    }
-  }
-  return marks;
-};
+): ProposedOperation[] =>
+  staleCallSheetIdsForShootDays(index, shootDayIds).map((callSheetId) => ({
+    type: "MARK_CALL_SHEET_STALE",
+    callSheetId,
+  }));
 
 /** Scenes the analysis found blocked, grouped by the day they currently sit on. */
 const blockedScenesByDay = (

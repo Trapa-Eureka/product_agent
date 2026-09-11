@@ -251,19 +251,25 @@ describe("ChangeSubmissionService", () => {
     expect(decision.request.body).toEqual({ decision: "APPROVE" });
     decision.flush({
       approval: { id: "A-1", decision: "APPROVE" },
-      proposal: { id: "P-1", status: "APPROVED", baseProductionVersion: 1 },
+      proposal: {
+        id: "P-1",
+        status: "APPROVED",
+        baseProductionVersion: 1,
+        digest: "abcdef0123456789ffff",
+      },
       alreadyDecided: false,
     });
     await settle();
 
     const apply = http.expectOne(`/api/productions/${DEMO}/proposals/P-1/apply`);
+    // TASK-937: the key is derived from the proposal and its digest, so a
+    // retry of the same approved proposal replays instead of applying twice.
     expect(apply.request.body).toMatchObject({
       approvalId: "A-1",
       expectedProductionVersion: 1,
       jobId: "JOB-1",
+      idempotencyKey: "apply:P-1:abcdef0123456789",
     });
-    const idempotencyKey = (apply.request.body as { idempotencyKey: string }).idempotencyKey;
-    expect(idempotencyKey.length).toBeGreaterThanOrEqual(8);
     apply.flush({ job: { ...awaitingApprovalJob, message: "Applying." } });
     await approved;
 

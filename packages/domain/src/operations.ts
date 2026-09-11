@@ -1,4 +1,4 @@
-import type { ProposedOperation } from "@pca/contracts";
+import type { EntityId, ProposedOperation } from "@pca/contracts";
 
 import { isRangeCovered } from "./dates";
 import { callSheetsFor, requirementsFor, tasksFor } from "./production-state";
@@ -68,27 +68,23 @@ export const isOperationAlreadyApplied = (
   }
 };
 
-/** The operations that would still change something, in their original order. */
-export const pendingOperations = (
-  index: ProductionIndex,
-  operations: readonly ProposedOperation[],
-): ProposedOperation[] =>
-  operations.filter((operation) => !isOperationAlreadyApplied(index, operation));
-
 /**
- * The call sheets a shoot-day change invalidates.
+ * The call sheets a shoot-day change invalidates (TASK-937: the one policy;
+ * `runChangeAgent` builds its MARK_CALL_SHEET_STALE operations from this).
  *
  * A published call sheet describes a day that no longer matches the plan, so it
- * must be regenerated rather than quietly left to mislead a crew.
+ * must be regenerated rather than quietly left to mislead a crew. A draft is
+ * already flagged for regeneration (`isOperationAlreadyApplied` says so), so
+ * it is not named again. Each sheet appears once, in the order of the days.
  */
 export const staleCallSheetIdsForShootDays = (
   index: ProductionIndex,
-  shootDayIds: readonly string[],
-): string[] => {
-  const ids = new Set<string>();
+  shootDayIds: readonly EntityId[],
+): EntityId[] => {
+  const ids = new Set<EntityId>();
   for (const shootDayId of shootDayIds) {
     for (const callSheet of callSheetsFor(index, shootDayId)) {
-      ids.add(callSheet.id);
+      if (callSheet.status === "PUBLISHED") ids.add(callSheet.id);
     }
   }
   return [...ids];

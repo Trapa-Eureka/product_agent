@@ -272,6 +272,5 @@ export const classifyIdempotency = (input: {
   };
 };
 
-/** Deterministic key so a client retry and a queue redelivery agree on identity. */
-export const idempotencyKeyForProposal = (proposal: Proposal): IdempotencyKey =>
-  `apply:${proposal.id}:${proposal.digest.slice(0, 16)}`;
+/** The deterministic apply key is defined once, in contracts, because the console derives it too (TASK-937). */
+export { idempotencyKeyForProposal } from "@pca/contracts";

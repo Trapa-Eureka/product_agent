@@ -1056,28 +1056,16 @@ Tests: `packages/application/test/model-guard-boundary.test.ts` counts what reac
 
 Docs: `ARCHITECTURE.md` §7 (model guard) and §16; `TESTING.md` §5.
 
-## TASK-937 Unused domain helpers are wired or removed — TODO
+## TASK-937 Unused domain helpers are wired or removed — DONE
 
-**Goal**  
-`pendingOperations`, `staleCallSheetIdsForShootDays`, `checkVersionIncremented`, `idempotencyKeyForProposal` each have exactly one runtime consumer or are deleted with their tests.
+Code review #21 (Low). `pendingOperations`, `staleCallSheetIdsForShootDays`, `checkVersionIncremented`, and `idempotencyKeyForProposal` were exported and tested but had no runtime consumer; `runChangeAgent` hand-built its stale marks with a slightly different rule (published sheets only), and the console sent a random UUID as its apply key, so a retry of the same approved proposal was a new apply rather than a replay.
 
-**Context**  
-Code review #21 (Low).
+**Status**  
+Complete, one decision per helper. `staleCallSheetIdsForShootDays` is the one stale-sheet policy: it now names published sheets only (a draft is already flagged, as `isOperationAlreadyApplied` says), each once, and `runChangeAgent`'s `staleMarks` maps it to `MARK_CALL_SHEET_STALE` operations. `checkVersionIncremented` runs in `applyApprovedProposal` after the atomic commit; a store that answers with anything but base plus one is an `INTERNAL_ERROR` naming expected and actual (INV-7 is now enforced, not just documented). `idempotencyKeyForProposal` moved to `@pca/contracts` (the browser cannot import `@pca/domain`, whose digest uses `node:crypto`) and is re-exported from `@pca/domain`; the console's `approveAndApply` derives its key from the decided proposal with it, so a retry replays. `pendingOperations` was a trivial filter over `isOperationAlreadyApplied` with no policy of its own; deleted with its test.
 
-**Dependencies**  
-TASK-911.
+Tests: `packages/domain/test/digest-and-operations.test.ts` (stale policy: published once, never a draft or an unknown day); `packages/application/test/apply-approved-proposal.test.ts` (a store that skips a version is refused with expected 2, actual 3); `apps/web/.../change-submission.service.spec.ts` asserts the derived key `apply:P-1:<16 digest chars>`; the existing `runChangeAgent` and golden-scenario suites pin the stale marks unchanged. `pnpm run verify` passes (9/9).
 
-**Allowed scope**  
-`packages/domain`, callers in application/web.
-
-**Acceptance criteria**  
-No exported helper without a non-test consumer; the UI derives its idempotency key from the domain helper.
-
-**Tests**  
-Existing tests adjusted.
-
-**Definition of Done**  
-Acceptance met, verify green.
+Docs: `DOMAIN.md` INV-7, INV-8.
 
 ---
 

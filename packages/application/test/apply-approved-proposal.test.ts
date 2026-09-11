@@ -5,6 +5,7 @@ import { DEMO_MOVIE_DATES, DEMO_MOVIE_IDS, createDemoMovie } from "@pca/fixtures
 import { createMemoryStore, type MemoryStore } from "@pca/memory-store";
 import { fixedClock, onDay, sequentialIds, approver } from "@pca/test-support";
 
+import type { RepositorySet } from "../src";
 import {
   createApplyApprovedProposal,
   createCreateProposal,
@@ -99,6 +100,48 @@ describe("applyApprovedProposal", () => {
     create = createCreateProposal({ repositories: store, clock, ids });
     decide = createDecideProposal({ repositories: store, clock, ids });
     apply = createApplyApprovedProposal({ repositories: store, clock, ids });
+  });
+
+  describe("INV-7 post-write versioning (TASK-937)", () => {
+    it("reports a store that did not advance the version by exactly one as an internal error", async () => {
+      const proposalId = await approved(golden1);
+      // A store whose commit lands but answers with the wrong version: the
+      // guard, not the caller, is what notices.
+      const skipping: RepositorySet = {
+        ...store,
+        applyProposalTransaction: async (commit) => {
+          const outcome = await store.applyProposalTransaction(commit);
+          return outcome.status === "COMMITTED"
+            ? { ...outcome, productionVersion: outcome.productionVersion + 1 }
+            : outcome;
+        },
+      };
+      const applyWithSkip = createApplyApprovedProposal({
+        repositories: skipping,
+        clock: fixedClock(NOW),
+        ids: sequentialIds(),
+      });
+
+      const result = await applyWithSkip({
+        productionId: DEMO,
+        proposalId,
+        approvalId: "A-1",
+        expectedProductionVersion: 1,
+        idempotencyKey: `apply:${proposalId}:first`,
+        appliedBy: "system",
+        correlationId: "corr-7",
+      });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error).toMatchObject({
+        code: "INTERNAL_ERROR",
+        expected: "2",
+        actual: "3",
+        correlationId: "corr-7",
+      });
+      expect(result.error.message).toMatch(/exactly once/u);
+    });
   });
 
   describe("GOLDEN-1 end to end", () => {

@@ -10,6 +10,7 @@ import { applyApprovedProposalInputSchema } from "@pca/contracts";
 import type { ProductionState } from "@pca/domain";
 import {
   applyOperations,
+  checkVersionIncremented,
   checkWriteAllowed,
   classifyIdempotency,
   computeProposalDigest,
@@ -289,6 +290,17 @@ export const createApplyApprovedProposal = (dependencies: {
           nextStep: "Reload production state, re-run simulation, and re-approve.",
         },
       );
+    }
+
+    // INV-7 (TASK-937): the store must have advanced the version by exactly
+    // one. The write has landed by now, so a violation is a store defect
+    // reported as an internal error, not a reason to retry the apply.
+    const versioning = checkVersionIncremented({
+      before: state.production.version,
+      after: outcome.productionVersion,
+    });
+    if (!versioning.ok) {
+      return { ok: false, error: { ...versioning.error, ...trace } };
     }
 
     return succeed({

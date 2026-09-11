@@ -295,6 +295,11 @@ made.
 ### INV-7 Post-write versioning
 A successful consequential mutation increments the production version.
 
+`applyApprovedProposal` checks this after its atomic commit
+(`checkVersionIncremented`, TASK-937): a store that answers with any version
+other than the base plus one is a defect, reported as an internal error
+naming the expected and actual versions.
+
 ### INV-8 Idempotency
 Replaying the same operation/idempotency key must not create duplicate tasks or duplicate schedule changes.
 
@@ -303,6 +308,13 @@ idempotency key as a first run, a replay of identical work, or a conflict with
 different work. A state-based check asks whether the world already matches what
 an operation would produce, which catches a repeat that arrives without the
 original key.
+
+The apply key itself is derived, not invented: `idempotencyKeyForProposal`
+(`@pca/contracts`, so the console derives it in the browser too) is
+`apply:<proposal ID>:<first 16 digest characters>`, so a retry of the same
+sealed proposal, from the UI or a queue redelivery, is a replay of the same
+key rather than a second apply. An agent calling `apply_approved_proposal`
+may supply its own key; the console always supplies this one (TASK-937).
 
 ## 5. Change propagation
 
