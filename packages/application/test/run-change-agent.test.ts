@@ -239,6 +239,63 @@ describe("runChangeAgent", () => {
     expect(await store.proposals.listByStatus(DEMO, "AWAITING_APPROVAL")).toEqual([]);
   });
 
+  it("TASK-904: a multi-day unavailability never proposes a day inside its own range", async () => {
+    // Friday through Monday: Monday was a valid candidate against the stored
+    // state, but the fact being recorded makes it invalid. Before the fix the
+    // generator read the stored state, could rank Monday, and the proposal
+    // failed simulation as INVALID although Tuesday was free.
+    const result = await run({
+      productionId: DEMO,
+      text: "Sarah cannot shoot Friday through Monday.",
+      change: {
+        type: "CAST_UNAVAILABLE",
+        castId: cast.sarah,
+        unavailable: { start: friday, end: monday },
+      },
+      requestedBy: "c",
+    });
+    if (!result.ok || result.value.kind !== "PROPOSED") throw new Error("expected a proposal");
+
+    expect(result.value.candidates.map((day) => day.date)).toEqual([tuesday]);
+    expect(result.value.rejected.find((day) => day.date === monday)?.reasons.join(" ")).toContain(
+      `Sarah is unavailable on ${monday}`,
+    );
+    expect(result.value.proposal.validationStatus).toBe("VALID");
+    expect(result.value.proposal.operations).toContainEqual({
+      type: "MOVE_SCENES",
+      sceneIds: [scenes.s07, scenes.s12],
+      fromShootDayId: shootDays.friday,
+      toShootDayId: shootDays.tuesday,
+    });
+    await unchanged();
+  });
+
+  it("TASK-904: an unavailability covering every alternative reports NO_CANDIDATE, not an invalid plan", async () => {
+    const result = await run({
+      productionId: DEMO,
+      text: "Sarah cannot shoot Friday through Tuesday.",
+      change: {
+        type: "CAST_UNAVAILABLE",
+        castId: cast.sarah,
+        unavailable: { start: friday, end: tuesday },
+      },
+      requestedBy: "c",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.value.kind !== "NO_CANDIDATE")
+      throw new Error(`expected NO_CANDIDATE, got ${result.ok ? result.value.kind : "error"}`);
+
+    expect(result.value.rejected.map((day) => day.date)).toEqual([friday, monday, tuesday]);
+    for (const date of [monday, tuesday]) {
+      expect(result.value.rejected.find((day) => day.date === date)?.reasons.join(" ")).toContain(
+        `Sarah is unavailable on ${date}`,
+      );
+    }
+    expect(await store.proposals.listByStatus(DEMO, "AWAITING_APPROVAL")).toEqual([]);
+    expect(await store.proposals.listByStatus(DEMO, "DRAFT")).toEqual([]);
+    await unchanged();
+  });
+
   it("reports NOTHING_TO_DO when the scene already has the requirement", async () => {
     const state = createDemoMovie();
     await store.productions.save({

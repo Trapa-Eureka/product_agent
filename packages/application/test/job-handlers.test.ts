@@ -139,11 +139,17 @@ describe("job handlers", () => {
         [1, shootDays.tuesday],
         [2, shootDays.monday],
       ]);
+      // Candidates are generated against the state with the fact applied
+      // (TASK-904), so the source day is refused for the real reason too.
       expect(run.candidateComparison?.rejected).toEqual([
         {
           shootDayId: shootDays.friday,
           date: friday,
-          reasons: ["A moving scene is already scheduled on 2026-09-18."],
+          reasons: [
+            "A moving scene is already scheduled on 2026-09-18.",
+            "Sarah is unavailable on 2026-09-18 and is required by Scene 07.",
+            "Sarah is unavailable on 2026-09-18 and is required by Scene 12.",
+          ],
         },
       ]);
     });
