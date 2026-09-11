@@ -1,0 +1,51 @@
+{
+  "name": "production-change-agent",
+  "version": "0.1.0",
+  "description": "AI Production Change Agent: a local console, REST API, and MCP server that analyse a film production change and apply it only after human approval. Runs on a clean machine with npx and no paid service.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "production-change-agent": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "web",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Trapa-Eureka/product_agent.git",
+    "directory": "apps/cli"
+  },
+  "keywords": [
+    "mcp",
+    "film-production",
+    "scheduling",
+    "human-in-the-loop",
+    "cli"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "smoke": "node smoke.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "express": "^5.2.1",
+    "mongodb": "^6.17.0",
+    "ws": "^8.18.3",
+    "zod": "^4.6.1"
+  },
+  "devDependencies": {
+    "@pca/api": "workspace:*",
+    "@pca/bootstrap": "workspace:*",
+    "@pca/mcp-server": "workspace:*",
+    "@pca/web": "workspace:*",
+    "esbuild": "^0.28.2"
+  }
+}

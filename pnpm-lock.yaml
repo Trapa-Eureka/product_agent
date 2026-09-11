@@ -109,6 +109,40 @@ importers:
         specifier: ^8.18.3
         version: 8.21.3
 
+  apps/cli:
+    dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.17.0
+        version: 1.30.0(zod@4.6.1)
+      express:
+        specifier: ^5.2.1
+        version: 5.2.1
+      mongodb:
+        specifier: ^6.17.0
+        version: 6.21.0(socks@2.8.10)
+      ws:
+        specifier: ^8.18.3
+        version: 8.21.3
+      zod:
+        specifier: ^4.6.1
+        version: 4.6.1
+    devDependencies:
+      '@pca/api':
+        specifier: workspace:*
+        version: link:../api
+      '@pca/bootstrap':
+        specifier: workspace:*
+        version: link:../../packages/bootstrap
+      '@pca/mcp-server':
+        specifier: workspace:*
+        version: link:../mcp-server
+      '@pca/web':
+        specifier: workspace:*
+        version: link:../web
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
+
   apps/mcp-server:
     dependencies:
       '@modelcontextprotocol/sdk':

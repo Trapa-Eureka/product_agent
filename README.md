@@ -113,6 +113,24 @@ The stack intentionally exercises technologies relevant to the target engineerin
 - Tests and local mocks are created early.
 - Agent context is explicit and pruned when stale.
 
+## Quick start (npm package)
+
+The whole product ships as one npm package (TASK-806). With Node.js 22 or
+newer and nothing else:
+
+```bash
+npx production-change-agent seed    # restore the Demo Movie into ~/.production-change-agent/data.json
+npx production-change-agent serve   # console + REST API + WebSocket at http://127.0.0.1:3000
+npx production-change-agent mcp     # MCP server over stdio, for an agent host
+```
+
+Without `PCA_AUTH_SECRET` it runs as the local demo (`PCA_DEMO_MODE=true`)
+and says so; every variable in "Runtime environment" applies. The package
+is built from `apps/cli` (`pnpm --filter production-change-agent build`,
+after the console) and `pnpm --filter production-change-agent smoke` installs
+the packed tarball with npm into an empty directory and drives all three
+commands, including the three golden scenarios, the way a user would.
+
 ## Local development
 
 Requires Node.js 22 or newer and pnpm. No AWS account, no MongoDB server, no
@@ -268,18 +286,20 @@ walks the same architecture through an actual approved change.
 
 ## Deployment
 
-`Dockerfile` builds the reproducible artifact; `docs/DEPLOYMENT.md` is the
+`Dockerfile` builds the reproducible image and the npm package is the other
+artifact (`docs/DEPLOYMENT.md`); `docs/DEPLOYMENT.md` is also the
 security baseline a deployment must meet, most of it enforced by the server
 at startup (no demo mode, a signed-token secret, an explicit production
 allow-list, an encrypted and authenticated Mongo URI).
 
 ## Planned
 
-Publish as one npm package with a `seed` / `serve` / `mcp` CLI (`TASKS.md`
-TASK-806); after that release, in order of value: an optional Ollama adapter
-for sentences outside the rule patterns, the free scope of the deferred
-Bedrock (mocked SDK) and Terraform (`validate` only) tasks, the Angular
-initial-bundle budget, and small documentation touch-ups.
+The npm package is built and smoke-tested in CI (TASK-806); publishing is a
+version tag (`.github/workflows/publish.yml`). After that release, in order
+of value: an optional Ollama adapter for sentences outside the rule
+patterns, the free scope of the deferred Bedrock (mocked SDK) and Terraform
+(`validate` only) tasks, the Angular initial-bundle budget, and small
+documentation touch-ups.
 
 ## Documentation
 

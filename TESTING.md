@@ -562,6 +562,18 @@ network access. The toolchain is on Vitest 4.1.11 or later across the
 workspace (root, `@pca/test-support`, `apps/web`), which closes the
 `@vitest/mocker` arbitrary-file-read advisory (GHSA-82fw-gwwq-j7x9).
 
+The npm package (TASK-806): the `package` job builds the console and the
+package, then `apps/cli/smoke.mjs` packs it, installs the tarball with npm
+into an empty directory (only the declared dependencies, no workspace link),
+and drives the installed command as a user would — `seed`, then over
+`serve` the console page, a hashed asset with its immutable cache header,
+the demo session, and each of the three golden scenarios submit → approve →
+apply → verified over the REST API the console uses (the store reseeded
+between them), then `mcp` over stdio with a client the script implements
+itself (initialize, tools/list, a `get_production` call). A publish dry run
+follows. It needs the registry, so it is not part of `verify`; the console
+serving itself is unit-tested in `apps/api/test/console.test.ts`.
+
 ## 13. Definition of done
 
 A feature is done only when:

@@ -16,6 +16,10 @@ test-results/
 apps/web/dist/
 apps/web/out-tsc/
 
+# npm package build outputs (TASK-806): dist/ above, plus the copied console
+apps/cli/web/
+*.tgz
+
 # Review reports are kept locally, not published: they narrate the exploitation
 # of findings that TASK-901..937 have since fixed (TASKS.md "Post-review remediation").
 docs/01_COMPREHENSIVE_CODE_REVIEW.md

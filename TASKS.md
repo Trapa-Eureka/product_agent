@@ -628,7 +628,7 @@ local file store). Setup instructions were already current from earlier
 tasks and needed no changes. `docs/DEMO_SCRIPT.md` added to the reading
 order.
 
-## TASK-806 npm publishing — single package, full functionality, zero cost
+## TASK-806 npm publishing — single package, full functionality, zero cost — DONE
 
 **Goal**  
 Publish one public npm package that runs the whole product on a clean machine with `npx` and no paid service.
@@ -659,6 +659,15 @@ TASK-101 (file store), TASK-302 (rule interpreter), TASK-110, TASK-207, TASK-501
 
 - free-form sentences outside the rule patterns need Ollama (free, user-installed);
 - the file store admits one writer at a time (a lock file serialises instances and processes, TASK-903); busy multi-writer deployments should switch to Mongo.
+
+**Status**  
+Complete, ready to publish. `apps/cli` is the package `production-change-agent` (0.1.0, `publishConfig.access: public`, `bin` → `dist/cli.js`, `files`: `dist`, `web`, `README.md`). `src/cli.ts` is the three subcommands: `seed` calls `resetDemoMovie`; `serve` imports `@pca/api/main`; `mcp` imports `@pca/mcp-server/main`; with neither `PCA_AUTH_SECRET` nor `PCA_DEMO_MODE` set, `serve` and `mcp` run as the local demo and say so on stderr, and `serve` points `PCA_CONSOLE_DIR` at the console shipped in `web/`. `build.mjs` bundles the CLI and every workspace package it reaches with esbuild into one ESM file (about 425 kB), leaving the five third-party runtime dependencies (express, ws, zod, mongodb, `@modelcontextprotocol/sdk`) external and declared, and copies the built console beside it; `pnpm -r build` orders it after `@pca/web`. The API serves the console when given `PCA_CONSOLE_DIR` (`consoleDir` in `ApiDependencies`): the console's CSP outside `/api`, immutable hashed assets, `index.html` for any other GET so the Angular router owns the path. The Angular production build no longer inlines critical CSS (it needed an inline `onload` the CSP forbids). CI gained a `package` job (build, smoke, publish dry run) and `.github/workflows/publish.yml` publishes with provenance on a `v*` tag matching the package version (trusted publishing or `NPM_TOKEN`). `pnpm publish --dry-run` lists six files, 309 kB packed.
+
+Two scope lines were revised in the doing: the package is one esbuild bundle rather than `workspace:*` dependencies resolved at publish (that would have meant publishing every workspace package separately, the opposite of "one package"), so there is no `dist/*.d.ts` — a CLI has no consumers of types; and the "three golden scenarios end-to-end through the UI on a clean machine" acceptance is executed as `smoke.mjs`: the packed tarball installed with npm into an empty directory, the console page and its asset served and checked, and the three scenarios driven submit → approve → apply → verified over the same REST calls the console makes. The browser-driven E2E suite still runs against the dev server on the same Angular code.
+
+Tests: `apps/api/test/console.test.ts` (index, hashed asset cache header, console CSP outside `/api` and the API's under it, router-path fallback, 404 without a console directory); `apps/cli/smoke.mjs` (passes locally: seed, console served, three golden scenarios applied and verified at version 1 → 2 each, mcp lists 17 tools and reads the Demo Movie). `pnpm run verify` passes (9/9).
+
+Docs: `README.md` "Quick start (npm package)", "Planned", "Deployment"; `ARCHITECTURE.md` §2, §5, §6, §9; `TESTING.md` §12; `docs/DEPLOYMENT.md`; `apps/cli/README.md` (the package's own).
 
 ---
 

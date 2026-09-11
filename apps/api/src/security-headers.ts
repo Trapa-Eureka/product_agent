@@ -22,6 +22,16 @@ export const API_CONTENT_SECURITY_POLICY =
 /** A year, subdomains included; preload is the operator's decision. */
 export const STRICT_TRANSPORT_SECURITY = "max-age=31536000; includeSubDomains";
 
+/**
+ * The console's policy (TASK-806), when the API serves the prebuilt Angular
+ * app from its own origin: scripts, styles, fonts, and connections (REST and
+ * the socket) only from this host; inline styles allowed because Angular
+ * injects component styles at runtime. The same policy the dev server sends
+ * (`apps/web/angular.json`), so what the E2E suite exercises is what ships.
+ */
+export const CONSOLE_CONTENT_SECURITY_POLICY =
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+
 export type SecurityHeaderOptions = {
   /** The service is reached over TLS (directly or behind a terminating proxy); adds HSTS. */
   readonly tlsTerminated?: boolean;

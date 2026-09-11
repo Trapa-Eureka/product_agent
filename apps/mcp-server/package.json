@@ -9,7 +9,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./handlers": "./src/handlers/index.ts",
-    "./context": "./src/context.ts"
+    "./context": "./src/context.ts",
+    "./main": "./src/main.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.0",
