@@ -968,28 +968,16 @@ Tests: API contract — a read, a scene-not-found error, an unauthenticated refu
 
 Docs: `README.md` env table (`PCA_TLS_TERMINATED`); `ARCHITECTURE.md` §6; `TESTING.md`.
 
-## TASK-929 Model calls carry an AbortSignal — TODO
+## TASK-929 Model calls carry an AbortSignal — DONE
 
-**Goal**  
-`ModelPort` methods accept a signal; the timeout guard aborts the provider request; adapters observe it.
+SEC-014 (Low) / AUD-023. The guard's timeout was a `Promise.race`: it rejected the application's call and left the provider's request running, so a timed-out call kept its socket, memory, provider concurrency, and paid tokens; nothing bounded how many provider calls could be in flight at once.
 
-**Context**  
-SEC-014 (Low) / AUD-023.
+**Status**  
+Complete. `ModelPort` methods take a second `ModelCallOptions` argument with an `AbortSignal`. `guardModelPort` (`withBudget`) creates an `AbortController` per call, hands its signal to the provider, and aborts it on the same event that rejects the call: the per-call `timeoutMs` (`TIMEOUT`) or the caller's own signal (`ABORTED`, a new `ModelErrorCode`; an already-aborted signal is refused before the provider is asked). The caller's signal is threaded through `RunChangeAgentInput.signal` and `InterpretChangeUseCaseInput.signal` to every model call the orchestration makes. The guard also bounds provider concurrency with a counting semaphore (`maxConcurrent`, default 4): calls past the bound wait their turn, the budget starts when a call actually starts, and the slot is released on success, failure, or timeout alike. The rule-based adapter is synchronous and ignores the signal (its signature already fits). The fake model's `hang` mode now rejects when its signal is aborted, so a hung provider is released on timeout — the adapter-side proof the task asked for. The queue has no cancellation of its own yet, so handlers pass no signal; the plumbing is in place for when it does.
 
-**Dependencies**  
-None.
+Tests: application — on timeout the provider's signal is aborted, not only the wait; an outer abort yields `ABORTED` and aborts the provider, and an already-aborted signal never reaches it; the fake model's hang honours the signal; six calls against `maxConcurrent: 2` peak at two in flight, and a slot is released after a failure. `pnpm run verify` passes (9/9).
 
-**Allowed scope**  
-`packages/application/src/ports/model.ts`, rule/Ollama/Bedrock adapters, docs.
-
-**Acceptance criteria**  
-Timeout aborts; job cancellation aborts; bounded provider concurrency.
-
-**Tests**  
-Unit: adapter observes abort on timeout; concurrency cap holds.
-
-**Definition of Done**  
-Acceptance met, verify green.
+Docs: `ARCHITECTURE.md` §7.
 
 ## TASK-930 Deployment baseline and Mongo connection policy — TODO
 

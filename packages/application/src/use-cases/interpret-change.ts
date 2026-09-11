@@ -29,6 +29,8 @@ export type InterpretChangeUseCaseInput = {
   readonly productionId: EntityId;
   readonly text: string;
   readonly correlationId?: string;
+  /** Aborts the model call when the caller gives up (TASK-929). */
+  readonly signal?: AbortSignal;
 };
 
 export type Interpretation =
@@ -119,11 +121,14 @@ export const createInterpretChange = (dependencies: {
     );
     let interpreted;
     try {
-      interpreted = await model.interpretChange({
-        productionId: input.productionId,
-        text,
-        context,
-      });
+      interpreted = await model.interpretChange(
+        {
+          productionId: input.productionId,
+          text,
+          context,
+        },
+        input.signal === undefined ? {} : { signal: input.signal },
+      );
     } catch (error) {
       if (!(error instanceof ModelError)) throw error;
       const transient = error.code === "PROVIDER_ERROR" || error.code === "TIMEOUT";

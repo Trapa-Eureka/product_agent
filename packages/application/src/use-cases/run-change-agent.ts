@@ -20,7 +20,14 @@ import {
   scheduledShootDay,
 } from "@pca/domain";
 
-import type { Clock, IdFactory, Logger, ModelPort, RepositorySet } from "../ports";
+import type {
+  Clock,
+  IdFactory,
+  Logger,
+  ModelCallOptions,
+  ModelPort,
+  RepositorySet,
+} from "../ports";
 import { ModelError, guardModelPort } from "../ports";
 import { describeProposal, toProposalSummary } from "../explanation";
 import type { UseCaseResult } from "../result";
@@ -67,6 +74,8 @@ export type RunChangeAgentInput = {
   readonly changeRequestId?: EntityId;
   readonly requestedBy: string;
   readonly correlationId?: string;
+  /** Aborts the model calls in flight when the caller gives up (TASK-929). */
+  readonly signal?: AbortSignal;
   /**
    * Called as the loop enters analysis, simulation, and validation, for a job
    * timeline. `details` carries the change request's ID on the first call so
@@ -232,9 +241,10 @@ export const createRunChangeAgent = (dependencies: {
   const explain = async <Fallback extends string | undefined>(
     input: Parameters<ModelPort["explainImpact"]>[0],
     fallback: Fallback,
+    call: ModelCallOptions = {},
   ): Promise<string | Fallback> => {
     try {
-      return (await model.explainImpact(input)).explanation;
+      return (await model.explainImpact(input, call)).explanation;
     } catch (error) {
       if (error instanceof ModelError) return fallback;
       throw error;
@@ -243,6 +253,7 @@ export const createRunChangeAgent = (dependencies: {
 
   return async (input) => {
     const correlationId = input.correlationId ?? ids.next("corr");
+    const call = input.signal === undefined ? {} : { signal: input.signal };
     const trace = { correlationId };
 
     // A retry hands back the change request its first attempt recorded: the
@@ -353,17 +364,21 @@ export const createRunChangeAgent = (dependencies: {
           const explanation = await explain(
             explainInput,
             "No shoot day can take the affected scenes.",
+            call,
           );
           return succeed({ kind: "NO_CANDIDATE", changeRequest, analysis, rejected, explanation });
         }
         try {
           ranked = (
-            await model.rankCandidates({
-              productionId: input.productionId,
-              change,
-              candidates,
-              rejected,
-            })
+            await model.rankCandidates(
+              {
+                productionId: input.productionId,
+                change,
+                candidates,
+                rejected,
+              },
+              call,
+            )
           ).ranked;
         } catch (error) {
           if (!(error instanceof ModelError)) throw error;
@@ -391,6 +406,7 @@ export const createRunChangeAgent = (dependencies: {
           const explanation = await explain(
             explainInput,
             "The scene already has that requirement.",
+            call,
           );
           return succeed({ kind: "NOTHING_TO_DO", changeRequest, analysis, explanation });
         }
@@ -443,6 +459,7 @@ export const createRunChangeAgent = (dependencies: {
         warnings: simulated.value.warnings,
       },
       undefined,
+      call,
     );
     const explanation = describeProposal({
       state,
