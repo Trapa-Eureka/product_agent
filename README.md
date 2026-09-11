@@ -209,9 +209,11 @@ walks the same architecture through an actual approved change.
   executes it.
 - **File store over an embedded database.** `PCA_STORAGE=file` writes one
   JSON document per production rather than adding a dependency like SQLite —
-  simpler to inspect and reset (`pnpm run seed`), at the cost of no
-  concurrent-writer safety beyond the app's own version check, which is fine
-  for a single-operator demo and not a production multi-tenant deployment.
+  simpler to inspect and reset (`pnpm run seed`). Writers serialise through an
+  `O_EXCL` lock file beside the data file, so two instances or two processes
+  on the same path cannot lose each other's commits — but that is one writer
+  at a time, fine for a single-operator demo and not a throughput story for a
+  production multi-tenant deployment.
 
 ## Limitations
 
@@ -229,8 +231,10 @@ walks the same architecture through an actual approved change.
   production at once see a version conflict, not a merge).
 - OpenSearch/RAG-based document search is out of scope for the MVP (`README.md`
   "Non-goals").
-- The file store keeps everything in one process's local disk; it is not
-  meant to run multiple API instances against the same data directory.
+- The file store keeps everything on one machine's local disk and admits one
+  writer at a time (a lock file, not a database); multiple API instances on
+  the same path stay correct but queue behind each other, so a multi-writer
+  deployment belongs on `PCA_STORAGE=mongo`.
 
 ## Documentation
 

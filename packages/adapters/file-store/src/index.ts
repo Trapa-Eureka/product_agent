@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -35,11 +35,14 @@ export * from "./database";
  * published package run the whole product with `npx` on a clean machine
  * (ARCHITECTURE.md §2, "Free-first constraint").
  *
- * Two deliberate limits:
+ * Two deliberate properties:
  *
- * - **Single process.** Writes are serialised in-process; two processes writing
- *   the same file can still lose an update. Multi-writer deployments switch to
- *   `PCA_STORAGE=mongo`.
+ * - **One writer at a time, whoever it is.** Every mutation holds an `O_EXCL`
+ *   lock file beside the data file for its whole read-check-write (TASK-903),
+ *   so a second instance in this process, a `seed` run beside the API, or a
+ *   second server on the same path serialise instead of overwriting each
+ *   other's version. This is correctness, not throughput: a busy multi-writer
+ *   deployment still belongs on `PCA_STORAGE=mongo`.
  * - **Read-through.** Every read parses the file rather than caching it, so a
  *   second instance sees the first one's writes. The file is small, and
  *   correctness beats a cache nobody asked for.
@@ -56,7 +59,23 @@ export type FileStoreOptions = {
   readonly filePath?: string;
   /** Injected so tests can assert an exact `updatedAt` instead of a moving one. */
   readonly now?: Clock;
+  /**
+   * How long one mutation waits for another writer to release the data file
+   * before failing with `STORE_LOCKED` (TASK-903). Default 5 seconds: a
+   * mutation is a read, a transform, and one small file write, so anything
+   * holding the lock longer is stuck, not busy.
+   */
+  readonly lockTimeoutMs?: number;
 };
+
+/** How often a waiting writer re-tries the lock. */
+const LOCK_POLL_MS = 10;
+/**
+ * A lock whose owner cannot be identified (unreadable contents) is presumed
+ * abandoned once it is this old. A lock naming a dead pid is reclaimed at
+ * once; one naming a live pid is waited for, up to `lockTimeoutMs`.
+ */
+const STALE_LOCK_MS = 30_000;
 
 const upsertById = <T extends { id: EntityId }>(
   existing: readonly T[],
@@ -83,12 +102,23 @@ const replaceById = <T extends { id: EntityId }>(records: T[], record: T): T[] =
 export class FileStore implements RepositorySet {
   readonly #filePath: string;
   readonly #now: Clock;
-  /** Serialises read-modify-write cycles so concurrent commits cannot interleave. */
+  readonly #lockTimeoutMs: number;
+  /**
+   * Serialises this instance's read-modify-write cycles. Ordering within one
+   * instance only; exclusion against other instances and other processes is
+   * the lock file's job (`#acquireLock`, TASK-903).
+   */
   #writeQueue: Promise<unknown> = Promise.resolve();
 
   constructor(options: FileStoreOptions = {}) {
     this.#filePath = options.filePath ?? defaultDataFilePath();
     this.#now = options.now ?? defaultClock;
+    this.#lockTimeoutMs = options.lockTimeoutMs ?? 5_000;
+  }
+
+  /** Where the writer lock lives: beside the data file, never inside it. */
+  get lockPath(): string {
+    return `${this.#filePath}.lock`;
   }
 
   get filePath(): string {
@@ -371,20 +401,121 @@ export class FileStore implements RepositorySet {
     return result.data;
   }
 
-  /** Read, transform, and write back as one serialised, atomic step. */
+  /**
+   * Read, transform, and write back as one serialised, atomic step — held
+   * under the writer lock for the whole cycle (TASK-903), so a second
+   * instance or a second process cannot read version N in between and
+   * rename its own N+1 over ours. The version check inside `transform` is
+   * therefore decided against the file as it really is, not as it was.
+   */
   async #mutate<T>(
     transform: (database: FileDatabase) => { database: FileDatabase; result: T },
   ): Promise<T> {
     const run = async (): Promise<T> => {
-      const current = await this.#read();
-      const { database, result } = transform(current);
-      await this.#write(database);
-      return result;
+      const release = await this.#acquireLock();
+      try {
+        const current = await this.#read();
+        const { database, result } = transform(current);
+        await this.#write(database);
+        return result;
+      } finally {
+        await release();
+      }
     };
 
     const queued = this.#writeQueue.then(run, run);
     this.#writeQueue = queued.catch(() => undefined);
     return queued;
+  }
+
+  /**
+   * TASK-903 (code review #3 / AUD-006): exclusive ownership of the data file
+   * for one mutation, across instances and across processes, via a lock file
+   * created with `O_EXCL` — the one primitive every platform makes atomic.
+   * The in-process `#writeQueue` orders our own mutations; this is what stops
+   * a second `FileStore` on the same path (a seed while the API runs, a second
+   * server, a stray handle in a test) from losing an approved write.
+   *
+   * A waiter polls until the lock is free, the owner is found dead, or
+   * `lockTimeoutMs` passes, which surfaces as `STORE_LOCKED` rather than a
+   * silent lost update. Reads (`#read`) take no lock: rename is atomic, so a
+   * reader always sees a whole database, before or after, never a torn one.
+   */
+  async #acquireLock(): Promise<() => Promise<void>> {
+    const { lockPath } = this;
+    await mkdir(dirname(this.#filePath), { recursive: true });
+    const deadline = Date.now() + this.#lockTimeoutMs;
+
+    for (;;) {
+      try {
+        const handle = await open(lockPath, "wx");
+        try {
+          await handle.writeFile(
+            JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() }),
+            "utf8",
+          );
+        } finally {
+          await handle.close();
+        }
+        return () => unlink(lockPath).catch(() => undefined);
+      } catch (error) {
+        if (!isAlreadyExists(error)) {
+          throw error;
+        }
+      }
+
+      if (await this.#reclaimAbandonedLock()) {
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `STORE_LOCKED: ${lockPath} has been held by another writer for over ${this.#lockTimeoutMs}ms. ` +
+            `Another process is writing ${this.#filePath}; retry once it finishes. ` +
+            `If no such process exists, the lock was abandoned and can be deleted.`,
+        );
+      }
+      await sleep(LOCK_POLL_MS);
+    }
+  }
+
+  /**
+   * Removes a lock whose owner is gone, so a crash while writing does not
+   * wall off the store until someone deletes the file by hand. Reclaiming
+   * goes through `rename` to a unique name first: if two waiters both find
+   * the same abandoned lock, only one rename succeeds, so a lock a third
+   * writer creates in between is never removed by the second.
+   */
+  async #reclaimAbandonedLock(): Promise<boolean> {
+    const { lockPath } = this;
+    let abandoned = false;
+    try {
+      const contents = JSON.parse(await readFile(lockPath, "utf8")) as { pid?: unknown };
+      abandoned = typeof contents.pid === "number" && !isProcessAlive(contents.pid);
+    } catch (error) {
+      if (isNotFound(error)) {
+        return true; // released between our open and our read; retry.
+      }
+      // Unreadable (a writer between open and writeFile, or a foreign file):
+      // treat as live unless it has clearly been sitting there.
+      const age = await stat(lockPath)
+        .then((info) => Date.now() - info.mtimeMs)
+        .catch(() => 0);
+      abandoned = age > STALE_LOCK_MS;
+    }
+    if (!abandoned) {
+      return false;
+    }
+    const reclaimed = `${lockPath}.${randomUUID()}.abandoned`;
+    try {
+      await rename(lockPath, reclaimed);
+    } catch (error) {
+      if (isNotFound(error)) {
+        return true; // someone else reclaimed or released it; retry.
+      }
+      throw error;
+    }
+    await unlink(reclaimed).catch(() => undefined);
+    return true;
   }
 
   /**
@@ -420,8 +551,32 @@ const toSnapshot = (state: ProductionState): ProductionStateSnapshot => ({
   tasks: [...state.tasks],
 });
 
-const isNotFound = (error: unknown): boolean =>
-  typeof error === "object" && error !== null && (error as { code?: string }).code === "ENOENT";
+const errorCode = (error: unknown): string | undefined =>
+  typeof error === "object" && error !== null ? (error as { code?: string }).code : undefined;
+
+const isNotFound = (error: unknown): boolean => errorCode(error) === "ENOENT";
+
+const isAlreadyExists = (error: unknown): boolean => errorCode(error) === "EEXIST";
+
+/**
+ * Signal 0 delivers nothing but still checks the target: `ESRCH` means no such
+ * process, `EPERM` means it exists but belongs to someone else — alive either
+ * way except `ESRCH`. Our own pid (another `FileStore` in this process) is
+ * alive by definition.
+ */
+const isProcessAlive = (pid: number): boolean => {
+  if (pid === process.pid) {
+    return true;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return errorCode(error) !== "ESRCH";
+  }
+};
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 const assertStateIsolation = (state: ProductionState): void => {
   const productionId = state.production.id;

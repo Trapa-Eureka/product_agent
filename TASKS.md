@@ -658,7 +658,7 @@ TASK-101 (file store), TASK-302 (rule interpreter), TASK-110, TASK-207, TASK-501
 **Known limits**
 
 - free-form sentences outside the rule patterns need Ollama (free, user-installed);
-- the file store is single-process; multi-writer deployments should switch to Mongo.
+- the file store admits one writer at a time (a lock file serialises instances and processes, TASK-903); busy multi-writer deployments should switch to Mongo.
 
 ---
 
@@ -687,6 +687,17 @@ Complete. `RepositorySet` gained `recordProposalDecision(commit)`: one atomic wr
 One regression this surfaced, and fixed: `withProposalNotifications` (TASK-404's realtime decorator) assumed every proposal status change passes through `proposals.save`. TASK-901 had already silently broken that for `APPLIED` — nothing tested apply notifications — and TASK-902 broke it for decisions, which the realtime suite did catch. The decorator now also wraps both atomic writes, notifying only when the write actually landed (`COMMITTED`/`RECORDED`), so a client never hears a status the store never held.
 
 10 new tests: 4 in the shared repository contract suite (run against file, memory, and a real Mongo replica set — records all three together; refuses a second decision and writes nothing; exactly one of two simultaneous opposite decisions wins, with the loser handed the winner's record; production scoping), 1 use-case race test in `proposal-lifecycle.test.ts` (concurrent APPROVE/REJECT through `decideProposal`: one succeeds, the other is refused as contradicting a final decision, stored status agrees with the stored approval), and 1 realtime test covering the notification gap (a concurrent decision race yields exactly one decision notification, then `APPLIED` through the atomic apply). `pnpm run verify` passes (9/9).
+
+## TASK-903 File-store writer lock across instances and processes — DONE
+
+Code review finding #3 (Critical) / AUD-006 (High): `FileStore` serialised writes only through an in-object `#writeQueue`. Two instances in one process, or two processes on the same `PCA_DATA_FILE`, each read version N and each renamed its own N+1 into place; both reported `COMMITTED` and the later rename silently discarded the earlier approved mutation and its records. The adapter is the runtime default, and a `seed` beside a running API, a second server, or a stray test handle are all ordinary ways to get there.
+
+**Status**  
+Complete. Every `#mutate` cycle now holds an exclusive lock file (`<data file>.lock`, created with `O_EXCL` via `fs.open(..., "wx")` — the one primitive every platform makes atomic) for its whole read-check-write, and releases it in `finally`. The lock records the owner's pid; a waiter polls every 10ms and either acquires, reclaims a lock whose pid is no longer alive (`process.kill(pid, 0)` → `ESRCH`), or gives up after `lockTimeoutMs` (default 5s) with a `STORE_LOCKED` error that names the file and says what to do — never a silent lost update. Reclaiming goes through `rename` to a unique name before `unlink`, so two waiters that both find the same abandoned lock cannot have the second one remove a lock a third writer created in between. `resetProduction` (the seed path) goes through the same `#mutate`, so the report's "make the seed/reset command acquire the same lock" is met without a separate code path. Reads take no lock: rename is atomic, so a reader sees a whole file, before or after.
+
+The report offered "fail startup when another process owns the data file" as the minimum alternative; the per-mutation lock was chosen instead because exclusive ownership would forbid a documented use (running `seed` while the API is up, and TASK-806's `seed`/`serve` subcommands sharing one store), and because it is the lock across the read-check-write, not startup exclusion, that actually prevents the lost update.
+
+5 new tests, all against a real filesystem: in the shared repository contract, concurrent commits from two separately opened handles (run against the file store and, via its `reopen`, Mongo — which already serialised through transactions); in the file-store suite, two instances racing in one process, two *processes* racing (a `tsx` worker spawned twice against one file — the exact reproduction in the report), an abandoned lock from a dead pid reclaimed transparently, and a lock held by a live pid waited for and then refused with `STORE_LOCKED` while leaving the store untouched. The existing "leaves no temporary files behind" test now also proves the lock file is always released. `pnpm run verify` passes (9/9).
 
 ---
 
