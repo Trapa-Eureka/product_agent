@@ -25,7 +25,9 @@ import {
 } from "@pca/application";
 import type { EntityId, ToolError } from "@pca/contracts";
 import {
+  actorIdSchema,
   approvalDecisionSchema,
+  correlationIdSchema,
   entityIdSchema,
   proposalStatusSchema,
   typedChangeSchema,
@@ -82,13 +84,47 @@ const ACTOR_HEADER = "x-actor-id";
 
 type Call = CallContext & { readonly actorId: string };
 
-const callOf = (request: Request, context: ServerContext, ids: IdFactory): Call => {
+/**
+ * TASK-906 (code review #7 / SEC-006 / AUD-010): both headers are validated
+ * against the contract the persisted records enforce, so a request can no
+ * longer write a change request or audit event every later read rejects.
+ * An unusable correlation ID is replaced with a fresh one (tracing degrades,
+ * the request proceeds); an unusable actor ID is refused, because an identity
+ * is written into approvals and the audit trail and must not be silently
+ * substituted.
+ */
+const callOf = (
+  request: Request,
+  context: ServerContext,
+  ids: IdFactory,
+): { readonly call: Call; readonly rejected?: ToolError } => {
   const header = request.header(CORRELATION_HEADER)?.trim();
-  const correlationId = header !== undefined && header.length > 0 ? header : ids.next("corr");
+  const parsedCorrelation = correlationIdSchema.safeParse(header);
+  const correlationId = parsedCorrelation.success ? parsedCorrelation.data : ids.next("corr");
+
   const actorHeader = request.header(ACTOR_HEADER)?.trim();
-  const actorId =
-    actorHeader !== undefined && actorHeader.length > 0 ? actorHeader : context.actor.id;
-  return { correlationId, actor: { type: "USER", id: actorId }, actorId };
+  if (actorHeader === undefined || actorHeader.length === 0) {
+    const actorId = context.actor.id;
+    return { call: { correlationId, actor: { type: "USER", id: actorId }, actorId } };
+  }
+  const parsedActor = actorIdSchema.safeParse(actorHeader);
+  if (!parsedActor.success) {
+    return {
+      call: {
+        correlationId,
+        actor: { type: "USER", id: context.actor.id },
+        actorId: context.actor.id,
+      },
+      rejected: invalidInput("X-Actor-Id must be 1 to 200 characters.", "X-Actor-Id"),
+    };
+  }
+  return {
+    call: {
+      correlationId,
+      actor: { type: "USER", id: parsedActor.data },
+      actorId: parsedActor.data,
+    },
+  };
 };
 
 const respond = <T>(
@@ -174,7 +210,7 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
 
   // Every request: a call context, echoed correlation ID, one log line.
   app.use((request, response, next) => {
-    const call = callOf(request, context, ids);
+    const { call, rejected } = callOf(request, context, ids);
     response.locals["call"] = call;
     response.setHeader("X-Correlation-Id", call.correlationId);
     const startedAt = Date.now();
@@ -187,6 +223,10 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
         durationMs: Date.now() - startedAt,
       });
     });
+    if (rejected !== undefined) {
+      sendError(response, rejected, call.correlationId);
+      return;
+    }
     next();
   });
 

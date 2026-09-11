@@ -524,6 +524,22 @@ export class FileStore implements RepositorySet {
    * rename within a directory is atomic.
    */
   async #write(database: FileDatabase): Promise<void> {
+    // TASK-906 (code review #7 / SEC-006 / AUD-010): the same schema that
+    // guards every read guards the write. Before this, one record the
+    // schema would refuse (a 129-character correlation ID, say) was written
+    // successfully and then made every later read fail with STORE_CORRUPT
+    // until someone repaired the file by hand. Now the write is refused,
+    // names the field, and the previous database stays exactly as it was.
+    const checked = fileDatabaseSchema.safeParse(database);
+    if (!checked.success) {
+      const first = checked.error.issues[0];
+      throw new Error(
+        `STORE_INVALID_WRITE: refusing to write ${this.#filePath}: ` +
+          `"${first?.path.join(".") ?? "<root>"}" ${first?.message ?? "is invalid"}. ` +
+          `The previous database is untouched; the record that caused this was not saved.`,
+      );
+    }
+
     await mkdir(dirname(this.#filePath), { recursive: true });
     const temporaryPath = `${this.#filePath}.${randomUUID()}.tmp`;
     try {

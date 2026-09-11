@@ -1,4 +1,5 @@
 import type { ActorType, EntityId, ToolError } from "@pca/contracts";
+import { actorIdSchema } from "@pca/contracts";
 
 /**
  * Server-side context (MCP.md §3).
@@ -27,8 +28,21 @@ export const contextFromEnv = (env: Environment): ServerContext => {
           .split(",")
           .map((id) => id.trim())
           .filter((id) => id.length > 0);
+
+  // TASK-906: the actor named here is written into every audit event and
+  // approval this server records, so it must satisfy the same limit those
+  // records enforce — refused loudly at startup, not discovered as an
+  // unreadable store later.
+  const actor = actorIdSchema.safeParse(env["PCA_ACTOR_ID"] ?? "mcp-agent");
+  if (!actor.success) {
+    throw new Error(
+      `PCA_ACTOR_ID must be 1 to 200 characters: ${actor.error.issues[0]?.message ?? "invalid"}. ` +
+        `Unset it for the default "mcp-agent".`,
+    );
+  }
+
   return {
-    actor: { type: "AGENT", id: env["PCA_ACTOR_ID"] ?? "mcp-agent" },
+    actor: { type: "AGENT", id: actor.data },
     allowedProductionIds,
   };
 };

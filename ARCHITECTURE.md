@@ -298,7 +298,13 @@ continuing a run's timeline when `jobId` is given. Errors are the same
 never chosen per route. Authorization is the server-side production
 allow-list, checked before any handler runs; the acting identity is the
 `X-Actor-Id` header (a deployment puts an auth layer in front);
-`X-Correlation-Id` is honoured and always echoed. The WebSocket gateway is
+`X-Correlation-Id` is honoured and always echoed. Both headers are validated
+against the contract the persisted records enforce (TASK-906): an
+`X-Correlation-Id` that would not fit a change request is replaced with a
+fresh one and the request proceeds, while an `X-Actor-Id` that would not fit
+an approval or audit event is refused with `INVALID_INPUT` — an identity
+written into the audit trail is never silently swapped for the server default.
+`PCA_ACTOR_ID` is held to the same rule at startup. The WebSocket gateway is
 attached to the same HTTP server on `/ws`.
 
 ### Angular UI
@@ -563,6 +569,14 @@ multi-writer deployment still selects MongoDB. Reads take no lock: rename is
 atomic, so a reader sees a whole database, before or after, never a torn one,
 and a second instance sees the first one's writes because every read goes
 through to the file rather than a cache.
+
+The same `fileDatabaseSchema` that validates every read validates every write
+(TASK-906): the complete next database is parsed before the temporary file is
+written, so a record the schema would refuse — a 129-character correlation ID
+was the reproduction — is refused as `STORE_INVALID_WRITE` naming the field,
+and the previous database stays exactly as it was. Before this, such a record
+was written successfully and every later read failed with `STORE_CORRUPT`
+until someone repaired the file by hand; a restart did not recover it.
 
 Entity rows in Mongo use a composite `_id` of `productionId::id`, so an entity
 ID that repeats across productions is two rows rather than a collision, and

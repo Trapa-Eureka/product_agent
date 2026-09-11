@@ -124,6 +124,26 @@ describe("REST API", () => {
       expect(generated.headers.get("x-correlation-id")).toMatch(/^corr-/);
     });
 
+    it("TASK-906: replaces an unusable correlation ID and refuses an unusable actor ID", async () => {
+      // 129 characters: one over the contract every persisted record enforces.
+      // Before this, the header was accepted, written into the change request,
+      // and made every later read of the file store fail with STORE_CORRUPT.
+      const tooLong = await api("GET", "/health", undefined, {
+        "x-correlation-id": "c".repeat(129),
+      });
+      expect(tooLong.status).toBe(200);
+      expect(tooLong.headers.get("x-correlation-id")).toMatch(/^corr-/);
+
+      // An identity is written into approvals and the audit trail, so a bad
+      // one is refused rather than silently swapped for the server default.
+      const badActor = await api("GET", "/health", undefined, { "x-actor-id": "a".repeat(201) });
+      expect(badActor.status).toBe(400);
+      expect(badActor.body).toMatchObject({
+        error: { code: "INVALID_INPUT", actual: "X-Actor-Id" },
+      });
+      expect(badActor.headers.get("x-correlation-id")).toMatch(/^corr-/);
+    });
+
     it("refuses a production outside the allow-list before touching anything", async () => {
       const reply = await api("GET", "/productions/PROD-OTHER");
       expect(reply.status).toBe(403);

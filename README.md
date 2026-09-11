@@ -165,7 +165,7 @@ pnpm --filter @pca/web start
 | `PCA_MODEL` | `rules` | `rules` (free, no network), `ollama` (later), or `bedrock` (deferred, paid) |
 | `PCA_QUEUE` | `memory` | `memory` (in-process, free) or `sqs` (deferred, paid) |
 | `PCA_ALLOWED_PRODUCTIONS` | `*` | Comma-separated production IDs the MCP server may act on |
-| `PCA_ACTOR_ID` | `mcp-agent` | Identity recorded for agent actions |
+| `PCA_ACTOR_ID` | `mcp-agent` | Identity recorded for agent actions (1–200 characters; refused at startup otherwise) |
 | `PCA_API_PORT` | `3000` | REST API and WebSocket port |
 | `PCA_API_HOST` | `127.0.0.1` | Interface the API binds to |
 

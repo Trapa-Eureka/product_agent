@@ -129,6 +129,35 @@ describe("file store specifics", () => {
     expect(await readdir(join(filePath, ".."))).toEqual(["data.json"]);
   });
 
+  it("TASK-906: refuses a record the schema rejects and leaves the previous database intact", async () => {
+    const filePath = await temporaryFile();
+    const store = createFileStore({ filePath });
+    await store.productions.save(createDemoMovie());
+
+    // A 129-character correlation ID: one over the contract. Before this the
+    // record was written, and every later read failed with STORE_CORRUPT.
+    await expect(
+      store.changeRequests.save({
+        id: "CR-BAD",
+        productionId: "PROD-DEMO",
+        type: "CAST_UNAVAILABLE",
+        rawText: "Sarah cannot shoot Friday.",
+        payload: {
+          type: "CAST_UNAVAILABLE",
+          castId: DEMO_MOVIE_IDS.cast.sarah,
+          unavailable: { start: "2026-09-18", end: "2026-09-18" },
+        },
+        correlationId: "c".repeat(129),
+        createdBy: "coordinator@example.test",
+        createdAt: "2026-09-10T11:03:00.000Z",
+      }),
+    ).rejects.toThrow(/STORE_INVALID_WRITE.*correlationId/su);
+
+    expect((await store.productions.loadState("PROD-DEMO"))?.scenes).toHaveLength(4);
+    expect(await store.changeRequests.findById("PROD-DEMO", "CR-BAD")).toBeNull();
+    expect(await readdir(join(filePath, ".."))).toEqual(["data.json"]);
+  });
+
   describe("resetProduction (TASK-801)", () => {
     const DEMO = DEMO_MOVIE_IDS.production;
     const OTHER = "PROD-OTHER";
