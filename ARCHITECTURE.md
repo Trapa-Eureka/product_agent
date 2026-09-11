@@ -295,17 +295,27 @@ job whose progress the UI follows (`POST .../changes`, resumable at
 `resolving` with the chosen change). Apply runs synchronously, or as a job
 continuing a run's timeline when `jobId` is given. Errors are the same
 `ToolError` as everywhere, with the HTTP status derived from the code and
-never chosen per route. Authorization is the server-side production
-allow-list, checked before any handler runs; the acting identity is the
-`X-Actor-Id` header (a deployment puts an auth layer in front);
-`X-Correlation-Id` is honoured and always echoed. Both headers are validated
-against the contract the persisted records enforce (TASK-906): an
-`X-Correlation-Id` that would not fit a change request is replaced with a
-fresh one and the request proceeds, while an `X-Actor-Id` that would not fit
-an approval or audit event is refused with `INVALID_INPUT` — an identity
-written into the audit trail is never silently swapped for the server default.
-`PCA_ACTOR_ID` is held to the same rule at startup. The WebSocket gateway is
-attached to the same HTTP server on `/ws`.
+never chosen per route. Identity is verified, never declared (TASK-914):
+every route but `/health` and `/auth/demo-session` requires
+`Authorization: Bearer <token>`, the token is verified through the
+application's `IdentityPort`, and the acting identity — what `approvedBy`,
+`createdBy`, and every audit `actorId` record — is the verified principal's
+subject. No header names the actor; a caller-supplied `X-Actor-Id` is
+ignored. Authorization is server-side and twofold, checked before any
+handler runs: the production must be on the server's allow-list *and* in the
+principal's grant, and the method's role must be held (`viewer` for reads,
+`requester` for writes); the decision route's `approver` requirement, and
+maker-checker (the change's submitter may not decide its proposal), live in
+`decideProposal` itself, so no delivery adapter can skip them. A missing or
+bad token is `UNAUTHENTICATED` (401); a role or grant the token lacks is
+`TOOL_UNAUTHORIZED` (403). `X-Correlation-Id` is honoured and always echoed,
+validated against the contract the persisted records enforce (TASK-906): one
+that would not fit a change request is replaced with a fresh ID and the
+request proceeds. `PCA_ACTOR_ID` (the MCP server's own identity) is held to
+the same rule at startup. The WebSocket gateway is attached to the same HTTP
+server on `/ws`; its upgrade is authenticated the same way (the token from
+`Authorization`, or `?access_token=` for browsers, which cannot set headers
+on a socket) and refused with 401 before any socket exists.
 
 ### Angular UI
 
@@ -841,6 +851,39 @@ Avoid deploying expensive resources merely for portfolio completeness. Infrastru
 - prompt/tool inputs treated as untrusted;
 - no hidden chain-of-thought logging;
 - audit structured actions/results instead.
+
+### Identity (TASK-914)
+
+Who is acting is a verified fact, not a request field. The application owns
+one port for it, `IdentityPort` (`packages/application/src/ports/identity.ts`):
+a credential in, a `Principal` out — subject, issuer, actor type, ordered
+roles (`viewer` < `requester` < `approver`), and the productions the
+credential grants — or a refusal that names why (`MALFORMED`,
+`BAD_SIGNATURE`, `EXPIRED`, `NOT_YET_VALID`) without echoing the credential.
+`Principal`, the roles, and the two pure checks (`principalHasRole`,
+`principalMayAccess`) are contracts, so REST, the gateway, and the use cases
+agree on them.
+
+The free adapter is `@pca/local-auth`: HMAC-SHA256-signed tokens
+(`pca1.<claims>.<signature>`) with one algorithm and no key lookup, verified
+in constant time before the claims are parsed. Two modes, chosen by the
+environment and never by a request (`selectAuth`, `@pca/bootstrap`):
+**token** — `PCA_AUTH_SECRET` is set, every call must carry a token the
+operator minted with `pnpm run token`, and maker-checker is on unless
+`PCA_MAKER_CHECKER=false`; **demo** — `PCA_DEMO_MODE=true`, the server
+signs with an ephemeral secret and hands anyone who asks
+`GET /api/auth/demo-session` the demo coordinator's token, so `npx … serve`
+runs the golden scenarios with zero configuration, with a startup warning
+saying so. Neither set: startup fails, because a deployment that forgot its
+secret must not come up open. An OIDC verifier is a later adapter behind the
+same port; nothing above the port changes for it.
+
+What the boundary records: an approval carries `approvedBy` (the subject),
+`approvedByIssuer`, and `approvedByRole`; the decision's audit event carries
+the same as `actorIssuer`/`actorRole` metadata. The MCP server is unchanged:
+it runs as the local operator's process with `PCA_ACTOR_ID` as its agent
+identity, has no approve tool, and cannot record a decision through any
+path.
 
 ## 16. Observability
 

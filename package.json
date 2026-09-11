@@ -23,14 +23,17 @@
     "test:e2e": "node scripts/run-e2e.mjs",
     "build": "pnpm -r --if-present build",
     "verify": "node scripts/verify.mjs",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "token": "tsx scripts/issue-token.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@pca/application": "workspace:*",
     "@pca/bootstrap": "workspace:*",
     "@pca/contracts": "workspace:*",
     "@pca/domain": "workspace:*",
     "@pca/fixtures": "workspace:*",
+    "@pca/local-auth": "workspace:*",
     "@pca/test-support": "workspace:*",
     "@playwright/test": "^1.63.0",
     "@types/node": "^24.10.1",

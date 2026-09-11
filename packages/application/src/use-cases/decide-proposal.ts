@@ -1,4 +1,5 @@
 import type { Approval, ApprovalDecision, AuditEvent, EntityId, Proposal } from "@pca/contracts";
+import { principalHasRole } from "@pca/contracts";
 import {
   checkProposalApplicable,
   computeProposalDigest,
@@ -6,7 +7,7 @@ import {
   simulateProposal,
 } from "@pca/domain";
 
-import type { Clock, IdFactory, RepositorySet } from "../ports";
+import type { Approver, Clock, IdFactory, RepositorySet } from "../ports";
 import type { UseCaseResult } from "../result";
 import { fail, succeed } from "../result";
 
@@ -28,13 +29,20 @@ import { fail, succeed } from "../result";
  * write: `recordProposalDecision` (TASK-902) records the approval, the decided
  * status, and the audit event atomically and only if no decision exists yet,
  * so two concurrent callers cannot both succeed with opposite answers.
+ *
+ * Who may decide is checked here, not at the route (TASK-914, SEC-001): the
+ * decider is a verified principal, and only one holding the `approver` role
+ * may record a decision. With `makerChecker` on, the person who submitted
+ * the change cannot approve its own proposal; a deployment turns that on, a
+ * single-operator demo leaves it off.
  */
 
 export type DecideProposalInput = {
   readonly productionId: EntityId;
   readonly proposalId: EntityId;
   readonly decision: ApprovalDecision;
-  readonly decidedBy: string;
+  /** The verified principal recording the decision; never a caller-supplied name. */
+  readonly decidedBy: Approver;
   readonly correlationId?: string;
 };
 
@@ -53,11 +61,29 @@ export const createDecideProposal = (dependencies: {
   readonly repositories: RepositorySet;
   readonly clock: Clock;
   readonly ids: IdFactory;
+  /** Refuse a decision by the principal who submitted the change (maker-checker). Default off. */
+  readonly makerChecker?: boolean;
 }): DecideProposal => {
   const { repositories, clock, ids } = dependencies;
+  const makerChecker = dependencies.makerChecker ?? false;
 
   return async (input) => {
     const trace = input.correlationId === undefined ? {} : { correlationId: input.correlationId };
+
+    // Authorization first, before any read names what exists: a caller
+    // without the role learns nothing about the proposal.
+    if (!principalHasRole(input.decidedBy, "approver")) {
+      return fail(
+        "TOOL_UNAUTHORIZED",
+        `${input.decidedBy.subject} holds ${input.decidedBy.roles.join(", ")} and may not decide a proposal; the approver role is required.`,
+        {
+          ...trace,
+          expected: "approver",
+          actual: input.decidedBy.roles.join(","),
+          nextStep: "Ask an approver for this production to record the decision.",
+        },
+      );
+    }
 
     const proposal = await repositories.proposals.findById(input.productionId, input.proposalId);
     if (proposal === null) {
@@ -95,6 +121,24 @@ export const createDecideProposal = (dependencies: {
     const existing = await repositories.approvals.findByProposalId(input.productionId, proposal.id);
     if (existing !== null) {
       return alreadyDecided(existing);
+    }
+
+    if (makerChecker) {
+      const request = await repositories.changeRequests.findById(
+        input.productionId,
+        proposal.changeRequestId,
+      );
+      if (request !== null && request.createdBy === input.decidedBy.subject) {
+        return fail(
+          "TOOL_UNAUTHORIZED",
+          `${input.decidedBy.subject} submitted the change behind proposal ${proposal.id} and may not decide it; a decision needs a second person.`,
+          {
+            ...trace,
+            actual: input.decidedBy.subject,
+            nextStep: "Ask another approver for this production to record the decision.",
+          },
+        );
+      }
     }
 
     const recomputed = computeProposalDigest(proposal);
@@ -156,7 +200,9 @@ export const createDecideProposal = (dependencies: {
       proposalId: proposal.id,
       proposalDigest: proposal.digest,
       productionVersion: proposal.baseProductionVersion,
-      approvedBy: input.decidedBy,
+      approvedBy: input.decidedBy.subject,
+      approvedByIssuer: input.decidedBy.issuer,
+      approvedByRole: "approver",
       decision: input.decision,
       createdAt,
     };
@@ -170,7 +216,7 @@ export const createDecideProposal = (dependencies: {
       id: ids.next("AE"),
       productionId: input.productionId,
       actorType: "USER",
-      actorId: input.decidedBy,
+      actorId: input.decidedBy.subject,
       action: input.decision === "APPROVE" ? "PROPOSAL_APPROVED" : "PROPOSAL_REJECTED",
       entityType: "PROPOSAL",
       entityId: proposal.id,
@@ -179,6 +225,8 @@ export const createDecideProposal = (dependencies: {
         approvalId: approval.id,
         proposalDigest: approval.proposalDigest,
         productionVersion: approval.productionVersion,
+        actorIssuer: input.decidedBy.issuer,
+        actorRole: "approver",
       },
       createdAt,
     };

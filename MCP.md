@@ -439,9 +439,14 @@ APPROVAL_MISMATCH
 CONSTRAINT_VIOLATION
 IDEMPOTENCY_CONFLICT
 TOOL_UNAUTHORIZED
+UNAUTHENTICATED
 INVALID_INPUT
 INTERNAL_ERROR
 ```
+
+`UNAUTHENTICATED` is the REST API's answer (HTTP 401) to a call with no
+verifiable access token (TASK-914); an MCP tool never returns it, because the
+MCP server's identity is fixed by the operator who started it.
 
 Schemas for every tool live in `packages/contracts`, registered in
 `MCP_TOOL_CONTRACTS`. The server registers tools from that registry and the

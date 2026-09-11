@@ -9,6 +9,7 @@ import type {
 import { createRealtimeClient } from "@pca/realtime-client";
 
 import { ProductionApi } from "../api/production-api";
+import { AuthService } from "../auth/auth.service";
 import { environment } from "../environment";
 
 /**
@@ -23,14 +24,17 @@ export type SocketFactory = (url: string) => SocketLike;
 
 const browserSocket: SocketFactory = (url) => new WebSocket(url) as unknown as SocketLike;
 
-const websocketUrl = (): string => {
+/** A browser cannot set headers on a WebSocket, so the token rides the query string (TASK-914). */
+const websocketUrl = (token: string | null): string => {
   const { protocol, host } = window.location;
-  return `${protocol === "https:" ? "wss" : "ws"}://${host}${environment.websocketPath}`;
+  const base = `${protocol === "https:" ? "wss" : "ws"}://${host}${environment.websocketPath}`;
+  return token === null ? base : `${base}?access_token=${encodeURIComponent(token)}`;
 };
 
 @Injectable({ providedIn: "root" })
 export class RealtimeService {
   private readonly api = inject(ProductionApi);
+  private readonly auth = inject(AuthService);
   private client: RealtimeClient | null = null;
   private followedId: string | null = null;
 
@@ -44,7 +48,7 @@ export class RealtimeService {
   connect(options: { createSocket?: SocketFactory; url?: string } = {}): void {
     if (this.client !== null) return;
     this.client = createRealtimeClient({
-      url: options.url ?? websocketUrl(),
+      url: options.url ?? websocketUrl(this.auth.token()),
       createSocket: options.createSocket ?? browserSocket,
       recover: (productionId) => this.api.getRecovery(productionId),
       onChange: (view) => {

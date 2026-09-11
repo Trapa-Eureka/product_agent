@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { ProposedOperation } from "@pca/contracts";
 import { DEMO_MOVIE_DATES, DEMO_MOVIE_IDS, createDemoMovie } from "@pca/fixtures";
 import { createMemoryStore, type MemoryStore } from "@pca/memory-store";
-import { fixedClock, onDay, sequentialIds } from "@pca/test-support";
+import { fixedClock, onDay, sequentialIds, approver } from "@pca/test-support";
 
 import {
   createApplyApprovedProposal,
@@ -64,7 +64,7 @@ describe("applyApprovedProposal", () => {
       productionId: DEMO,
       proposalId: created.value.id,
       decision: "APPROVE",
-      decidedBy: "jinho@example.test",
+      decidedBy: approver("jinho@example.test"),
     });
     if (!decided.ok) throw new Error(decided.error.message);
     return created.value.id;
@@ -314,7 +314,7 @@ describe("applyApprovedProposal", () => {
         productionId: DEMO,
         proposalId: "P-1",
         decision: "REJECT",
-        decidedBy: "jinho@example.test",
+        decidedBy: approver("jinho@example.test"),
       });
       const result = await applyIt("P-1");
       expect(!result.ok && result.error.code).toBe("APPROVAL_REQUIRED");

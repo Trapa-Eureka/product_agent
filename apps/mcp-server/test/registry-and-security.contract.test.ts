@@ -11,7 +11,7 @@ import type { McpToolName } from "@pca/contracts";
 import { MCP_TOOL_NAMES, MCP_WRITE_TOOL_NAMES } from "@pca/contracts";
 import { DEMO_MOVIE_DATES, DEMO_MOVIE_IDS, createDemoMovie } from "@pca/fixtures";
 import { createMemoryStore, type MemoryStore } from "@pca/memory-store";
-import { fixedClock, onDay, sequentialIds } from "@pca/test-support";
+import { fixedClock, onDay, sequentialIds, approver } from "@pca/test-support";
 
 import { createAllToolHandlers, createProductionChangeServer, readToolError } from "../src";
 
@@ -106,7 +106,7 @@ beforeAll(async () => {
     productionId: DEMO,
     proposalId: "P-1",
     decision: "APPROVE",
-    decidedBy: "jinho@example.test",
+    decidedBy: approver("jinho@example.test"),
   });
 
   const { server } = createProductionChangeServer({

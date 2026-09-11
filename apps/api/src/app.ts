@@ -9,6 +9,8 @@ import type {
   GetJobRun,
   GetRecoverySnapshot,
   IdFactory,
+  IdentityPort,
+  IdentityRefusal,
   JobTracker,
   QueuePort,
   RepositorySet,
@@ -23,12 +25,13 @@ import {
   createGetRecoverySnapshot,
   createSubmitChangeRequest,
 } from "@pca/application";
-import type { EntityId, ToolError } from "@pca/contracts";
+import type { EntityId, Principal, PrincipalRole, ToolError } from "@pca/contracts";
 import {
-  actorIdSchema,
   approvalDecisionSchema,
   correlationIdSchema,
   entityIdSchema,
+  principalHasRole,
+  principalMayAccess,
   proposalStatusSchema,
   typedChangeSchema,
 } from "@pca/contracts";
@@ -52,9 +55,14 @@ import { silentApiLogger } from "./logging";
  * a human does them: recording a decision on a proposal, and submitting a
  * change as an asynchronous job whose progress the UI follows.
  *
- * Authorization is server-side: the production allow-list from the server
- * context, checked before any handler runs. The acting identity comes from
- * the `X-Actor-Id` header (a deployment would put an auth layer in front);
+ * Identity is verified, never declared (TASK-914, SEC-001 / AUD-001): every
+ * route but `/health` and the demo-session route requires a bearer token the
+ * identity port accepts, and the acting identity — what approvals and audit
+ * events record — is the verified principal's subject. No header names the
+ * actor. Authorization is server-side and twofold: the production must be on
+ * the server's allow-list *and* in the principal's grant, checked before any
+ * handler runs; reads need the `viewer` role and writes `requester`, while
+ * the decision route's `approver` requirement lives in the use case itself.
  * `X-Correlation-Id` is honoured when present and always echoed back.
  *
  * Three things are REST-only, because a human or the UI does them and the
@@ -72,6 +80,16 @@ export type ApiDependencies = {
   readonly clock: Clock;
   readonly ids: IdFactory;
   readonly context: ServerContext;
+  /** Verifies bearer tokens into principals; the only source of identity. */
+  readonly identity: IdentityPort;
+  /**
+   * Demo mode only: mints the demo coordinator's token for anyone who asks
+   * `GET /api/auth/demo-session`. Absent in a deployment, where the route
+   * answers 404 and tokens come from the operator.
+   */
+  readonly demoSession?: () => string;
+  /** Refuse a decision by the principal who submitted the change. Default: on. */
+  readonly makerChecker?: boolean;
   readonly logger?: ApiLogger;
   /** Tool handlers to run; defaults to the full MCP set over the same repositories. */
   readonly handlers?: ToolHandlers;
@@ -80,52 +98,47 @@ export type ApiDependencies = {
 export const API_PREFIX = "/api";
 
 const CORRELATION_HEADER = "x-correlation-id";
-const ACTOR_HEADER = "x-actor-id";
 
-type Call = CallContext & { readonly actorId: string };
+type Call = CallContext & { readonly actorId: string; readonly principal: Principal };
 
 /**
- * TASK-906 (code review #7 / SEC-006 / AUD-010): both headers are validated
- * against the contract the persisted records enforce, so a request can no
- * longer write a change request or audit event every later read rejects.
- * An unusable correlation ID is replaced with a fresh one (tracing degrades,
- * the request proceeds); an unusable actor ID is refused, because an identity
- * is written into approvals and the audit trail and must not be silently
- * substituted.
+ * TASK-906 (code review #7 / SEC-006 / AUD-010): the correlation header is
+ * validated against the contract the persisted records enforce; an unusable
+ * one is replaced with a fresh ID (tracing degrades, the request proceeds).
+ * The actor header TASK-906 also validated is gone (TASK-914): identity is
+ * derived from the verified principal and nothing a caller types.
  */
-const callOf = (
-  request: Request,
-  context: ServerContext,
-  ids: IdFactory,
-): { readonly call: Call; readonly rejected?: ToolError } => {
+const correlationIdOf = (request: Request, ids: IdFactory): string => {
   const header = request.header(CORRELATION_HEADER)?.trim();
-  const parsedCorrelation = correlationIdSchema.safeParse(header);
-  const correlationId = parsedCorrelation.success ? parsedCorrelation.data : ids.next("corr");
-
-  const actorHeader = request.header(ACTOR_HEADER)?.trim();
-  if (actorHeader === undefined || actorHeader.length === 0) {
-    const actorId = context.actor.id;
-    return { call: { correlationId, actor: { type: "USER", id: actorId }, actorId } };
-  }
-  const parsedActor = actorIdSchema.safeParse(actorHeader);
-  if (!parsedActor.success) {
-    return {
-      call: {
-        correlationId,
-        actor: { type: "USER", id: context.actor.id },
-        actorId: context.actor.id,
-      },
-      rejected: invalidInput("X-Actor-Id must be 1 to 200 characters.", "X-Actor-Id"),
-    };
-  }
-  return {
-    call: {
-      correlationId,
-      actor: { type: "USER", id: parsedActor.data },
-      actorId: parsedActor.data,
-    },
-  };
+  const parsed = correlationIdSchema.safeParse(header);
+  return parsed.success ? parsed.data : ids.next("corr");
 };
+
+/** `Authorization: Bearer <token>`; anything else is treated as no credential. */
+export const bearerTokenOf = (header: string | undefined): string | null => {
+  if (header === undefined) return null;
+  const match = /^Bearer\s+(\S+)$/iu.exec(header.trim());
+  return match?.[1] ?? null;
+};
+
+const UNAUTHENTICATED_NEXT_STEP =
+  "Send a valid access token as `Authorization: Bearer <token>`; in demo mode, GET /api/auth/demo-session issues one.";
+
+export const unauthenticated = (reason: IdentityRefusal | "MISSING"): ToolError => ({
+  code: "UNAUTHENTICATED",
+  message: {
+    MISSING: "This request carries no access token.",
+    MALFORMED: "The access token is not one this server issued.",
+    BAD_SIGNATURE: "The access token's signature does not verify.",
+    EXPIRED: "The access token has expired.",
+    NOT_YET_VALID: "The access token is not valid yet.",
+  }[reason],
+  nextStep: UNAUTHENTICATED_NEXT_STEP,
+});
+
+/** The least role a method needs; the decision route's `approver` is enforced in the use case. */
+const roleForMethod = (method: string): PrincipalRole =>
+  method === "GET" ? "viewer" : "requester";
 
 const respond = <T>(
   response: Response,
@@ -187,7 +200,12 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
   const logger = dependencies.logger ?? silentApiLogger;
   const handlers =
     dependencies.handlers ?? createAllToolHandlers({ repositories, clock, ids, logger });
-  const decide: DecideProposal = createDecideProposal({ repositories, clock, ids });
+  const decide: DecideProposal = createDecideProposal({
+    repositories,
+    clock,
+    ids,
+    makerChecker: dependencies.makerChecker ?? true,
+  });
   const apply: ApplyApprovedProposal = createApplyApprovedProposal({ repositories, clock, ids });
   const submit = createSubmitChangeRequest({ repositories, clock, ids });
   const analyzeImpact: AnalyzeChangeImpact = createAnalyzeChangeImpact({ repositories, logger });
@@ -208,25 +226,21 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
   app.disable("x-powered-by");
   app.use(express.json({ limit: "256kb" }));
 
-  // Every request: a call context, echoed correlation ID, one log line.
+  // Every request: an echoed correlation ID and one log line.
   app.use((request, response, next) => {
-    const { call, rejected } = callOf(request, context, ids);
-    response.locals["call"] = call;
-    response.setHeader("X-Correlation-Id", call.correlationId);
+    const correlationId = correlationIdOf(request, ids);
+    response.locals["correlationId"] = correlationId;
+    response.setHeader("X-Correlation-Id", correlationId);
     const startedAt = Date.now();
     response.on("finish", () => {
       logger.log("info", "http_request", {
         method: request.method,
         path: request.path,
         status: response.statusCode,
-        correlationId: call.correlationId,
+        correlationId,
         durationMs: Date.now() - startedAt,
       });
     });
-    if (rejected !== undefined) {
-      sendError(response, rejected, call.correlationId);
-      return;
-    }
     next();
   });
 
@@ -236,13 +250,100 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
     response.json({ status: "ok", time: clock.now() });
   });
 
-  // Production scope: authorise once, then hand every route the ID and the call.
+  // Demo mode's front door (TASK-914): the one route that hands out a token,
+  // and it exists only when the composition root said this is a demo.
+  router.get("/auth/demo-session", async (_request, response) => {
+    const correlationId = response.locals["correlationId"] as string;
+    const demoSession = dependencies.demoSession;
+    if (demoSession === undefined) {
+      sendError(
+        response,
+        {
+          code: "ENTITY_NOT_FOUND",
+          message: "This server does not issue demo sessions.",
+          nextStep: "Obtain an access token from the operator (`pnpm run token`).",
+        },
+        correlationId,
+      );
+      return;
+    }
+    const token = demoSession();
+    const verified = await dependencies.identity.verify(token);
+    if (!verified.ok) {
+      sendError(
+        response,
+        { code: "INTERNAL_ERROR", message: "The demo session could not be issued." },
+        correlationId,
+      );
+      return;
+    }
+    response.setHeader("Cache-Control", "no-store");
+    response.json({ token, principal: verified.principal });
+  });
+
+  // Identity (TASK-914): everything past this point runs as a verified principal.
+  router.use(async (request, response, next) => {
+    const correlationId = response.locals["correlationId"] as string;
+    const token = bearerTokenOf(request.header("authorization"));
+    if (token === null) {
+      sendError(response, unauthenticated("MISSING"), correlationId);
+      return;
+    }
+    const verified = await dependencies.identity.verify(token);
+    if (!verified.ok) {
+      logger.log("warn", "http_unauthenticated", { correlationId, reason: verified.reason });
+      sendError(response, unauthenticated(verified.reason), correlationId);
+      return;
+    }
+    const { principal } = verified;
+    const call: Call = {
+      correlationId,
+      actor: { type: principal.type, id: principal.subject },
+      actorId: principal.subject,
+      principal,
+    };
+    response.locals["call"] = call;
+    next();
+  });
+
+  // Production scope: the server's allow-list and the principal's grant must
+  // both name it, and the method's role must be held. Then every route gets
+  // the ID and the call.
   router.use("/productions/:productionId", (request, response, next) => {
     const call = response.locals["call"] as Call;
     const productionId = request.params["productionId"];
     const denied = authorize(context, productionId);
     if (denied !== null) {
       sendError(response, denied, call.correlationId);
+      return;
+    }
+    if (!principalMayAccess(call.principal, productionId)) {
+      sendError(
+        response,
+        {
+          code: "TOOL_UNAUTHORIZED",
+          message: `${call.principal.subject}'s access token does not grant production ${productionId}.`,
+          actual: productionId,
+          nextStep:
+            "Use a production the token was issued for, or ask the operator for a token that names this one.",
+        },
+        call.correlationId,
+      );
+      return;
+    }
+    const role = roleForMethod(request.method);
+    if (!principalHasRole(call.principal, role)) {
+      sendError(
+        response,
+        {
+          code: "TOOL_UNAUTHORIZED",
+          message: `${call.principal.subject} holds ${call.principal.roles.join(", ")}; ${request.method} here needs the ${role} role.`,
+          expected: role,
+          actual: call.principal.roles.join(","),
+          nextStep: "Ask the operator for a token with the required role.",
+        },
+        call.correlationId,
+      );
       return;
     }
     response.locals["productionId"] = productionId;
@@ -432,7 +533,11 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
       productionId,
       proposalId: request.params["proposalId"],
       decision: parsed.data.decision,
-      decidedBy: call.actorId,
+      decidedBy: {
+        subject: call.principal.subject,
+        issuer: call.principal.issuer,
+        roles: call.principal.roles,
+      },
       correlationId: call.correlationId,
     });
     if (result.ok && parsed.data.decision === "REJECT" && parsed.data.jobId !== undefined) {
@@ -630,7 +735,7 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
 
   // Unknown routes and malformed bodies are errors in the same shape as everything else.
   app.use((request: Request, response: Response) => {
-    const call = response.locals["call"] as Call;
+    const correlationId = response.locals["correlationId"] as string;
     sendError(
       response,
       {
@@ -638,12 +743,12 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
         message: `No route for ${request.method} ${request.path}.`,
         nextStep: `Routes live under ${API_PREFIX}/productions/:productionId.`,
       },
-      call.correlationId,
+      correlationId,
     );
   });
   app.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
-    const call = (response.locals["call"] as Call | undefined) ?? {
-      correlationId: ids.next("corr"),
+    const call = {
+      correlationId: (response.locals["correlationId"] as string | undefined) ?? ids.next("corr"),
     };
     const isBodyError =
       typeof error === "object" &&

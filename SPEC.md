@@ -108,8 +108,13 @@ Approval must be bound to:
 - proposal ID;
 - proposal version/hash;
 - production-state version;
-- approving user;
+- approving user — a verified identity holding the approver role, never a
+  name the caller supplied; the record also keeps who vouched for it and
+  in what capacity;
 - timestamp.
+
+A deployment may require maker-checker: the person who submitted a change
+cannot approve the proposal that answers it.
 
 If the underlying state changes after simulation, the proposal must be revalidated before mutation.
 

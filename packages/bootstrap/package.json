@@ -14,6 +14,7 @@
     "@pca/contracts": "workspace:*",
     "@pca/file-store": "workspace:*",
     "@pca/fixtures": "workspace:*",
+    "@pca/local-auth": "workspace:*",
     "@pca/memory-queue": "workspace:*",
     "@pca/memory-store": "workspace:*",
     "@pca/mongo-store": "workspace:*",

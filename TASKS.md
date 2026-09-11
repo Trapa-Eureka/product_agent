@@ -793,33 +793,22 @@ Complete. Server: `get_schedule` gained `includeScenes`; when set, the handler r
 
 Tests: MCP contract (`includeScenes` returns the four demo scenes in day order, normalized, with exactly one `loadState` call counted on the store; the plain call has no `scenes`); REST contract (`?includeScenes=true` carries the day's scenes, plain call does not); web — schedule page renders from the one request and asserts `get_scene` is never called, shows the error with next step and retries to a rendered page, and drops a late answer from the previous production; audit page shows the error, ignores a late answer from the previous production, and retries; `latestOnly` unit. `pnpm run verify` passes (9/9).
 
-## TASK-914 Authenticated identity and a real approver role — TODO
+## TASK-914 Authenticated identity and a real approver role — DONE
 
-**Goal**  
-Every non-health REST route and the WebSocket upgrade require a verified identity; the actor recorded in approvals and audit events comes from verified claims, never from a caller-supplied header; a proposal can only be decided by a principal holding an approver role for that production.
+SEC-001 (Critical) / AUD-001 (Critical). The API accepted `X-Actor-Id` as the user: anyone who could reach it could approve a proposal under any name and apply it, and the approval and audit records would attribute the decision to the victim. The shape of an approval was enforced; the authority of its issuer was not.
 
-**Context**  
-SEC-001 (Critical) / AUD-001 (Critical). The API accepts `X-Actor-Id` as the user, so anyone reachable can approve a proposal under any name and apply it. Free-first stack: the token scheme must need no external identity provider or paid service — a locally signed token (HMAC, Node `crypto`) issued by a CLI/`serve` command is enough to make the boundary real; an OIDC verifier is a later adapter behind the same port.
+**Status**  
+Complete. Identity is now a verified fact behind one application port. `IdentityPort` (`packages/application/src/ports/identity.ts`) turns a credential into a `Principal` — subject, issuer, actor type, ordered roles `viewer` < `requester` < `approver`, and the productions granted — or a refusal that names why without echoing the credential. `Principal`, the roles, and the two pure checks (`principalHasRole`, `principalMayAccess`) live in `@pca/contracts`. The free adapter is `@pca/local-auth`: HMAC-SHA256-signed `pca1.<claims>.<signature>` tokens, one algorithm, constant-time comparison before the claims are parsed, optional expiry. `selectAuth` (`@pca/bootstrap`) chooses the mode from the environment and never from a request: **token** (`PCA_AUTH_SECRET`, tokens minted by the operator with `pnpm run token`, maker-checker on unless `PCA_MAKER_CHECKER=false`) or **demo** (`PCA_DEMO_MODE=true`, an ephemeral secret, `GET /api/auth/demo-session` hands anyone the demo coordinator's token, maker-checker off, a startup warning); neither set and the server refuses to start.
 
-**Dependencies**  
-TASK-902 (atomic decision), TASK-906 (header validation).
+REST (`apps/api`): every route but `/health` and the demo-session route requires `Authorization: Bearer <token>`; a missing or bad token is `UNAUTHENTICATED` (401, new code, HTTP-only). `X-Actor-Id` is gone — the call's actor is the principal's subject, so `approvedBy`, `createdBy`, `requestedBy`, `appliedBy`, and every audit `actorId` come from the token. A production must be on the server's allow-list *and* in the principal's grant, and reads need `viewer`, writes `requester`, before any handler runs. The `approver` check for a decision, and maker-checker (the change request's `createdBy` may not decide the proposal that answers it), are in `decideProposal` itself, so no delivery adapter can skip them; `decidedBy` is now an `Approver` (`subject`, `issuer`, `roles`), and the approval records `approvedByIssuer`/`approvedByRole` (optional in the contract only so older approvals still parse) with the same in the audit event's metadata. The WebSocket gateway gained an `authenticate` hook that runs before `handleUpgrade` and answers a refusal with 401/403 and no socket; the API server feeds it the same verifier (token from `Authorization`, or `?access_token=` for browsers) and hands the principal to `authorize`, so a subscription needs the token's grant too. The MCP server is unchanged: the operator's process, `PCA_ACTOR_ID` as the agent identity, no approve tool.
 
-**Allowed scope**  
-`packages/application` (identity port, principal type, role check inside `decideProposal`), `packages/contracts` (principal/role schemas), a new `packages/adapters/local-auth` (HMAC token issue/verify), `apps/api` (auth middleware, upgrade handshake), `apps/mcp-server` (context from a verified principal or an explicit local-operator env), `apps/web` (send the token), docs.
+Web: `AuthService` settles the session in an app initializer — a `sessionStorage` token, else the demo session, else a token prompt (`pca-token-prompt`, DESIGN.md §2) in the routed area; a functional interceptor adds the bearer header to API calls and clears the session on 401; the socket URL carries `access_token`. The shell opens the store and connects the socket only once the session is ready. `apps/api/e2e/server.ts` runs in demo mode, so the E2E suite exercises the real bearer path; the audit lines now read `demo-coordinator reported …`.
 
-**Acceptance criteria**
+Tests: `@pca/local-auth` unit (round trip, wrong secret, edited claims, malformed, expired, future-dated, invalid principal, short secret, port); ws-gateway (401/403 before any socket, session handed to every subscription check, a throwing hook is a 401); API contract — 401 without/with a Basic header, forged and expired tokens, `X-Actor-Id` ignored (approval and audit carry the token's subject), a grant lacking the production, viewer/requester/approver gates, demo-session 404 outside demo mode, maker-checker refusing the submitter and accepting a second approver, the upgrade refused without a token and a subscription refused outside the grant, and demo mode issuing a token that works for REST and the socket; every existing `decidedBy` call site passes an `approver(...)` principal (`@pca/test-support`); web — `AuthService` (demo session, 404 → prompt, stored token reused, clear) and the interceptor (header on API calls only, never on the demo-session call, 401 clears). `pnpm run verify` passes (9/9).
 
-- unauthenticated requests to non-health routes get 401; the WebSocket upgrade is refused before `handleUpgrade`;
-- `X-Actor-Id` is ignored for identity (kept only as a validated display hint, or removed);
-- `decideProposal` refuses a principal without the `approver` role for the production with a typed error; the requester of a change cannot approve its own proposal when maker-checker is enabled;
-- approval and audit records carry the verified subject, issuer, and role;
-- demo mode (`npx … serve`) issues a local approver token so the golden scenarios still run with zero configuration.
+Docs: `ARCHITECTURE.md` §6 REST and §15 "Identity"; `README.md` run/env/commands/limitations; `MCP.md` §9; `DOMAIN.md` Approval; `SPEC.md` FR-6; `DESIGN.md` §2; `TESTING.md` API tests.
 
-**Tests**  
-API contract: 401 without token, 403 wrong production/role, forged `X-Actor-Id` ignored, approve/apply with a valid approver token. WS: upgrade refused without token. Application: role check unit tests. E2E golden scenarios still pass.
-
-**Definition of Done**  
-Acceptance met, `pnpm run verify` green, `ARCHITECTURE.md`/`MCP.md`/`README.md` describe the identity boundary and demo token.
+Left for later tasks: TASK-915 makes the production allow-list fail closed the same way identity now does; TASK-916 adds Origin validation to the upgrade; TASK-919 binds jobs to the requester the token names.
 
 ## TASK-915 Authorization fails closed when the allow-list is missing — TODO
 

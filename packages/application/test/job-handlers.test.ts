@@ -9,7 +9,7 @@ import {
 } from "@pca/memory-queue";
 import { createMemoryStore, type MemoryStore } from "@pca/memory-store";
 import { createRuleModelAdapter } from "@pca/rule-model";
-import { fixedClock, onDay, sequentialIds } from "@pca/test-support";
+import { fixedClock, onDay, sequentialIds, approver } from "@pca/test-support";
 
 import {
   bindQueueToJobTracker,
@@ -407,7 +407,7 @@ describe("job handlers", () => {
         productionId: DEMO,
         proposalId: run.proposalId as string,
         decision: "APPROVE",
-        decidedBy: "jinho@example.test",
+        decidedBy: approver("jinho@example.test"),
       });
       if (!decided.ok) throw new Error(decided.error.message);
       await queue.enqueue(
@@ -543,7 +543,7 @@ describe("job handlers", () => {
         productionId: DEMO,
         proposalId: proposed.proposalId as string,
         decision: "APPROVE",
-        decidedBy: "jinho@example.test",
+        decidedBy: approver("jinho@example.test"),
       });
       if (!decided.ok) throw new Error(decided.error.message);
       const applied = await apply({

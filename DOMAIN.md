@@ -199,10 +199,19 @@ type Approval = {
   proposalDigest: string;
   productionVersion: number;
   approvedBy: string;
+  approvedByIssuer?: string;
+  approvedByRole?: "viewer" | "requester" | "approver";
   decision: "APPROVE" | "REJECT";
   createdAt: string;
 };
 ```
+
+`approvedBy` is the verified subject of the principal who decided, never a
+name the caller typed; `approvedByIssuer` and `approvedByRole` say who
+vouched for that subject and in what capacity (TASK-914). Only a principal
+holding `approver` may decide, and with maker-checker on, not the one whose
+change request the proposal answers. The two fields are optional only so
+approvals recorded before identities were verified still parse.
 
 `productionId` is present so every repository read can be scoped by production
 (INV-4). Deriving tenancy by first loading the proposal would make the isolation

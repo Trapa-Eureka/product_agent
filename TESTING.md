@@ -140,9 +140,13 @@ Test REST endpoints and auth/context boundaries.
 Implementation (TASK-110): `apps/api/test/*.contract.test.ts`, run in the
 contract suite with real HTTP against a server on an ephemeral port: context
 boundaries (allow-list, correlation ID, malformed input, unknown routes,
-cross-production smuggling), reads, GOLDEN-1 driven through REST alone, the
-stable error codes, changes as jobs with recovery, ambiguity resumed on the
-same job, and the WebSocket gateway on the same server.
+cross-production smuggling), identity (TASK-914: 401 without or with a
+forged/expired token, a caller-supplied `X-Actor-Id` ignored, a token whose
+grant lacks the production, viewer/requester/approver role gates, maker-
+checker, the demo-session route present only in demo mode, the WebSocket
+upgrade refused without a token), reads, GOLDEN-1 driven through REST alone,
+the stable error codes, changes as jobs with recovery, ambiguity resumed on
+the same job, and the WebSocket gateway on the same server.
 
 ### E2E
 Angular → API → agent/mock → MCP/application → DB → UI.

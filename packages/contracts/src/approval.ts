@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { principalRoleSchema } from "./identity";
 import {
   entityIdSchema,
   isoDateTimeSchema,
@@ -29,6 +30,13 @@ export const approvalSchema = z.strictObject({
   proposalDigest: proposalDigestSchema,
   productionVersion: productionVersionSchema,
   approvedBy: z.string().min(1).max(200),
+  /**
+   * Who vouched for `approvedBy` and in what capacity (TASK-914). Optional
+   * only so approvals recorded before identities were verified still parse;
+   * every approval written since carries both.
+   */
+  approvedByIssuer: z.string().min(1).max(200).optional(),
+  approvedByRole: principalRoleSchema.optional(),
   decision: approvalDecisionSchema,
   createdAt: isoDateTimeSchema,
 });

@@ -324,3 +324,74 @@ describe("attaching to an existing HTTP server", () => {
     expect(outcome).toBe("error");
   });
 });
+
+describe("upgrade authentication (TASK-914)", () => {
+  let hub: NotificationHub;
+  let gateway: RealtimeGateway;
+  let url: string;
+
+  beforeEach(async () => {
+    hub = createNotificationHub();
+    gateway = createRealtimeGateway<{ readonly who: string }>({
+      hub,
+      clock: fixedClock(NOW),
+      heartbeatIntervalMs: 0,
+      authenticate: (request) => {
+        const token = new URL(request.url ?? "/", "http://localhost").searchParams.get("token");
+        if (token === null) return { ok: false, status: 401, reason: "no token" };
+        if (token === "banned") return { ok: false, status: 403, reason: "banned" };
+        return { ok: true, session: { who: token } };
+      },
+      authorize: (productionId, _request, session) =>
+        session.who === "alice" || productionId === "PROD-PUBLIC",
+    });
+    ({ url } = await gateway.listen(0));
+  });
+
+  afterEach(async () => {
+    await gateway.close();
+  });
+
+  const refusal = (target: string): Promise<string> =>
+    new Promise((resolve) => {
+      const socket = new WebSocket(target);
+      socket.once("error", (error) => resolve(error.message));
+    });
+
+  it("answers a refused upgrade with its HTTP status and opens no socket", async () => {
+    expect(await refusal(url)).toContain("401");
+    expect(await refusal(`${url}?token=banned`)).toContain("403");
+    expect(gateway.clientCount()).toBe(0);
+  });
+
+  it("hands the authenticated session to every subscription check", async () => {
+    const alice = await connect(`${url}?token=alice`);
+    await alice.next();
+    alice.socket.send(JSON.stringify({ type: "subscribe", productionId: "PROD-PRIVATE" }));
+    expect(await alice.next()).toEqual({ type: "subscribed", productionId: "PROD-PRIVATE" });
+
+    const bob = await connect(`${url}?token=bob`);
+    await bob.next();
+    bob.socket.send(JSON.stringify({ type: "subscribe", productionId: "PROD-PRIVATE" }));
+    expect(await bob.next()).toMatchObject({ type: "error", code: "PRODUCTION_UNAUTHORIZED" });
+    bob.socket.send(JSON.stringify({ type: "subscribe", productionId: "PROD-PUBLIC" }));
+    expect(await bob.next()).toEqual({ type: "subscribed", productionId: "PROD-PUBLIC" });
+
+    await alice.close();
+    await bob.close();
+  });
+
+  it("treats an authenticate hook that throws as a 401", async () => {
+    await gateway.close();
+    gateway = createRealtimeGateway({
+      hub,
+      clock: fixedClock(NOW),
+      heartbeatIntervalMs: 0,
+      authenticate: () => {
+        throw new Error("identity provider down");
+      },
+    });
+    ({ url } = await gateway.listen(0));
+    expect(await refusal(url)).toContain("401");
+  });
+});

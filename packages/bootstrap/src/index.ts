@@ -1,4 +1,6 @@
 import type {
+  Clock,
+  IdentityPort,
   JobRunRepository,
   Logger,
   ModelPort,
@@ -7,10 +9,16 @@ import type {
   QueuePort,
   RepositorySet,
 } from "@pca/application";
-import { guardModelPort, guardRepositories } from "@pca/application";
-import type { EntityId } from "@pca/contracts";
+import { guardModelPort, guardRepositories, systemClock } from "@pca/application";
+import type { EntityId, Principal } from "@pca/contracts";
 import { createFileStore, defaultDataFilePath } from "@pca/file-store";
 import { createDemoMovie } from "@pca/fixtures";
+import {
+  MIN_SECRET_LENGTH,
+  createLocalIdentity,
+  generateAuthSecret,
+  issueToken,
+} from "@pca/local-auth";
 import { createMemoryJobRunRepository, createMemoryQueue } from "@pca/memory-queue";
 import { createMemoryStore } from "@pca/memory-store";
 import { connectMongoStore, defaultMongoUri } from "@pca/mongo-store";
@@ -234,4 +242,73 @@ export const createJobRuns = (kind: QueueKind): JobRunRepository => {
     case "sqs":
       throw new Error("PCA_QUEUE=sqs is deferred (paid); see TASKS.md TASK-402. Use memory.");
   }
+};
+
+/**
+ * Identity (TASK-914, SEC-001 / AUD-001).
+ *
+ * Two modes, chosen by the environment and never by a request:
+ *
+ * - **token** — `PCA_AUTH_SECRET` is set (≥ 32 characters). Every REST call
+ *   and WebSocket upgrade must carry a token signed with it; the operator
+ *   mints tokens with `pnpm run token`. Maker-checker is on unless
+ *   `PCA_MAKER_CHECKER=false`.
+ * - **demo** — `PCA_DEMO_MODE=true` and no secret. The server signs with an
+ *   ephemeral secret and hands anyone who asks `GET /api/auth/demo-session`
+ *   a token for the demo coordinator, so `npx … serve` still runs the golden
+ *   scenarios with zero configuration. Maker-checker is off unless
+ *   `PCA_MAKER_CHECKER=true`. The startup log says so loudly.
+ *
+ * Neither set: startup fails. A deployment that forgot its secret must not
+ * come up open (AUD-003's fail-closed principle, applied to identity).
+ */
+
+export type AuthMode = "token" | "demo";
+
+export type AuthSelection = {
+  readonly mode: AuthMode;
+  readonly identity: IdentityPort;
+  /** Demo mode only: mints the demo coordinator's token for the public demo-session route. */
+  readonly demoSession?: () => string;
+  readonly makerChecker: boolean;
+};
+
+/** The identity every demo session runs as; `"*"` because a demo has one operator and one production. */
+export const DEMO_PRINCIPAL: Principal = {
+  subject: "demo-coordinator",
+  issuer: "pca-demo",
+  type: "USER",
+  roles: ["approver"],
+  productions: "*",
+};
+
+const isTrue = (value: string | undefined): boolean => value?.trim().toLowerCase() === "true";
+const isFalse = (value: string | undefined): boolean => value?.trim().toLowerCase() === "false";
+
+export const selectAuth = (env: Environment, clock: Clock = systemClock): AuthSelection => {
+  const secret = env["PCA_AUTH_SECRET"]?.trim();
+  if (secret !== undefined && secret.length > 0) {
+    if (secret.length < MIN_SECRET_LENGTH) {
+      throw new Error(
+        `PCA_AUTH_SECRET must be at least ${MIN_SECRET_LENGTH} characters. Generate one with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`,
+      );
+    }
+    return {
+      mode: "token",
+      identity: createLocalIdentity({ secret, clock }),
+      makerChecker: !isFalse(env["PCA_MAKER_CHECKER"]),
+    };
+  }
+  if (isTrue(env["PCA_DEMO_MODE"])) {
+    const ephemeral = generateAuthSecret();
+    return {
+      mode: "demo",
+      identity: createLocalIdentity({ secret: ephemeral, clock }),
+      demoSession: () => issueToken({ secret: ephemeral, principal: DEMO_PRINCIPAL, clock }),
+      makerChecker: isTrue(env["PCA_MAKER_CHECKER"]),
+    };
+  }
+  throw new Error(
+    "No identity configured: set PCA_AUTH_SECRET (a 32+ character secret; tokens are minted with `pnpm run token`) for a deployment, or PCA_DEMO_MODE=true for a local demo where anyone reaching the server is the demo coordinator.",
+  );
 };

@@ -10,6 +10,8 @@ import { NavigationEnd, Router, RouterOutlet } from "@angular/router";
 import { toSignal } from "@angular/core/rxjs-interop";
 import { filter, map } from "rxjs";
 
+import { AuthService } from "./auth/auth.service";
+import { TokenPrompt } from "./auth/token-prompt";
 import { environment } from "./environment";
 import { RealtimeService } from "./realtime/realtime.service";
 import { ProductionHeader } from "./shell/production-header";
@@ -21,7 +23,9 @@ import { ProductionStore } from "./state/production.store";
  * area where the change workspace or a production view renders. The shell
  * owns the two connection points the rest of the UI relies on: the REST
  * client through the production store, and the notification channel
- * through the realtime service.
+ * through the realtime service. Neither is touched until the session is
+ * ready (TASK-914): a server that issues no demo session gets a token
+ * prompt in the routed area instead.
  */
 const productionIdFromUrl = (url: string): string | null =>
   /\/productions\/([^/?#]+)/u.exec(url)?.[1] ?? null;
@@ -29,7 +33,7 @@ const productionIdFromUrl = (url: string): string | null =>
 @Component({
   selector: "pca-root",
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterOutlet, ProductionHeader, ProductionNav],
+  imports: [RouterOutlet, ProductionHeader, ProductionNav, TokenPrompt],
   template: `
     <div class="shell">
       <pca-production-header
@@ -41,15 +45,19 @@ const productionIdFromUrl = (url: string): string | null =>
       <div class="body">
         <pca-production-nav [productionId]="productionId()" />
         <main class="main">
-          @if (store.loadState() === "error") {
-            <section class="error" role="alert">
-              <strong>{{ store.error()?.code }}</strong> {{ store.error()?.message }}
-              @if (store.error()?.nextStep; as next) {
-                <div class="next">{{ next }}</div>
-              }
-            </section>
+          @if (auth.state() === "needs-token") {
+            <pca-token-prompt />
+          } @else {
+            @if (store.loadState() === "error") {
+              <section class="error" role="alert">
+                <strong>{{ store.error()?.code }}</strong> {{ store.error()?.message }}
+                @if (store.error()?.nextStep; as next) {
+                  <div class="next">{{ next }}</div>
+                }
+              </section>
+            }
+            <router-outlet />
           }
-          <router-outlet />
         </main>
       </div>
     </div>
@@ -85,6 +93,7 @@ const productionIdFromUrl = (url: string): string | null =>
 })
 export class App {
   readonly store = inject(ProductionStore);
+  readonly auth = inject(AuthService);
   private readonly realtime = inject(RealtimeService);
   private readonly router = inject(Router);
 
@@ -99,14 +108,17 @@ export class App {
   readonly productionId = signal<string>(environment.defaultProductionId);
 
   constructor() {
-    this.realtime.connect();
     effect(() => {
       const id = this.routedProductionId();
-      if (id === null) return;
-      this.productionId.set(id);
+      const ready = this.auth.state() === "ready";
+      if (id !== null) this.productionId.set(id);
+      if (!ready || id === null) return;
       // Untracked: the store reads its own signals while opening, and those must not
       // become dependencies of this effect, or a load failure would re-trigger the load.
-      untracked(() => void this.store.open(id));
+      untracked(() => {
+        this.realtime.connect();
+        void this.store.open(id);
+      });
     });
   }
 }

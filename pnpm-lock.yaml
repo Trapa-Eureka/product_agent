@@ -11,6 +11,9 @@ importers:
       '@eslint/js':
         specifier: ^9.39.1
         version: 9.39.5
+      '@pca/application':
+        specifier: workspace:*
+        version: link:packages/application
       '@pca/bootstrap':
         specifier: workspace:*
         version: link:packages/bootstrap
@@ -23,6 +26,9 @@ importers:
       '@pca/fixtures':
         specifier: workspace:*
         version: link:packages/fixtures
+      '@pca/local-auth':
+        specifier: workspace:*
+        version: link:packages/adapters/local-auth
       '@pca/test-support':
         specifier: workspace:*
         version: link:packages/test-support
@@ -202,6 +208,22 @@ importers:
         specifier: workspace:*
         version: link:../../test-support
 
+  packages/adapters/local-auth:
+    dependencies:
+      '@pca/application':
+        specifier: workspace:*
+        version: link:../../application
+      '@pca/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+      zod:
+        specifier: ^4.6.1
+        version: 4.6.1
+    devDependencies:
+      '@pca/test-support':
+        specifier: workspace:*
+        version: link:../../test-support
+
   packages/adapters/memory-queue:
     dependencies:
       '@pca/application':
@@ -342,6 +364,9 @@ importers:
       '@pca/fixtures':
         specifier: workspace:*
         version: link:../fixtures
+      '@pca/local-auth':
+        specifier: workspace:*
+        version: link:../adapters/local-auth
       '@pca/memory-queue':
         specifier: workspace:*
         version: link:../adapters/memory-queue
