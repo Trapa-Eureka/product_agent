@@ -23,9 +23,11 @@ import type {
   AuditEventRepository,
   ChangeRequestRepository,
   CommitOutcome,
+  DecisionOutcome,
   IdempotencyRepository,
   ProductionMutation,
   ProductionRepository,
+  ProposalDecisionCommit,
   ProposalRepository,
   RepositorySet,
 } from "@pca/application";
@@ -155,6 +157,7 @@ export class MongoStore implements RepositorySet {
 
   async #ensureIndexes(): Promise<void> {
     const byProduction = { productionId: 1 } as const;
+    await this.#ensureUniqueApprovalPerProposal();
     await Promise.all([
       this.#collection("scenes").createIndexes([
         { key: byProduction },
@@ -163,7 +166,6 @@ export class MongoStore implements RepositorySet {
       ]),
       this.#collection("shootDays").createIndex({ productionId: 1, date: 1 }),
       this.#collection("proposals").createIndex({ productionId: 1, status: 1 }),
-      this.#collection("approvals").createIndex({ productionId: 1, proposalId: 1 }),
       this.#collection("auditEvents").createIndex({ productionId: 1, _id: -1 }),
       this.#collection("idempotency").createIndex({ productionId: 1, key: 1 }, { unique: true }),
       ...(
@@ -177,6 +179,27 @@ export class MongoStore implements RepositorySet {
         ] as const
       ).map((name) => this.#collection(name).createIndex(byProduction)),
     ]);
+  }
+
+  /**
+   * TASK-902: one decision per proposal is enforced by the database itself,
+   * so two racing inserts cannot both land whatever the application does.
+   * Mongo refuses to change an existing index's options in place, and every
+   * store created before this task carries the same key as a non-unique
+   * index, so that one is dropped first; a fresh database has nothing to drop.
+   */
+  async #ensureUniqueApprovalPerProposal(): Promise<void> {
+    const approvals = this.#collection("approvals");
+    const indexes = await approvals.indexes().catch(() => []);
+    const stale = indexes.find(
+      (index) =>
+        JSON.stringify(index.key) === JSON.stringify({ productionId: 1, proposalId: 1 }) &&
+        index.unique !== true,
+    );
+    if (stale?.name !== undefined) {
+      await approvals.dropIndex(stale.name);
+    }
+    await approvals.createIndex({ productionId: 1, proposalId: 1 }, { unique: true });
   }
 
   async #loadState(
@@ -303,6 +326,61 @@ export class MongoStore implements RepositorySet {
         { session },
       );
     });
+
+  /**
+   * TASK-902 (code review #2 / SEC-004 / AUD-004): one transaction, with two
+   * layers of "first decision wins". The read inside the transaction turns
+   * an already-present approval into `ALREADY_DECIDED` cheaply; the unique
+   * `(productionId, proposalId)` index catches the true race where two
+   * transactions both read nothing — the loser's insert fails with a
+   * duplicate key, its transaction aborts, and it answers with the record
+   * that beat it instead of an error.
+   */
+  readonly recordProposalDecision = async (
+    commit: ProposalDecisionCommit,
+  ): Promise<DecisionOutcome> => {
+    const { productionId, proposalId } = commit.approval;
+    const approvals = this.#collection<EntityRow<Approval>>("approvals");
+    const winner = async (session?: ClientSession): Promise<Approval | null> => {
+      const row = await approvals.findOne(
+        { productionId, proposalId },
+        { sort: { _id: 1 }, ...(session === undefined ? {} : { session }) },
+      );
+      return row === null ? null : fromRow<Approval>(row);
+    };
+
+    try {
+      return await this.#client.withSession((session) =>
+        session.withTransaction(async (): Promise<DecisionOutcome> => {
+          const existing = await winner(session);
+          if (existing !== null) {
+            await session.abortTransaction();
+            return { status: "ALREADY_DECIDED", approval: existing };
+          }
+          await approvals.insertOne(toRow(commit.approval), { session });
+          await this.#collection<EntityRow<Proposal>>("proposals").replaceOne(
+            { _id: rowId(commit.proposal.productionId, commit.proposal.id) },
+            toRow(commit.proposal),
+            { upsert: true, session },
+          );
+          await this.#collection<AuditEvent>("auditEvents").insertOne(
+            { ...commit.auditEvent },
+            { session },
+          );
+          return { status: "RECORDED" };
+        }),
+      );
+    } catch (error) {
+      if (!isDuplicateKey(error)) {
+        throw error;
+      }
+      const existing = await winner();
+      if (existing === null) {
+        throw error;
+      }
+      return { status: "ALREADY_DECIDED", approval: existing };
+    }
+  };
 
   async #commit(
     mutation: ProductionMutation,
@@ -481,6 +559,18 @@ export class MongoStore implements RepositorySet {
     },
   };
 }
+
+/**
+ * Mongo reports a unique-index violation as error code 11000, either on the
+ * write error itself or on the error that aborts the enclosing transaction.
+ */
+const isDuplicateKey = (error: unknown): boolean => {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+  const { code, cause } = error as { code?: unknown; cause?: unknown };
+  return code === 11000 || isDuplicateKey(cause);
+};
 
 const assertStateIsolation = (state: ProductionState): void => {
   const productionId = state.production.id;

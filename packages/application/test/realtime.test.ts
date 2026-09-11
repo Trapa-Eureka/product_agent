@@ -7,6 +7,7 @@ import { createMemoryStore, type MemoryStore } from "@pca/memory-store";
 import { fixedClock, onDay, sequentialIds } from "@pca/test-support";
 
 import {
+  createApplyApprovedProposal,
   createCreateProposal,
   createDecideProposal,
   createJobTracker,
@@ -142,6 +143,76 @@ describe("withProposalNotifications", () => {
     });
     await new Promise((resolve) => setImmediate(resolve));
     expect(landed).toEqual(["AWAITING_APPROVAL", "REJECTED"]);
+  });
+
+  it("notifies APPLIED through the atomic apply write, and nothing for a write that did not land (TASK-901/902)", async () => {
+    const clock = fixedClock(NOW);
+    const ids = sequentialIds();
+    const submit = createSubmitChangeRequest({ repositories, clock, ids });
+    const create = createCreateProposal({ repositories, clock, ids });
+    const decide = createDecideProposal({ repositories, clock, ids });
+    const apply = createApplyApprovedProposal({ repositories, clock, ids });
+
+    const submitted = await submit({
+      productionId: DEMO,
+      rawText: "Mike cannot shoot Friday.",
+      change: {
+        type: "CAST_UNAVAILABLE",
+        castId: DEMO_MOVIE_IDS.cast.mike,
+        unavailable: onDay(DEMO_MOVIE_DATES.friday),
+      },
+      createdBy: "c",
+    });
+    if (!submitted.ok) throw new Error(submitted.error.message);
+    const created = await create({
+      productionId: DEMO,
+      changeRequestId: submitted.value.id,
+      baseProductionVersion: 1,
+      operations: [
+        {
+          type: "RECORD_CAST_UNAVAILABILITY",
+          castId: DEMO_MOVIE_IDS.cast.mike,
+          unavailable: onDay(DEMO_MOVIE_DATES.friday),
+        },
+      ],
+      summary: "Record Mike unavailable",
+      proposedBy: "agent",
+    });
+    if (!created.ok) throw new Error(created.error.message);
+    const [approved, rejected] = await Promise.all([
+      decide({
+        productionId: DEMO,
+        proposalId: created.value.id,
+        decision: "APPROVE",
+        decidedBy: "a",
+      }),
+      decide({
+        productionId: DEMO,
+        proposalId: created.value.id,
+        decision: "REJECT",
+        decidedBy: "b",
+      }),
+    ]);
+    const winner = approved.ok ? approved : rejected;
+    if (!winner.ok) throw new Error("expected one decision to land");
+    const applied = await apply({
+      productionId: DEMO,
+      proposalId: created.value.id,
+      approvalId: winner.value.approval.id,
+      expectedProductionVersion: 1,
+      idempotencyKey: "idem-key-realtime-1",
+    });
+
+    // Exactly one decision notification (the loser wrote nothing), then, if
+    // the winner approved, one APPLIED — never a status the store never held.
+    const statuses = seen.map((n) => n.type === "proposal" && n.proposal.status);
+    const decidedStatus = winner.value.proposal.status;
+    expect(statuses).toEqual(
+      applied.ok
+        ? ["AWAITING_APPROVAL", decidedStatus, "APPLIED"]
+        : ["AWAITING_APPROVAL", decidedStatus],
+    );
+    expect((await store.proposals.findById(DEMO, created.value.id))?.status).toBe(statuses.at(-1));
   });
 
   it("leaves every other repository untouched and does not notify when the save throws", async () => {

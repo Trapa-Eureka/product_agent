@@ -375,6 +375,28 @@ describe("proposal lifecycle: create, then decide", () => {
       expect((await store.proposals.findById(DEMO, "P-1"))?.status).toBe("APPROVED");
     });
 
+    it("lets exactly one of two simultaneous opposite decisions win (TASK-902)", async () => {
+      await proposeGolden1();
+      const [approve, reject] = await Promise.all([
+        decide({ productionId: DEMO, proposalId: "P-1", decision: "APPROVE", decidedBy: "a" }),
+        decide({ productionId: DEMO, proposalId: "P-1", decision: "REJECT", decidedBy: "b" }),
+      ]);
+
+      // Both pass the early read; only one passes the atomic write. The
+      // loser is refused as contradicting a final decision — never a second
+      // success, never a second approval record.
+      expect([approve.ok, reject.ok].sort()).toEqual([false, true]);
+      const loser = approve.ok ? reject : approve;
+      expect(!loser.ok && loser.error.code).toBe("CONSTRAINT_VIOLATION");
+
+      const recorded = await store.approvals.findByProposalId(DEMO, "P-1");
+      const stored = await store.proposals.findById(DEMO, "P-1");
+      expect(recorded?.decision === "APPROVE" ? "APPROVED" : "REJECTED").toBe(stored?.status);
+      expect(
+        (await store.auditEvents.list(DEMO)).filter((e) => e.action.startsWith("PROPOSAL_")),
+      ).toHaveLength(2);
+    });
+
     it("refuses an unknown proposal and one from another production", async () => {
       await proposeGolden1();
       const missing = await decide({

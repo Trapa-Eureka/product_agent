@@ -14,9 +14,11 @@ import type {
   AuditEventRepository,
   ChangeRequestRepository,
   CommitOutcome,
+  DecisionOutcome,
   IdempotencyRepository,
   ProductionMutation,
   ProductionRepository,
+  ProposalDecisionCommit,
   ProposalRepository,
   RepositorySet,
 } from "@pca/application";
@@ -179,6 +181,31 @@ export class MemoryStore implements RepositorySet {
     );
     this.#auditEvents.push(copy(commit.auditEvent));
     return result;
+  };
+
+  /**
+   * TASK-902 (code review #2 / SEC-004 / AUD-004): the existence check and
+   * the three writes run with no `await` between them, so two racing
+   * decisions cannot both see "no decision yet" — one records, the other
+   * gets `ALREADY_DECIDED` with the record that won.
+   */
+  readonly recordProposalDecision = async (
+    commit: ProposalDecisionCommit,
+  ): Promise<DecisionOutcome> => {
+    const { productionId, proposalId } = commit.approval;
+    const existing = [...this.#approvals.values()].find(
+      (approval) => approval.productionId === productionId && approval.proposalId === proposalId,
+    );
+    if (existing !== undefined) {
+      return { status: "ALREADY_DECIDED", approval: copy(existing) };
+    }
+    this.#approvals.set(scopedKey(productionId, commit.approval.id), copy(commit.approval));
+    this.#proposals.set(
+      scopedKey(commit.proposal.productionId, commit.proposal.id),
+      copy(commit.proposal),
+    );
+    this.#auditEvents.push(copy(commit.auditEvent));
+    return { status: "RECORDED" };
   };
 
   #assertStateIsolation(state: ProductionState): void {

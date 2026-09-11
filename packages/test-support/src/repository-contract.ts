@@ -392,6 +392,76 @@ export const describeRepositoryContract = (
       });
     });
 
+    describe("recordProposalDecision (TASK-902: code review #2 / SEC-004 / AUD-004)", () => {
+      beforeEach(async () => {
+        await repositories.proposals.save(aProposal());
+      });
+
+      const decision = (id: string, decision: Approval["decision"]) => ({
+        approval: anApproval({ id, decision }),
+        proposal: aProposal({ status: decision === "APPROVE" ? "APPROVED" : "REJECTED" }),
+        auditEvent: anAuditEvent({
+          id: `AE-${id}`,
+          action: decision === "APPROVE" ? "PROPOSAL_APPROVED" : "PROPOSAL_REJECTED",
+        }),
+      });
+
+      it("records the approval, the decided status, and the audit event together", async () => {
+        expect(await repositories.recordProposalDecision(decision("A-77", "APPROVE"))).toEqual({
+          status: "RECORDED",
+        });
+
+        expect((await repositories.approvals.findByProposalId(DEMO, "P-104"))?.id).toBe("A-77");
+        expect((await repositories.proposals.findById(DEMO, "P-104"))?.status).toBe("APPROVED");
+        expect((await repositories.auditEvents.list(DEMO)).map((e) => e.action)).toEqual([
+          "PROPOSAL_APPROVED",
+        ]);
+      });
+
+      it("refuses a second decision and hands back the first, writing nothing", async () => {
+        await repositories.recordProposalDecision(decision("A-77", "APPROVE"));
+
+        const second = await repositories.recordProposalDecision(decision("A-78", "REJECT"));
+
+        expect(second).toMatchObject({ status: "ALREADY_DECIDED", approval: { id: "A-77" } });
+        expect(await repositories.approvals.findById(DEMO, "A-78")).toBeNull();
+        expect((await repositories.proposals.findById(DEMO, "P-104"))?.status).toBe("APPROVED");
+        expect(await repositories.auditEvents.list(DEMO)).toHaveLength(1);
+      });
+
+      it("lets exactly one of two simultaneous opposite decisions win", async () => {
+        const [approve, reject] = await Promise.all([
+          repositories.recordProposalDecision(decision("A-77", "APPROVE")),
+          repositories.recordProposalDecision(decision("A-78", "REJECT")),
+        ]);
+
+        const statuses = [approve.status, reject.status].sort();
+        expect(statuses).toEqual(["ALREADY_DECIDED", "RECORDED"]);
+
+        // One approval record, one audit line, and a proposal status that
+        // agrees with the decision that actually landed.
+        const recorded = await repositories.approvals.findByProposalId(DEMO, "P-104");
+        const proposal = await repositories.proposals.findById(DEMO, "P-104");
+        expect(recorded?.decision === "APPROVE" ? "APPROVED" : "REJECTED").toBe(proposal?.status);
+        const loser = approve.status === "ALREADY_DECIDED" ? approve : reject;
+        expect(loser.status === "ALREADY_DECIDED" && loser.approval.id).toBe(recorded?.id);
+        expect(await repositories.auditEvents.list(DEMO)).toHaveLength(1);
+      });
+
+      it("keeps decisions scoped to a production", async () => {
+        await repositories.recordProposalDecision(decision("A-77", "APPROVE"));
+        await repositories.proposals.save(aProposal({ productionId: OTHER_PRODUCTION }));
+
+        const other = await repositories.recordProposalDecision({
+          approval: anApproval({ id: "A-90", productionId: OTHER_PRODUCTION }),
+          proposal: aProposal({ productionId: OTHER_PRODUCTION, status: "APPROVED" }),
+          auditEvent: anAuditEvent({ id: "AE-90", productionId: OTHER_PRODUCTION }),
+        });
+
+        expect(other).toEqual({ status: "RECORDED" });
+      });
+    });
+
     describe("change requests, proposals, and approvals", () => {
       it("round-trips a change request", async () => {
         await repositories.changeRequests.save(aChangeRequest());

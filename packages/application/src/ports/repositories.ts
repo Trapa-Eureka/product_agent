@@ -130,6 +130,28 @@ export type ApplyProposalCommit = {
 };
 
 /**
+ * A human decision on a proposal and everything that must land with it: the
+ * approval record the write guard will demand, the proposal's decided status,
+ * and the audit event. Bundled so an adapter records all three together, and
+ * only if no decision exists yet (code review finding #2, SEC-004, AUD-004).
+ */
+export type ProposalDecisionCommit = {
+  readonly approval: Approval;
+  /** The proposal as it should read after this commit (status already decided). */
+  readonly proposal: Proposal;
+  readonly auditEvent: AuditEvent;
+};
+
+/**
+ * "Already decided" is an expected outcome, not an exception: two callers
+ * raced and one lost. The loser gets the winning record so it can answer
+ * "same decision, nothing new" or "contradicting a final decision" itself.
+ */
+export type DecisionOutcome =
+  | { readonly status: "RECORDED" }
+  | { readonly status: "ALREADY_DECIDED"; readonly approval: Approval };
+
+/**
  * Everything a use case needs from storage, passed as one object so a new port
  * does not ripple through every constructor.
  */
@@ -154,4 +176,13 @@ export type RepositorySet = {
    * without an unbound-`this` risk — which method shorthand would obscure.
    */
   readonly applyProposalTransaction: (commit: ApplyProposalCommit) => Promise<CommitOutcome>;
+
+  /**
+   * Records the first decision on a proposal — approval, decided status,
+   * audit event — as one atomic unit, with "no decision exists for this
+   * proposal yet" as the compare-and-set condition. Two concurrent callers
+   * cannot both win: the loser receives `ALREADY_DECIDED` with the record
+   * that beat it, and nothing of its own is written. (TASK-902.)
+   */
+  readonly recordProposalDecision: (commit: ProposalDecisionCommit) => Promise<DecisionOutcome>;
 };
