@@ -946,28 +946,16 @@ Tests (integration, mongodb-memory-server): an approval inserted directly with a
 
 Docs: `ARCHITECTURE.md` §9.
 
-## TASK-927 CI least privilege and pinned actions — TODO
+## TASK-927 CI least privilege and pinned actions — DONE
 
-**Goal**  
-Actions pinned to full commit SHAs; explicit minimal `permissions`; Dependabot proposes SHA updates.
+SEC-016 (Low) / AUD-019. `ci.yml` referenced `actions/checkout@v4`, `pnpm/action-setup@v4`, and `actions/setup-node@v4` — mutable tags a compromised upstream could move under code that runs with the workflow token — and declared no `permissions`, so that token had the repository default rather than the least it needs.
 
-**Context**  
-SEC-016 (Low) / AUD-019.
+**Status**  
+Complete. The workflow sets `permissions: contents: read` at the top level (verify needs nothing else). The three actions are pinned to the commits their `v4.4.0` tags resolve to — `actions/checkout@11d5960a…`, `pnpm/action-setup@fc06bc12…`, `actions/setup-node@49933ea5…` — with the tag in a trailing comment so a reviewer can see what a SHA stands for; the pnpm action's floating `v4` tag pointed at a commit newer than any patch tag, which is exactly why the explicit tag's commit was pinned instead. `.github/dependabot.yml` asks for weekly pull requests for GitHub Actions (SHA updates) and npm (grouped into development and runtime dependencies), so an update to what CI executes is a reviewed change; the TASK-925 audit step still fails the build on a known advisory regardless.
 
-**Dependencies**  
-None.
+Tests: the change is to CI itself; the pull request's own run on this workflow is the test, and `pnpm run verify` is unchanged (9/9).
 
-**Allowed scope**  
-`.github/`.
-
-**Acceptance criteria**  
-No `@vN` action refs; top-level `permissions: contents: read`; `dependabot.yml` for github-actions and npm.
-
-**Tests**  
-CI green on the PR.
-
-**Definition of Done**  
-Acceptance met.
+Docs: `TESTING.md` §12.
 
 ## TASK-928 Explicit HTTP security headers — TODO
 
