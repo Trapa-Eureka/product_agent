@@ -1,7 +1,7 @@
 import type { EntityId, JobRun, Proposal, RecoverySnapshot } from "@pca/contracts";
 import { OPEN_PROPOSAL_STATUSES } from "@pca/contracts";
 
-import type { Clock, JobRunRepository, RepositorySet } from "../ports";
+import type { Clock, JobRunReader, RepositorySet } from "../ports";
 import type { UseCaseResult } from "../result";
 import { fail, succeed } from "../result";
 
@@ -27,7 +27,7 @@ export type GetJobRun = (input: {
 
 export const createGetRecoverySnapshot = (dependencies: {
   readonly repositories: RepositorySet;
-  readonly jobRuns: JobRunRepository;
+  readonly jobRuns: JobRunReader;
   readonly clock: Clock;
 }): GetRecoverySnapshot => {
   const { repositories, jobRuns, clock } = dependencies;
@@ -60,9 +60,7 @@ export const createGetRecoverySnapshot = (dependencies: {
 };
 
 /** A job is visible only through its own production; a mismatch reads as not found. */
-export const createGetJobRun = (dependencies: {
-  readonly jobRuns: JobRunRepository;
-}): GetJobRun => {
+export const createGetJobRun = (dependencies: { readonly jobRuns: JobRunReader }): GetJobRun => {
   const { jobRuns } = dependencies;
 
   return async (input) => {

@@ -104,4 +104,45 @@ describe("jobTracker", () => {
     ]);
     expect(seen).toEqual(["JOB-1", "JOB-2", "JOB-3"]);
   });
+
+  it("TASK-905: a concurrent advance and note both land, in order, instead of one erasing the other", async () => {
+    await tracker.start({
+      productionId: "PROD-DEMO",
+      correlationId: "corr-1",
+      type: "ANALYZE_CHANGE",
+    });
+
+    // Before atomic updates both loaded `received`, and whichever saved last
+    // won: the run ended back at `received` with the transition lost.
+    await Promise.all([
+      tracker.advance("JOB-1", "analyzing"),
+      tracker.note("JOB-1", "Retrying (attempt 2): socket hang up"),
+    ]);
+
+    const run = await tracker.get("JOB-1");
+    expect(run?.stage).toBe("analyzing");
+    expect(run?.message).toBe("Retrying (attempt 2): socket hang up");
+    expect(run?.history.map((event) => `${event.stage}:${event.status}`)).toEqual([
+      "received:STARTED",
+      "received:COMPLETED",
+      "analyzing:STARTED",
+      "analyzing:STARTED",
+    ]);
+    expect(published).toEqual(run?.history);
+  });
+
+  it("TASK-905: a refused move writes nothing and publishes nothing", async () => {
+    await tracker.start({
+      productionId: "PROD-DEMO",
+      correlationId: "corr-1",
+      type: "ANALYZE_CHANGE",
+    });
+    const before = await tracker.get("JOB-1");
+    published.length = 0;
+
+    await expect(tracker.advance("JOB-1", "applying")).rejects.toBeInstanceOf(JobStageError);
+
+    expect(await tracker.get("JOB-1")).toEqual(before);
+    expect(published).toEqual([]);
+  });
 });

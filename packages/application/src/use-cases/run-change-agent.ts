@@ -57,10 +57,25 @@ export type RunChangeAgentInput = {
   /** Either a sentence to interpret or an already-resolved change from the resolution step. */
   readonly text: string;
   readonly change?: TypedChange;
+  /**
+   * A change request an earlier attempt of the same job already recorded
+   * (TASK-905). The loop reuses it — its stored change, no re-interpretation,
+   * no second `CHANGE_REQUEST_SUBMITTED` — instead of submitting a duplicate.
+   * Ignored if it cannot be found, so a stale reference degrades to a fresh
+   * submission rather than a failure.
+   */
+  readonly changeRequestId?: EntityId;
   readonly requestedBy: string;
   readonly correlationId?: string;
-  /** Called as the loop enters analysis, simulation, and validation, for a job timeline. */
-  readonly progress?: (stage: "analyzing" | "simulating" | "validating") => Promise<void> | void;
+  /**
+   * Called as the loop enters analysis, simulation, and validation, for a job
+   * timeline. `details` carries the change request's ID on the first call so
+   * the timeline can attach it before anything can go wrong (TASK-905).
+   */
+  readonly progress?: (
+    stage: "analyzing" | "simulating" | "validating",
+    details?: { readonly changeRequestId: EntityId },
+  ) => Promise<void> | void;
 };
 
 export type AgentOutcome =
@@ -230,7 +245,15 @@ export const createRunChangeAgent = (dependencies: {
     const correlationId = input.correlationId ?? ids.next("corr");
     const trace = { correlationId };
 
-    let change = input.change;
+    // A retry hands back the change request its first attempt recorded: the
+    // sentence was already read and the fact already written down, so both
+    // are taken from the record rather than done a second time (TASK-905).
+    const existing =
+      input.changeRequestId === undefined
+        ? null
+        : await repositories.changeRequests.findById(input.productionId, input.changeRequestId);
+
+    let change = existing?.payload ?? input.change;
     if (change === undefined) {
       const interpreted = await interpret({
         productionId: input.productionId,
@@ -248,17 +271,22 @@ export const createRunChangeAgent = (dependencies: {
       change = interpreted.value.change;
     }
 
-    const submitted = await submit({
-      productionId: input.productionId,
-      rawText: input.text,
-      change,
-      createdBy: input.requestedBy,
-      correlationId,
-    });
-    if (!submitted.ok) return submitted;
-    const changeRequest = submitted.value;
+    let changeRequest: ChangeRequest;
+    if (existing !== null) {
+      changeRequest = existing;
+    } else {
+      const submitted = await submit({
+        productionId: input.productionId,
+        rawText: input.text,
+        change,
+        createdBy: input.requestedBy,
+        correlationId,
+      });
+      if (!submitted.ok) return submitted;
+      changeRequest = submitted.value;
+    }
 
-    await input.progress?.("analyzing");
+    await input.progress?.("analyzing", { changeRequestId: changeRequest.id });
     await audit(
       input.productionId,
       correlationId,

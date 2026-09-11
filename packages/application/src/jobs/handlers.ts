@@ -19,7 +19,7 @@ import type { ApplyApprovedProposal } from "../use-cases/apply-approved-proposal
 import type { RunChangeAgent } from "../use-cases/run-change-agent";
 import type { VerifyAppliedProposal } from "../use-cases/verify-applied-proposal";
 import type { JobTracker } from "./job-tracker";
-import { isTerminalStage } from "./stage-machine";
+import { isAtOrBeyond, isTerminalStage } from "./stage-machine";
 
 /**
  * Queue handlers that drive the job stage machine (TASK-403).
@@ -90,23 +90,35 @@ export const createAnalyzeChangeJobHandler = (dependencies: {
     if (run === null) return { kind: "FAILED", reason: `Job ${jobId} was never started.` };
     if (isTerminalStage(run.stage)) return { kind: "COMPLETED" };
 
-    // A change the user already resolved skips interpretation; otherwise the
-    // run may already be at `resolving`, waiting on the user's answer.
-    if (run.stage === "received") {
-      await tracker.advance(jobId, change === undefined ? "resolving" : "analyzing");
-    } else if (run.stage === "resolving" && change !== undefined) {
-      await tracker.advance(jobId, "analyzing");
+    // A sentence still to be interpreted waits at `resolving` (the user may
+    // be asked); a resolved change enters `analyzing` from the loop's first
+    // progress callback below, which is also where the change request it
+    // just recorded gets attached to the run.
+    if (run.stage === "received" && change === undefined) {
+      await tracker.advance(jobId, "resolving");
     }
 
+    // TASK-905 (code review #5 / AUD-013): a redelivered job re-runs the
+    // whole orchestration. Its progress callbacks are monotonic — a stage the
+    // run already reached or passed is left alone rather than moved back to,
+    // which used to throw on every retry at `simulating`/`validating` — and
+    // the change request the first attempt recorded is reused rather than
+    // submitted again.
     const result = await runChangeAgent({
       productionId: envelope.productionId,
       text,
       ...(change === undefined ? {} : { change }),
+      ...(run.changeRequestId === undefined ? {} : { changeRequestId: run.changeRequestId }),
       requestedBy,
       correlationId: envelope.correlationId,
-      progress: async (stage) => {
+      progress: async (stage, details) => {
         const current = await tracker.get(jobId);
-        if (current !== null && current.stage !== stage) await tracker.advance(jobId, stage);
+        if (current === null || isAtOrBeyond(current.stage, stage)) return;
+        await tracker.advance(jobId, stage, {
+          ...(details?.changeRequestId === undefined
+            ? {}
+            : { changeRequestId: details.changeRequestId }),
+        });
       },
     });
 

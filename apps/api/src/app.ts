@@ -155,11 +155,11 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
   const apply: ApplyApprovedProposal = createApplyApprovedProposal({ repositories, clock, ids });
   const submit = createSubmitChangeRequest({ repositories, clock, ids });
   const analyzeImpact: AnalyzeChangeImpact = createAnalyzeChangeImpact({ repositories, logger });
-  // The tracker is the job-run store the queries read; `save` never runs through this path.
+  // The tracker is the job-run store the queries read. They take the read
+  // side only (`JobRunReader`), so no write capability is faked here.
   const jobRuns = {
     findById: (jobId: EntityId) => tracker.get(jobId),
     listByProduction: (productionId: EntityId) => tracker.listByProduction(productionId),
-    save: () => Promise.resolve(),
   };
   const getJobRun: GetJobRun = createGetJobRun({ jobRuns });
   const getSnapshot: GetRecoverySnapshot = createGetRecoverySnapshot({

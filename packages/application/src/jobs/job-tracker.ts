@@ -10,6 +10,7 @@ import type {
 import type { Clock, IdFactory, JobRunRepository } from "../ports";
 import {
   type AdvanceOptions,
+  type StageMove,
   advanceJobRun,
   failJobRun,
   noteJobRun,
@@ -75,39 +76,44 @@ export const createJobTracker = (dependencies: {
     }
   };
 
-  const load = async (jobId: EntityId): Promise<JobRun> => {
-    const run = await repository.findById(jobId);
-    if (run === null) throw new UnknownJobError(jobId);
-    return run;
-  };
-
-  const commit = async (move: { run: JobRun; events: AgentJobEvent[] }): Promise<JobRun> => {
-    await repository.save(move.run);
-    publish(move.events);
-    return move.run;
+  /**
+   * Every move is one atomic `repository.update` (TASK-905, code review #6 /
+   * AUD-013): the stage machine runs against the run as it is at the moment
+   * of writing, never against a copy loaded earlier, so a retry `note` from
+   * the queue binder and an `advance` from the handler cannot overwrite each
+   * other — and only what actually landed is published.
+   */
+  const commit = async (jobId: EntityId, move: (run: JobRun) => StageMove): Promise<JobRun> => {
+    const committed = await repository.update(jobId, (run) => {
+      const next = move(run);
+      return { run: next.run, result: next };
+    });
+    if (committed === null) throw new UnknownJobError(jobId);
+    publish(committed.events);
+    return committed.run;
   };
 
   return {
-    start: (input) =>
-      commit(
-        startJobRun({
-          id: ids.next("JOB"),
-          productionId: input.productionId,
-          correlationId: input.correlationId,
-          type: input.type,
-          now: clock.now(),
-          ...(input.message === undefined ? {} : { message: input.message }),
-          ...(input.changeRequestId === undefined
-            ? {}
-            : { changeRequestId: input.changeRequestId }),
-          ...(input.proposalId === undefined ? {} : { proposalId: input.proposalId }),
-        }),
-      ),
-    advance: async (jobId, to, options = {}) =>
-      commit(advanceJobRun(await load(jobId), to, clock.now(), options)),
-    fail: async (jobId, message) => commit(failJobRun(await load(jobId), message, clock.now())),
-    note: async (jobId, message, options) =>
-      commit(noteJobRun(await load(jobId), message, clock.now(), options)),
+    start: async (input) => {
+      const started = startJobRun({
+        id: ids.next("JOB"),
+        productionId: input.productionId,
+        correlationId: input.correlationId,
+        type: input.type,
+        now: clock.now(),
+        ...(input.message === undefined ? {} : { message: input.message }),
+        ...(input.changeRequestId === undefined ? {} : { changeRequestId: input.changeRequestId }),
+        ...(input.proposalId === undefined ? {} : { proposalId: input.proposalId }),
+      });
+      await repository.save(started.run);
+      publish(started.events);
+      return started.run;
+    },
+    advance: (jobId, to, options = {}) =>
+      commit(jobId, (run) => advanceJobRun(run, to, clock.now(), options)),
+    fail: (jobId, message) => commit(jobId, (run) => failJobRun(run, message, clock.now())),
+    note: (jobId, message, options) =>
+      commit(jobId, (run) => noteJobRun(run, message, clock.now(), options)),
     get: (jobId) => repository.findById(jobId),
     listByProduction: (productionId) => repository.listByProduction(productionId),
     onEvent: (listener) => {

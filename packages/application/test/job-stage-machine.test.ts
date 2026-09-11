@@ -12,6 +12,7 @@ import {
   isTerminalStage,
   noteJobRun,
   startJobRun,
+  isAtOrBeyond,
 } from "../src";
 
 const NOW = "2026-09-10T12:00:00.000Z";
@@ -274,5 +275,25 @@ describe("events", () => {
     failJobRun(before, "x", LATER);
     noteJobRun(before, "y", LATER);
     expect(before).toEqual(snapshot);
+  });
+});
+
+describe("isAtOrBeyond (TASK-905)", () => {
+  it("answers 'already there' for the current stage and every stage before it", () => {
+    expect(isAtOrBeyond("simulating", "analyzing")).toBe(true);
+    expect(isAtOrBeyond("simulating", "simulating")).toBe(true);
+    expect(isAtOrBeyond("validating", "analyzing")).toBe(true);
+    expect(isAtOrBeyond("completed", "verifying")).toBe(true);
+  });
+
+  it("answers 'not yet' for a stage still ahead", () => {
+    expect(isAtOrBeyond("analyzing", "simulating")).toBe(false);
+    expect(isAtOrBeyond("received", "analyzing")).toBe(false);
+    expect(isAtOrBeyond("awaiting_approval", "applying")).toBe(false);
+  });
+
+  it("treats a failed run as beyond everything: nothing re-enters it", () => {
+    expect(isAtOrBeyond("failed", "analyzing")).toBe(true);
+    expect(isAtOrBeyond("failed", "completed")).toBe(true);
   });
 });
