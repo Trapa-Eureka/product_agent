@@ -746,6 +746,15 @@ Complete, in `packages/adapters/rule-model`. Intent is split: `UNAVAILABLE` now 
 
 20 new tests in the adapter's suite: five range sentences across all three spellings keep the whole range; a location range; four refusals (end before start, an impossible single date, an impossible range end, a weekday with no later shoot day) each naming the reason; the ambiguous-first-weekday case; six positive sentences refused with the "only unavailability" reason; and three negative contractions (`is not`, `isn't`, `aren't`) confirmed to still read as unavailability so the split did not narrow what worked. The three golden sentences and every prior close variant are unchanged. `pnpm run verify` passes (9/9).
 
+## TASK-909 Preparation tasks must reference entities that exist — DONE
+
+Code review finding #10 (High): `CREATE_PREPARATION_TASK` inserted a task without checking that its `relatedEntityType`/`relatedEntityId` named anything, and INV-3 (`checkSceneIntegrity`) validated scene, shoot-day, call-sheet, and requirement links but never task links. An MCP caller could therefore get a proposal with a task linked to `SCENE NONEXISTENT` through simulation, approval, apply, and verification, all reporting valid — an orphan the UI and API could not resolve and dependency traversal could not follow.
+
+**Status**  
+Complete, at both places the report named. Simulation: `CREATE_PREPARATION_TASK` now resolves the target by the type it names — scene, shoot day, call sheet, or requirement — against the draft, and an absent target is an `UNKNOWN_ENTITY_REFERENCE` conflict on that entity with no task created, the same shape a missing call sheet or shoot day already produced. Checking the draft rather than the original state matters: a task may legitimately name a requirement an earlier operation in the same proposal creates (GOLDEN-3's "add the red car, then a task to source it"), and that keeps working. Invariant: INV-3 gained a task loop, so an orphan task in *stored* state is reported as `UNKNOWN_ENTITY_REFERENCE` on the task with the title and target in the detail — caught by `verify_applied_proposal` and every other invariant check regardless of how it got there, which is the layer the operation-level check cannot cover. DOMAIN.md INV-3 now states the rule.
+
+4 new tests: simulation refuses a task for a missing scene and one for a missing call sheet, each as a conflict naming the type and ID, with no task created; a task naming a requirement the previous operation creates applies cleanly; INV-3 rejects two stored orphans (scene and shoot-day targets) as `INV-3`/`UNKNOWN_ENTITY_REFERENCE` on the task, and accepts a task whose target exists. `pnpm run verify` passes (9/9).
+
 ---
 
 # Parallelization guidance

@@ -211,6 +211,45 @@ describe("INV-3 scene integrity", () => {
     expect(violations[0]?.conflict.detail).toContain(MONDAY);
   });
 
+  it("TASK-909: rejects a task pointing at an entity that does not exist, by the type it names", () => {
+    const index = indexProduction(
+      aProductionState({
+        tasks: [
+          aTask({ id: "T-ORPHAN", relatedEntityType: "SCENE", relatedEntityId: "S-NOPE" }),
+          aTask({ id: "T-ORPHAN-2", relatedEntityType: "SHOOT_DAY", relatedEntityId: "SD-NOPE" }),
+        ],
+      }),
+    );
+
+    // A stored orphan task used to pass INV-3 (and so verification) silently.
+    const violations = checkSceneIntegrity(index);
+    expect(violations.map((v) => v.conflict)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "UNKNOWN_ENTITY_REFERENCE",
+          entityType: "TASK",
+          entityId: "T-ORPHAN",
+        }),
+        expect.objectContaining({
+          code: "UNKNOWN_ENTITY_REFERENCE",
+          entityType: "TASK",
+          entityId: "T-ORPHAN-2",
+        }),
+      ]),
+    );
+    expect(violations.every((v) => v.invariant === "INV-3")).toBe(true);
+  });
+
+  it("TASK-909: accepts a task whose target exists", () => {
+    const index = indexProduction(
+      aProductionState({
+        scenes: [aScene({ id: "S07" })],
+        tasks: [aTask({ id: "T-1", relatedEntityType: "SCENE", relatedEntityId: "S07" })],
+      }),
+    );
+    expect(checkSceneIntegrity(index).filter((v) => v.conflict.entityType === "TASK")).toEqual([]);
+  });
+
   it("rejects a call sheet pointing at a shoot day that does not exist", () => {
     const index = indexProduction(
       aProductionState({

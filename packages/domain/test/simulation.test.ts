@@ -228,6 +228,83 @@ describe("operations that cannot apply", () => {
     );
   });
 
+  it("TASK-909: refuses a preparation task for an entity that does not exist, by the type it names", () => {
+    const outcome = simulateProposal(afterSarahConflict(), [
+      {
+        type: "CREATE_PREPARATION_TASK",
+        title: "Source a red car for a scene that is not there",
+        relatedEntityType: "SCENE",
+        relatedEntityId: "S-NOPE",
+      },
+      {
+        type: "CREATE_PREPARATION_TASK",
+        title: "Regenerate a call sheet that is not there",
+        relatedEntityType: "CALL_SHEET",
+        relatedEntityId: "CS-NOPE",
+      },
+    ]);
+
+    // Before this, both tasks were created and the simulation reported valid.
+    expect(outcome.valid).toBe(false);
+    expect(outcome.conflicts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "UNKNOWN_ENTITY_REFERENCE",
+          entityType: "SCENE",
+          entityId: "S-NOPE",
+        }),
+        expect.objectContaining({
+          code: "UNKNOWN_ENTITY_REFERENCE",
+          entityType: "CALL_SHEET",
+          entityId: "CS-NOPE",
+        }),
+      ]),
+    );
+    // Neither task was created: a refused operation contributes a conflict, not a record.
+    const before = afterSarahConflict().state;
+    const applied = applyOperations(
+      before,
+      [
+        {
+          type: "CREATE_PREPARATION_TASK",
+          title: "Source a red car for a scene that is not there",
+          relatedEntityType: "SCENE",
+          relatedEntityId: "S-NOPE",
+        },
+      ],
+      simulationIds(),
+    );
+    expect(applied.createdTasks).toEqual([]);
+    expect(applied.state.tasks).toHaveLength(before.tasks.length);
+  });
+
+  it("TASK-909: a task may point at a requirement an earlier operation in the same proposal creates", () => {
+    const applied = applyOperations(
+      afterSarahConflict().state,
+      [
+        {
+          type: "ADD_SCENE_REQUIREMENT",
+          sceneId: scenes.s18,
+          requirementType: "PROP",
+          name: "red car",
+        },
+        {
+          type: "CREATE_PREPARATION_TASK",
+          title: "Source the red car",
+          relatedEntityType: "REQUIREMENT",
+          relatedEntityId: "NEW-ID",
+        },
+      ],
+      // Every allocated ID is "NEW-ID", so the task can name the requirement
+      // the previous operation creates; the check runs against the draft.
+      () => "NEW-ID",
+    );
+
+    expect(applied.conflicts).toEqual([]);
+    expect(applied.state.requirements.some((req) => req.id === "NEW-ID")).toBe(true);
+    expect(applied.state.tasks.some((task) => task.relatedEntityId === "NEW-ID")).toBe(true);
+  });
+
   it("refuses an unknown call sheet or shoot day rather than throwing", () => {
     const outcome = simulateProposal(demo(), [
       { type: "MARK_CALL_SHEET_STALE", callSheetId: "CS-GHOST" },

@@ -87,6 +87,24 @@ const unknown = (entityType: Conflict["entityType"], entityId: EntityId): Confli
   detail: `${entityType} ${entityId} does not exist in this production.`,
 });
 
+/** Whether the entity a task would link to is present in `state`, by the type the task names. */
+const relatedEntityExists = (
+  state: ProductionState,
+  type: Task["relatedEntityType"],
+  id: EntityId,
+): boolean => {
+  switch (type) {
+    case "SCENE":
+      return state.scenes.some((scene) => scene.id === id);
+    case "SHOOT_DAY":
+      return state.shootDays.some((day) => day.id === id);
+    case "CALL_SHEET":
+      return state.callSheets.some((sheet) => sheet.id === id);
+    case "REQUIREMENT":
+      return state.requirements.some((requirement) => requirement.id === id);
+  }
+};
+
 /**
  * Applies operations in order to a copy of the state.
  *
@@ -214,6 +232,14 @@ export const applyOperations = (
       }
 
       case "CREATE_PREPARATION_TASK": {
+        // TASK-909 (code review #10): a task is a link into the production,
+        // so the thing it links to must exist — resolved by the type the
+        // operation names, against the draft, so a task for an entity an
+        // earlier operation in this proposal created is fine.
+        if (!relatedEntityExists(draft, operation.relatedEntityType, operation.relatedEntityId)) {
+          conflicts.push(unknown(operation.relatedEntityType, operation.relatedEntityId));
+          break;
+        }
         const task: Task = {
           id: allocateId("T"),
           productionId: draft.production.id,

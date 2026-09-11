@@ -257,6 +257,14 @@ A scene may also appear on at most one shoot day. A scene scheduled twice is a
 scheduling corruption rather than a plan, so it is reported here with
 `SCENE_ALREADY_ON_SHOOT_DAY`.
 
+A task's link into the production must resolve too (TASK-909): its
+`relatedEntityId` must name an existing entity of its `relatedEntityType`
+(scene, shoot day, call sheet, or requirement). An orphan task is reported
+here as `UNKNOWN_ENTITY_REFERENCE` on the task, so corrupted stored state is
+caught independently of how it got there; and `CREATE_PREPARATION_TASK`
+refuses to create one in the first place, checked against the draft so a task
+may name an entity an earlier operation in the same proposal creates.
+
 ### INV-4 Production isolation
 Entities from one production cannot be referenced by another production.
 
