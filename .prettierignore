@@ -10,3 +10,6 @@ test-results/
 apps/web/.angular/
 apps/web/dist/
 apps/web/out-tsc/
+
+# npm package build outputs (TASK-806)
+apps/cli/web/

@@ -154,3 +154,5 @@ the file store is single-process.
 
 Publishing a public package costs nothing; a free npm account and `npm login` are the only prerequisites.
 The rationale for the free-first defaults is recorded in `ARCHITECTURE.md` §2 and `docs/decisions/0001-free-first-adapters.md`.
+
+Done 2026-09-11 (TASK-806): `apps/cli` is the package; CI packs it, installs the tarball with npm into an empty directory, and drives seed/serve/mcp including the three golden scenarios; publishing is a `v*` tag.

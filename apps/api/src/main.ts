@@ -96,7 +96,10 @@ const main = async (): Promise<void> => {
     requestsPerMinute: positiveIntFromEnv("PCA_RATE_LIMIT_PER_MINUTE", DEFAULT_REQUESTS_PER_MINUTE),
     writesPerMinute: positiveIntFromEnv("PCA_WRITE_LIMIT_PER_MINUTE", DEFAULT_WRITES_PER_MINUTE),
   };
+  // The console, when the package ships one beside the API (TASK-806).
+  const consoleDir = process.env["PCA_CONSOLE_DIR"]?.trim();
   const server = createApiServer({
+    ...(consoleDir === undefined || consoleDir === "" ? {} : { consoleDir }),
     repositories,
     tracker,
     queue,
@@ -119,6 +122,7 @@ const main = async (): Promise<void> => {
   logger.log("info", "api_start", {
     url: bound.url,
     websocket: bound.websocketUrl,
+    console: consoleDir === undefined || consoleDir === "" ? "(not served)" : bound.url,
     storage: selection.kind,
     queue: queueKind,
     auth: auth.mode,

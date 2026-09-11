@@ -44,6 +44,8 @@ export default tseslint.config(
       "**/coverage/**",
       "**/playwright-report/**",
       "**/test-results/**",
+      // The console copied into the npm package (TASK-806): a build output, not source.
+      "apps/cli/web/**",
     ],
   },
   js.configs.recommended,

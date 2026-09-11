@@ -133,8 +133,12 @@ codebase to demonstrate the intended production shape.
 Consequences:
 
 - domain and application packages never see which adapter is active;
-- the published npm package runs the full product on a clean machine with
-  `npx` and no credentials;
+- the published npm package (`production-change-agent`, `apps/cli`, TASK-806)
+  runs the full product on a clean machine with `npx` and no credentials: one
+  esbuild bundle of the CLI and every workspace package it reaches, the
+  third-party runtime dependencies (express, ws, zod, mongodb, the MCP SDK)
+  declared and installed by npm, and the built console beside it, served by
+  the API from the same origin;
 - Bedrock, SQS, and Terraform `apply` are exercised only when a budget or
   AWS account exists (see `TASKS.md` items marked DEFERRED).
 
@@ -190,8 +194,9 @@ required to run the product (§2 "Free-first constraint").
 product_agent/
 ├── apps/
 │   ├── web/                 # Angular
-│   ├── api/                 # Express API
-│   └── mcp-server/          # MCP transport/tool registration
+│   ├── api/                 # Express API (serves the built console too)
+│   ├── mcp-server/          # MCP transport/tool registration
+│   └── cli/                 # the npm package: seed / serve / mcp (TASK-806)
 ├── packages/
 │   ├── domain/              # entities, invariants, change engine
 │   ├── application/         # use cases, and the ports they depend on
@@ -351,6 +356,17 @@ on every run), and the move itself carries the same expectation into the
 atomic update (`AdvanceOptions.expect`), so it is a compare-and-set; a
 queue handler whose payload names another proposal fails the queue job and
 leaves the run alone.
+
+When the API also serves the console (TASK-806: `PCA_CONSOLE_DIR`, which the
+npm package sets to the console it ships), answers outside `/api` carry the
+console's policy instead (`CONSOLE_CONTENT_SECURITY_POLICY`: scripts, styles,
+fonts, and connections from this host only, inline styles allowed for
+Angular's runtime-injected component styles) — the same policy the dev
+server sends, so the E2E suite exercises what ships. Hashed assets are
+`immutable`; `index.html` stays `no-store`; any GET outside `/api` that is
+not a file answers `index.html`, so the Angular router owns the path. The
+Angular production build no longer inlines critical CSS, which would have
+needed an inline `onload` handler the policy forbids.
 
 ### Angular UI
 
@@ -738,8 +754,9 @@ needs this: the memory store is thrown away with the process, and Mongo is
 the portfolio target, not the free runtime default this command exists
 for. `resetDemoMovie` (`@pca/bootstrap`) wires `FileStore.resetProduction`
 to the environment and refuses for any other `PCA_STORAGE`; `scripts/seed.ts`
-is the one-command entry point, and the function it calls is what TASK-806's
-future `seed` CLI subcommand will call too.
+is the one-command entry point in the repository, and
+`production-change-agent seed` (the npm package, TASK-806) calls the same
+function.
 
 `RepositorySet.applyProposalTransaction` (TASK-901, post-review remediation
 in TASKS.md) is the one atomic write behind `apply_approved_proposal`: the

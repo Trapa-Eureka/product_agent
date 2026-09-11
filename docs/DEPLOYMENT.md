@@ -20,9 +20,17 @@ docker build -t production-change-agent .
 docker run --rm -p 3000:3000 -e PCA_DEMO_MODE=true -e PCA_STORAGE=memory production-change-agent
 ```
 
-The console is a static build (`pnpm --filter @pca/web build`) served by a
-host or proxy that applies the headers in ARCHITECTURE.md §6 and proxies
-`/api` and `/ws` to the API.
+The console is a static build (`pnpm --filter @pca/web build`). The API
+serves it from its own origin when `PCA_CONSOLE_DIR` names the build
+directory (the console's own CSP on those answers, ARCHITECTURE.md §6); or a
+host or proxy serves it, applies those headers, and proxies `/api` and `/ws`
+to the API.
+
+The npm package `production-change-agent` (TASK-806) is the other artifact:
+`npx production-change-agent serve` runs the API with the console it ships
+and honours every variable in the checklist below, so a small deployment can
+be a process manager running it with `PCA_AUTH_SECRET`, an allow-list, and
+`PCA_API_HOST` behind a TLS-terminating proxy (`PCA_TLS_TERMINATED=true`).
 
 ## Checklist
 

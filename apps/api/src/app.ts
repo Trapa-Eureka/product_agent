@@ -1,3 +1,5 @@
+import { basename, join, resolve } from "node:path";
+
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
 
@@ -45,7 +47,7 @@ import { createAllToolHandlers } from "@pca/mcp-server/handlers";
 import { HTTP_STATUS_BY_CODE, invalidInput, sendError } from "./errors";
 import { invokeTool } from "./invoke";
 import { clientAddressOf, createRateLimiter, rateLimit } from "./rate-limit";
-import { securityHeaders } from "./security-headers";
+import { CONSOLE_CONTENT_SECURITY_POLICY, securityHeaders } from "./security-headers";
 import type { ApiLogger } from "./logging";
 import { silentApiLogger } from "./logging";
 
@@ -107,6 +109,13 @@ export type ApiDependencies = {
   /** Store reachability for `/ready` (TASK-931); a memory store that is always ready by default. */
   readonly probeStore?: StoreProbe;
   readonly logger?: ApiLogger;
+  /**
+   * A directory holding the prebuilt console (`index.html` and its hashed
+   * assets) to serve from this origin (TASK-806, `PCA_CONSOLE_DIR`). Every
+   * GET outside `/api` that is not a file there answers `index.html`, so the
+   * Angular router owns the path; absent, the API serves only `/api`.
+   */
+  readonly consoleDir?: string;
   /** Tool handlers to run; defaults to the full MCP set over the same repositories. */
   readonly handlers?: ToolHandlers;
 };
@@ -222,6 +231,12 @@ const issueMessage = (error: z.ZodError): { message: string; path: string } => {
     path: issue?.path.join(".") ?? "<root>",
   };
 };
+
+const isApiPath = (path: string): boolean =>
+  path === API_PREFIX || path.startsWith(`${API_PREFIX}/`);
+
+/** Angular's `outputHashing: all` names: `main-CPYKB4FV.js`, `styles-AOWLPQPS.css`, `chunk-XXXX.js`. */
+const HASHED_ASSET = /^[a-z0-9_-]+-[A-Z0-9]{8}\.(?:js|css|woff2?)$/u;
 
 export const createApiApp = (dependencies: ApiDependencies): Express => {
   const { repositories, tracker, queue, clock, ids, context } = dependencies;
@@ -862,6 +877,33 @@ export const createApiApp = (dependencies: ApiDependencies): Express => {
   });
 
   app.use(API_PREFIX, router);
+
+  // The console (TASK-806): the same origin as the API, so the browser needs
+  // no proxy, the socket's Origin is this host, and one process is the whole
+  // product. Hashed assets are immutable; `index.html` keeps `no-store`.
+  if (dependencies.consoleDir !== undefined) {
+    const consoleDir = resolve(dependencies.consoleDir);
+    app.use((request, response, next) => {
+      if (!isApiPath(request.path)) {
+        response.setHeader("Content-Security-Policy", CONSOLE_CONTENT_SECURITY_POLICY);
+      }
+      next();
+    });
+    app.use(
+      express.static(consoleDir, {
+        index: false,
+        fallthrough: true,
+        setHeaders: (response, filePath) => {
+          if (HASHED_ASSET.test(basename(filePath))) {
+            response.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+          }
+        },
+      }),
+    );
+    app.get(/^(?!\/api(?:\/|$)).*/u, (_request, response) => {
+      response.sendFile(join(consoleDir, "index.html"));
+    });
+  }
 
   // Unknown routes and malformed bodies are errors in the same shape as everything else.
   app.use((request: Request, response: Response) => {
