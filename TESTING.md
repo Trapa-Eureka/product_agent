@@ -527,6 +527,12 @@ only — it never runs here — and spells the same pipeline out as separate
 staged jobs (the suggested list above, plus `web` for the Angular specs,
 which has no home in it otherwise), for anyone comparing the two systems.
 
+CI least privilege and supply chain (TASK-927): the workflow token is
+`contents: read` and nothing more, every action is pinned to a reviewed
+commit SHA with its tag in a trailing comment, and `.github/dependabot.yml`
+proposes SHA and npm updates weekly as pull requests, so an update to what
+CI executes is reviewed like any other change.
+
 Dependency advisories (TASK-925): CI runs `pnpm audit --audit-level=moderate`
 after install, so a known advisory at moderate or above in the resolved
 graph fails the build. It is not part of `verify`, which must work without

@@ -1,0 +1,24 @@
+# TASK-927 (SEC-016 / AUD-019): controlled, reviewable updates. Actions are
+# pinned to commit SHAs in the workflow; Dependabot proposes the SHA (and the
+# version comment) when a new release appears, so an update is a reviewed
+# pull request rather than a tag silently moving under CI. npm updates are
+# grouped so the lockfile changes in one reviewable step a week; the CI
+# audit step (TASK-925) fails the build on a known advisory regardless.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      dev-tooling:
+        dependency-type: development
+      runtime:
+        dependency-type: production
