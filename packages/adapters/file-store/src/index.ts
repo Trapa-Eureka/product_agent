@@ -10,9 +10,11 @@ import type {
   AuditEventRepository,
   ChangeRequestRepository,
   CommitOutcome,
+  DecisionOutcome,
   IdempotencyRepository,
   ProductionMutation,
   ProductionRepository,
+  ProposalDecisionCommit,
   ProposalRepository,
   RepositorySet,
 } from "@pca/application";
@@ -191,6 +193,32 @@ export class FileStore implements RepositorySet {
           auditEvents: [...committed.auditEvents, commit.auditEvent],
         },
         result,
+      };
+    });
+
+  /**
+   * TASK-902 (code review #2 / SEC-004 / AUD-004): the "no decision yet"
+   * check and the three writes share one `#mutate` cycle, so a racing
+   * second decision reads the first one's approval and returns
+   * `ALREADY_DECIDED` without writing anything of its own.
+   */
+  readonly recordProposalDecision = (commit: ProposalDecisionCommit): Promise<DecisionOutcome> =>
+    this.#mutate((database): { database: FileDatabase; result: DecisionOutcome } => {
+      const { productionId, proposalId } = commit.approval;
+      const existing = database.approvals.find(
+        (record) => record.productionId === productionId && record.proposalId === proposalId,
+      );
+      if (existing !== undefined) {
+        return { database, result: { status: "ALREADY_DECIDED", approval: existing } };
+      }
+      return {
+        database: {
+          ...database,
+          approvals: replaceById(database.approvals, commit.approval),
+          proposals: replaceById(database.proposals, commit.proposal),
+          auditEvents: [...database.auditEvents, commit.auditEvent],
+        },
+        result: { status: "RECORDED" },
       };
     });
 

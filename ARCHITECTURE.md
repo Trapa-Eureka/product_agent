@@ -579,6 +579,16 @@ Mongo transaction, one file-store `#mutate` cycle, one memory-store pass with
 no `await` between the four writes — rather than four sequential calls a
 partial failure could pull apart.
 
+`RepositorySet.recordProposalDecision` (TASK-902) is the same shape for the
+human decision: the approval, the proposal's decided status, and the audit
+event commit together, and only if no decision exists for that proposal yet
+— the compare-and-set that makes "a decision is final" true under
+concurrency, not just in a single caller's read-then-write. In Mongo the
+guarantee is the database's own: a unique `(productionId, proposalId)` index
+on `approvals`, so a racing insert fails with a duplicate key and its
+transaction aborts; the loser is answered with the record that won
+(`ALREADY_DECIDED`), never with a second success.
+
 ## 10. Queue/SQS
 
 Use asynchronous jobs for operations that may involve model calls or larger analysis.
@@ -650,9 +660,11 @@ The gateway (TASK-404, `@pca/ws-gateway`, built on `ws`) is a notification
 channel only. The application publishes `RealtimeNotification`s to an
 in-process `NotificationHub`: job events are forwarded from the tracker
 (`forwardJobEvents`), and proposal status comes from
-`withProposalNotifications`, a decorator on the proposal repository that
-publishes after every successful save, which is the one place every status
-change passes through. The gateway subscribes to the hub and forwards each
+`withProposalNotifications`, a decorator on the repository set that
+publishes after every successful proposal status write — `proposals.save`,
+and the two atomic writes that carry a status with them,
+`recordProposalDecision` and `applyProposalTransaction` (TASK-901/902); a
+write that did not land notifies nothing. The gateway subscribes to the hub and forwards each
 notification to the connections that subscribed to that production. It
 holds no history and replays nothing; its first message on every connection
 (`welcome`) names REST as the canonical source, and a reconnecting client

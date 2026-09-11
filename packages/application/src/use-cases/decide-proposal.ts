@@ -24,7 +24,10 @@ import { fail, succeed } from "../result";
  *
  * A decision is final. Repeating the same decision returns the existing
  * record; contradicting it is refused. A rejected proposal is not revived; a
- * new one is made.
+ * new one is made. Finality is enforced by the store, not by this read-then-
+ * write: `recordProposalDecision` (TASK-902) records the approval, the decided
+ * status, and the audit event atomically and only if no decision exists yet,
+ * so two concurrent callers cannot both succeed with opposite answers.
  */
 
 export type DecideProposalInput = {
@@ -69,8 +72,11 @@ export const createDecideProposal = (dependencies: {
       );
     }
 
-    const existing = await repositories.approvals.findByProposalId(input.productionId, proposal.id);
-    if (existing !== null) {
+    // A decision is final. Repeating it is a no-op; contradicting it is refused.
+    // Checked here so an obviously settled proposal skips re-simulation, and
+    // checked again atomically at the write (TASK-902): two callers can both
+    // pass this read, but only one can pass `recordProposalDecision`.
+    const alreadyDecided = (existing: Approval): UseCaseResult<ProposalDecision> => {
       if (existing.decision === input.decision) {
         return succeed({ approval: existing, proposal, alreadyDecided: true });
       }
@@ -84,6 +90,11 @@ export const createDecideProposal = (dependencies: {
           nextStep: "Create a new proposal if the change is still wanted.",
         },
       );
+    };
+
+    const existing = await repositories.approvals.findByProposalId(input.productionId, proposal.id);
+    if (existing !== null) {
+      return alreadyDecided(existing);
     }
 
     const recomputed = computeProposalDigest(proposal);
@@ -172,9 +183,16 @@ export const createDecideProposal = (dependencies: {
       createdAt,
     };
 
-    await repositories.approvals.save(approval);
-    await repositories.proposals.save(decided);
-    await repositories.auditEvents.append(audit);
+    const outcome = await repositories.recordProposalDecision({
+      approval,
+      proposal: decided,
+      auditEvent: audit,
+    });
+    if (outcome.status === "ALREADY_DECIDED") {
+      // Lost the race to another decision between the read above and this
+      // write. Nothing of ours was written; answer from the record that won.
+      return alreadyDecided(outcome.approval);
+    }
 
     return succeed({ approval, proposal: decided, alreadyDecided: false });
   };

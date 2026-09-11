@@ -78,6 +78,7 @@ const repositorySetOf = (store: RepositorySet): RepositorySet => ({
   auditEvents: store.auditEvents,
   idempotency: store.idempotency,
   applyProposalTransaction: store.applyProposalTransaction,
+  recordProposalDecision: store.recordProposalDecision,
 });
 
 export const createRepositories = async (
