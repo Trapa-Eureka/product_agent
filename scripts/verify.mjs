@@ -23,10 +23,34 @@ const STEPS = [
 const results = [];
 let failed = null;
 
+/**
+ * TASK-933 (code review #17): the Angular build's "not found in TypeScript
+ * compilation" warning means a bundled workspace source was not type-checked
+ * by the app's program. It is a coverage gap, not noise, so the build step
+ * fails on it here (and therefore in CI, which runs this script).
+ */
+const COVERAGE_GAP = /not found in TypeScript compilation/u;
+
+const run = (step) => {
+  if (step.name !== "build") {
+    return spawnSync("pnpm", step.args, { stdio: "inherit", shell: false });
+  }
+  const result = spawnSync("pnpm", step.args, { encoding: "utf8", shell: false });
+  process.stdout.write(result.stdout ?? "");
+  process.stderr.write(result.stderr ?? "");
+  if (result.status === 0 && COVERAGE_GAP.test(`${result.stdout}${result.stderr}`)) {
+    process.stderr.write(
+      "\nverify: the Angular build bundled a source file outside its TypeScript program (see the WARNING above); add it to apps/web/tsconfig.app.json.\n",
+    );
+    return { ...result, status: 1 };
+  }
+  return result;
+};
+
 for (const step of STEPS) {
   process.stdout.write(`\n▶ verify: ${step.name}\n`);
   const started = Date.now();
-  const result = spawnSync("pnpm", step.args, { stdio: "inherit", shell: false });
+  const result = run(step);
   const durationMs = Date.now() - started;
   const ok = result.status === 0;
   results.push({ name: step.name, ok, durationMs });

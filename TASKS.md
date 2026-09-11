@@ -1012,28 +1012,16 @@ Tests: application — the shape is `<prefix>-<uuid v4>` (version and variant ni
 
 Docs: `ARCHITECTURE.md` §15 "Identifiers".
 
-## TASK-933 Angular program covers imported workspace sources — TODO
+## TASK-933 Angular program covers imported workspace sources — DONE
 
-**Goal**  
-`@pca/contracts` and `@pca/realtime-client` sources are part of the web TypeScript program (or consumed as built libraries), and the "not part of the compilation" warning fails CI.
+Code review #17 (Medium). The Angular build bundled `@pca/contracts` and `@pca/realtime-client` from their sources but the app's TypeScript program (`tsconfig.app.json`: `files: ["src/main.ts"]`, `include: ["src/**/*.d.ts"]`) did not contain them, so the development build and `ng serve` warned, once per file, "not found in TypeScript compilation": the cross-package code the browser runs was checked by the root project's Node-flavoured settings, not the app's strict DOM-lib program, and the warning was easy to normalise.
 
-**Context**  
-Code review #17 (Medium).
+**Status**  
+Complete. `tsconfig.app.json` and `tsconfig.spec.json` include `../../packages/contracts/src/**/*.ts` and `../../packages/realtime-client/src/**/*.ts`, so both packages are compiled and type-checked as part of the app (and its specs) under the app's own settings; the development and production builds and `ng test` are warning-free for coverage, and both packages pass the stricter program unchanged. `scripts/verify.mjs`'s build step now captures the build output and fails on that warning with a message saying which file to add, so the gap is a CI failure (CI runs `verify`) rather than a line to skim past. The pre-existing initial-bundle budget warning (about 177 kB over 600 kB) is unrelated and untouched.
 
-**Dependencies**  
-None.
+Tests: the build step of `pnpm run verify` is the test; a manual negative check (the includes removed) made the development build emit the warning seventeen times and the pattern match it. `pnpm run verify` passes (9/9).
 
-**Allowed scope**  
-`apps/web/tsconfig*.json`, `angular.json`, package builds, CI.
-
-**Acceptance criteria**  
-`pnpm build` emits no compilation-coverage warning; CI greps for it.
-
-**Tests**  
-Build in CI.
-
-**Definition of Done**  
-Acceptance met, verify green.
+Docs: `ARCHITECTURE.md` §6 "Angular UI"; `TESTING.md` §12.
 
 ## TASK-934 Memory-store commits clone their inputs — TODO
 

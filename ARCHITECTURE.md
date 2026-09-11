@@ -367,7 +367,13 @@ coordinator can tell the plan they are reading is the plan the server has.
 The dev server proxies `/api` and `/ws` to the API. The app type-checks
 itself with the DOM lib (the root TypeScript project excludes it) and is
 built with AOT and strict templates in the verify gate; its specs run with
-vitest and jsdom through `ng test`. Serving it (`ng serve`, TASK-604's E2E
+vitest and jsdom through `ng test`. The workspace sources it bundles —
+`@pca/contracts` and `@pca/realtime-client` — are part of its TypeScript
+program (TASK-933, `tsconfig.app.json` and `tsconfig.spec.json` include
+them), so they are checked under the app's own strict settings and DOM lib
+rather than merely bundled; the Angular build's "not found in TypeScript
+compilation" warning, which used to name each of them, is a coverage gap
+`scripts/verify.mjs` now fails the build step on, and CI runs that script. Serving it (`ng serve`, TASK-604's E2E
 `webServer`) needed one fix: the dev server's Vite-based dependency
 pre-bundler resolves `@pca/contracts`/`@pca/realtime-client` as if they were
 ordinary `node_modules` packages, using a plain esbuild scan that does not
