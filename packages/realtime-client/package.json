@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@pca/contracts": "workspace:*",
-    "zod": "^4.6.1"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@pca/application": "workspace:*",

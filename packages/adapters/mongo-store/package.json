@@ -13,7 +13,7 @@
     "@pca/application": "workspace:*",
     "@pca/contracts": "workspace:*",
     "@pca/domain": "workspace:*",
-    "mongodb": "^6.17.0"
+    "mongodb": "^7.6.0"
   },
   "devDependencies": {
     "@pca/fixtures": "workspace:*",

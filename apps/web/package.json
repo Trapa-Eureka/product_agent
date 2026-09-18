@@ -9,11 +9,11 @@
     "test": "ng test"
   },
   "dependencies": {
-    "@angular/common": "^21.2.23",
-    "@angular/compiler": "^21.2.23",
-    "@angular/core": "^21.2.23",
-    "@angular/platform-browser": "^21.2.23",
-    "@angular/router": "^21.2.23",
+    "@angular/common": "^22.1.6",
+    "@angular/compiler": "^22.1.6",
+    "@angular/core": "^22.1.6",
+    "@angular/platform-browser": "^22.1.6",
+    "@angular/router": "^22.1.6",
     "@pca/contracts": "workspace:*",
     "@pca/realtime-client": "workspace:*",
     "rxjs": "^7.8.2",
