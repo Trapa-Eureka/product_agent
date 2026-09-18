@@ -18,6 +18,6 @@
   "devDependencies": {
     "@pca/fixtures": "workspace:*",
     "@pca/test-support": "workspace:*",
-    "mongodb-memory-server": "^10.1.4"
+    "mongodb-memory-server": "^11.2.0"
   }
 }
