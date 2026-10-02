@@ -13,11 +13,11 @@
     "./main": "./src/main.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.17.0",
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "@pca/application": "workspace:*",
     "@pca/bootstrap": "workspace:*",
     "@pca/contracts": "workspace:*",
-    "zod": "^4.6.1"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@pca/fixtures": "workspace:*",

@@ -17,7 +17,7 @@
     "@pca/mcp-server": "workspace:*",
     "@pca/ws-gateway": "workspace:*",
     "express": "^5.2.1",
-    "zod": "^4.6.1"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@pca/fixtures": "workspace:*",
@@ -26,7 +26,7 @@
     "@pca/rule-model": "workspace:*",
     "@pca/test-support": "workspace:*",
     "@types/express": "^5.0.6",
-    "@types/ws": "^8.18.1",
-    "ws": "^8.18.3"
+    "@types/ws": "^8.18.2",
+    "ws": "^8.22.0"
   }
 }

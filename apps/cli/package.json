@@ -35,11 +35,11 @@
     "smoke": "node smoke.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.17.0",
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "express": "^5.2.1",
-    "mongodb": "^6.17.0",
-    "ws": "^8.18.3",
-    "zod": "^4.6.1"
+    "mongodb": "^7.7.0",
+    "ws": "^8.22.0",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@pca/api": "workspace:*",
